@@ -11,11 +11,16 @@ pydantic = "^2.10.3"
 fastapi = "^0.115.6"
 uvicorn = "^0.32.1"
 shortuuid = "^1.0.13"
+sqlalchemy = {extras = ["asyncio"], version = "^2.0.36"}
+asyncpg = "^0.30.0"
+markitdown = "^0.0.1a2"
 
 
 [tool.poetry.group.test.dependencies]
 pytest = "^8.3.4"
 pytest-asyncio = "^0.25.0"
+testcontainers = "^4.9.0"
+httpx = "^0.28.1"
 
 [build-system]
 requires = ["poetry-core"]

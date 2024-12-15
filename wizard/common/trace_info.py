@@ -3,7 +3,7 @@ from typing import Optional
 
 import shortuuid
 
-from worker.common.logger import get_logger
+from wizard.common.logger import get_logger
 
 
 class TraceInfo:
@@ -20,3 +20,15 @@ class TraceInfo:
             self.logger if name is None else self.logger.getChild(name),
             self.payload | (addition_payload or {})
         )
+
+    def info(self, payload: dict):
+        self.logger.info(self.payload | payload)
+
+    def warning(self, payload: dict):
+        self.logger.warning(self.payload | payload)
+
+    def exception(self, payload: dict):
+        self.logger.exception(self.payload | payload)
+
+    def __setitem__(self, key, value):
+        self.payload = self.payload | {key: value}

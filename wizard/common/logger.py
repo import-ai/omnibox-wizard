@@ -4,7 +4,7 @@ import traceback
 from datetime import datetime
 from typing import Optional
 
-from worker.common import env
+from wizard.common import env
 
 
 class CustomFormatter(logging.Formatter):

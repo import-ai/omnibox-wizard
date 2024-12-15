@@ -1,10 +1,10 @@
 import os
 from contextlib import asynccontextmanager
 
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
+from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession, AsyncEngine
 
 
-def _get_url() -> str:
+def _get_database_url() -> str:
     if url := os.getenv("DB_URL", None):
         return url
     else:
@@ -16,11 +16,22 @@ def _get_url() -> str:
         return f"postgresql+asyncpg://{username}:{password}@{host}:{port}/{db_name}"
 
 
-DATABASE_URL = _get_url()
-engine = create_async_engine(DATABASE_URL)
-AsyncSessionMaker = async_sessionmaker(bind=engine)
+def get_engine() -> AsyncEngine:
+    return create_async_engine(_get_database_url())
 
 
-async def get_session() -> AsyncSession:
-    async with AsyncSessionMaker() as session:
+def get_session_factory() -> async_sessionmaker:
+    engine = get_engine()
+    return async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
+
+
+_session_factory: async_sessionmaker = ...
+
+
+@asynccontextmanager
+async def session_context() -> AsyncSession:
+    global _session_factory
+    if _session_factory is ...:
+        _session_factory = get_session_factory()
+    async with _session_factory() as session:
         yield session

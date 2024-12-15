@@ -40,7 +40,7 @@ class CustomFormatter(logging.Formatter):
         return str_log
 
 
-logger = logging.getLogger("app")
+logger = logging.getLogger("wizard")
 
 formatter = CustomFormatter()
 handler = logging.StreamHandler()
@@ -50,8 +50,8 @@ logger.addHandler(handler)
 logger.setLevel(logging.INFO if env.is_prod() else logging.DEBUG)
 
 
-def get_logger(name: Optional[str] = None) -> logging.Logger:
-    return logger.getChild(name) if name and name not in ["root", "app"] else logger
+def get_logger(name: Optional[str]) -> logging.Logger:
+    return logger.getChild(name)
 
 
 __all__ = ["get_logger"]

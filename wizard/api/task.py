@@ -5,16 +5,17 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from wizard.api.depends import get_trace_info
+from wizard.api.depends import get_trace_info, get_session
 from wizard.common.exception import CommonException
 from wizard.common.trace_info import TraceInfo
-from wizard.db import engine, get_session
+from wizard.db import session_context
 from wizard.db.entity import Base, Task
 
 
 async def init():
-    async with engine.begin() as connection:
-        await connection.run_sync(Base.metadata.create_all)
+    async with session_context() as session:
+        async with session.bind.begin() as connection:
+            await connection.run_sync(Base.metadata.create_all)
 
 
 task_router = APIRouter(prefix="/task")
@@ -29,7 +30,7 @@ async def create_task(
     task = Task(**task_dict)
     session.add(task)
     await session.commit()
-    await session.refresh(task)
+    # await session.refresh(task)
     trace_info.info({"task_id": task.task_id})
     return JSONResponse({"task_id": task.task_id}, 201)
 

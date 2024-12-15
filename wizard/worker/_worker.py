@@ -6,7 +6,8 @@ from sqlalchemy import select, func, desc, asc
 from sqlalchemy.exc import IntegrityError
 
 from wizard.common.exception import CommonException
-from wizard.db import get_session
+from wizard.common.logger import get_logger
+from wizard.db import get_session_factory
 from wizard.db.entity import Task, NamespaceConfig
 from wizard.worker import HTMLToMarkdown
 
@@ -15,19 +16,31 @@ class Worker:
     def __init__(self, worker_id: int):
         self.worker_id = worker_id
         self.html_to_markdown = HTMLToMarkdown()
+        self.logger = get_logger("worker")
+
+        self.session_factory = get_session_factory()
 
     async def run(self):
         while True:
             task = await self.fetch_and_claim_task()
             if task:
-                print(f"Worker {self.worker_id}: Processing task {task.task_id} for namespace {task.namespace_id}")
+                self.logger.info({
+                    "worker_id": self.worker_id,
+                    "namespace_id": task.namespace_id,
+                    "task_id": task.task_id,
+                    "start_time": task.start_time
+                })
                 await self.process_task(task)
             else:
-                # No available task, wait before retrying
+                self.logger.debug({
+                    "worker_id": self.worker_id,
+                    "message": "No available task, waiting..."
+                })
                 await asyncio.sleep(1)
 
     async def fetch_and_claim_task(self) -> Optional[Task]:
-        async with get_session() as session:
+        task: Optional[Task] = None
+        async with self.session_factory() as session:
             try:
                 async with session.begin():
                     # Subquery to count running tasks per user
@@ -41,18 +54,25 @@ class Worker:
                         .subquery()
                     )
 
-                    # Select one task that can be started
-                    stmt = (
-                        select(Task)
-                        .join(NamespaceConfig, Task.namespace_config == NamespaceConfig.namespace_id)
+                    # Subquery to find one eligible task_id that can be started
+                    task_id_subquery = (
+                        select(Task.task_id)
+                        .join(NamespaceConfig, Task.namespace_id == NamespaceConfig.namespace_id)
                         .outerjoin(running_tasks_sub_query, Task.namespace_id == running_tasks_sub_query.c.namespace_id)
                         .where(Task.start_time == None)
                         .where(Task.cancel_time == None)
                         .where(
                             func.coalesce(running_tasks_sub_query.c.running_count, 0) < NamespaceConfig.max_concurrency)
                         .order_by(desc(Task.priority), asc(Task.create_time))
-                        .with_for_update(skip_locked=True)
                         .limit(1)
+                        .subquery()
+                    )
+
+                    # Actual query to lock the task row
+                    stmt = (
+                        select(Task)
+                        .where(Task.task_id.in_(select(task_id_subquery.c.task_id)))
+                        .with_for_update(skip_locked=True)
                     )
 
                     result = await session.execute(stmt)
@@ -63,13 +83,15 @@ class Worker:
                         task.start_time = datetime.now()
                         session.add(task)
                         await session.commit()
-                        return task
             except IntegrityError:  # Handle cases where the task was claimed by another worker
                 await session.rollback()
             except Exception as e:
-                print(f"Worker {self.worker_id}: Encountered an error: {e}")
+                self.logger.exception({
+                    "worker_id": self.worker_id,
+                    "error": CommonException.parse_exception(e)
+                })
                 await session.rollback()
-            return None
+            return task
 
     async def process_task(self, task: Task):
         try:
@@ -77,25 +99,34 @@ class Worker:
             output = await self.call(task.function, task.input)
 
             # Update the task with the result
-            async with get_session() as session:
+            async with self.session_factory() as session:
                 async with session.begin():
                     db_task = await session.get(Task, task.task_id)
                     db_task.output = output
                     db_task.end_time = datetime.now()
                     session.add(db_task)
                     await session.commit()
-            print(f"Worker {self.worker_id}: Completed task {task.task_id}")
+            self.logger.info({
+                "worker_id": self.worker_id,
+                "task_id": task.task_id,
+                "end_time": db_task.end_time
+            })
         except Exception as e:
             # Update the task with the exception details
-            async with get_session() as session:
+            async with self.session_factory() as session:
                 async with session.begin():
                     db_task = await session.get(Task, task.task_id)
                     db_task.exception = {"error": CommonException.parse_exception(e)}
                     db_task.end_time = datetime.now()
                     session.add(db_task)
                     await session.commit()
-            print(
-                f"Worker {self.worker_id}: Failed task {task.task_id} with error: {CommonException.parse_exception(e)}")
+
+            self.logger.exception({
+                "worker_id": self.worker_id,
+                "task_id": task.task_id,
+                "end_time": db_task.end_time,
+                "error": CommonException.parse_exception(e)
+            })
 
     async def call(self, function: str, input_data: dict) -> dict:
         if function == "html_to_markdown":

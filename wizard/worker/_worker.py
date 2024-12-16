@@ -8,7 +8,8 @@ from sqlalchemy.exc import IntegrityError
 from wizard.common.exception import CommonException
 from wizard.common.logger import get_logger
 from wizard.db import get_session_factory
-from wizard.db.entity import Task, NamespaceConfig
+from wizard.db.entity import Task as ORMTask, NamespaceConfig
+from wizard.entity import Task
 from wizard.worker import HTMLToMarkdown
 
 
@@ -22,14 +23,14 @@ class Worker:
 
     async def run(self):
         while True:
-            task = await self.fetch_and_claim_task()
+            task: Task = await self.fetch_and_claim_task()
             if task:
-                self.logger.info({
-                    "worker_id": self.worker_id,
-                    "namespace_id": task.namespace_id,
-                    "task_id": task.task_id,
-                    "start_time": task.start_time
-                })
+                self.logger.info(
+                    {
+                        "worker_id": self.worker_id,
+                        "namespace_id": task.namespace_id,
+                    } | task.model_dump(include={"task_id", "create_time", "start_time"})
+                )
                 await self.process_task(task)
             else:
                 self.logger.debug({
@@ -46,42 +47,44 @@ class Worker:
                     # Subquery to count running tasks per user
                     running_tasks_sub_query = (
                         select(
-                            Task.namespace_id,
-                            func.count(Task.task_id).label('running_count')
+                            ORMTask.namespace_id,
+                            func.count(ORMTask.task_id).label('running_count')
                         )
-                        .where(Task.start_time != None, Task.end_time == None, Task.cancel_time == None)
-                        .group_by(Task.namespace_id)
+                        .where(ORMTask.start_time != None, ORMTask.end_time == None, ORMTask.cancel_time == None)
+                        .group_by(ORMTask.namespace_id)
                         .subquery()
                     )
 
                     # Subquery to find one eligible task_id that can be started
                     task_id_subquery = (
-                        select(Task.task_id)
-                        .join(NamespaceConfig, Task.namespace_id == NamespaceConfig.namespace_id)
-                        .outerjoin(running_tasks_sub_query, Task.namespace_id == running_tasks_sub_query.c.namespace_id)
-                        .where(Task.start_time == None)
-                        .where(Task.cancel_time == None)
+                        select(ORMTask.task_id)
+                        .join(NamespaceConfig, ORMTask.namespace_id == NamespaceConfig.namespace_id)
+                        .outerjoin(running_tasks_sub_query,
+                                   ORMTask.namespace_id == running_tasks_sub_query.c.namespace_id)
+                        .where(ORMTask.start_time == None)
+                        .where(ORMTask.cancel_time == None)
                         .where(
                             func.coalesce(running_tasks_sub_query.c.running_count, 0) < NamespaceConfig.max_concurrency)
-                        .order_by(desc(Task.priority), asc(Task.create_time))
+                        .order_by(desc(ORMTask.priority), asc(ORMTask.create_time))
                         .limit(1)
                         .subquery()
                     )
 
                     # Actual query to lock the task row
                     stmt = (
-                        select(Task)
-                        .where(Task.task_id.in_(select(task_id_subquery.c.task_id)))
+                        select(ORMTask)
+                        .where(ORMTask.task_id.in_(select(task_id_subquery.c.task_id)))
                         .with_for_update(skip_locked=True)
                     )
 
                     result = await session.execute(stmt)
-                    task = result.scalars().first()
+                    orm_task = result.scalars().first()
 
-                    if task:
+                    if orm_task:
                         # Mark the task as started
-                        task.start_time = datetime.now()
-                        session.add(task)
+                        orm_task.start_time = datetime.now()
+                        session.add(orm_task)
+                        task = Task.model_validate(orm_task)
                         await session.commit()
             except IntegrityError:  # Handle cases where the task was claimed by another worker
                 await session.rollback()
@@ -101,32 +104,32 @@ class Worker:
             # Update the task with the result
             async with self.session_factory() as session:
                 async with session.begin():
-                    db_task = await session.get(Task, task.task_id)
-                    db_task.output = output
-                    db_task.end_time = datetime.now()
-                    session.add(db_task)
+                    orm_task = await session.get(ORMTask, task.task_id)
+                    orm_task.output = output
+                    orm_task.end_time = datetime.now()
+                    session.add(orm_task)
+                    task = Task.model_validate(orm_task)
                     await session.commit()
-            self.logger.info({
-                "worker_id": self.worker_id,
-                "task_id": task.task_id,
-                "end_time": db_task.end_time
-            })
+            self.logger.info(
+                {
+                    "worker_id": self.worker_id,
+                } | task.model_dump(include={"task_id", "create_time", "start_time", "end_time"}))
         except Exception as e:
             # Update the task with the exception details
             async with self.session_factory() as session:
                 async with session.begin():
-                    db_task = await session.get(Task, task.task_id)
-                    db_task.exception = {"error": CommonException.parse_exception(e)}
-                    db_task.end_time = datetime.now()
-                    session.add(db_task)
+                    orm_task = await session.get(ORMTask, task.task_id)
+                    orm_task.exception = {"error": CommonException.parse_exception(e)}
+                    orm_task.end_time = datetime.now()
+                    session.add(orm_task)
                     await session.commit()
 
-            self.logger.exception({
-                "worker_id": self.worker_id,
-                "task_id": task.task_id,
-                "end_time": db_task.end_time,
-                "error": CommonException.parse_exception(e)
-            })
+            self.logger.exception(
+                {
+                    "worker_id": self.worker_id,
+                    "error": CommonException.parse_exception(e)
+                } | task.model_dump(include={"task_id", "create_time", "start_time", "end_time"})
+            )
 
     async def call(self, function: str, input_data: dict) -> dict:
         if function == "html_to_markdown":

@@ -10,7 +10,10 @@ async def test_api(base_url: str, namespace_id: str):
     with httpx.Client(base_url=base_url) as client:
         json_response: dict = client.post("/task", json={
             "function": "html_to_markdown",
-            "input": "<p>Hello World!</p>",
+            "input": {
+                "html": "<p>Hello World!</p>",
+                "url": "foo"
+            },
             "namespace_id": namespace_id
         }).raise_for_status().json()
 
@@ -21,7 +24,7 @@ async def test_api(base_url: str, namespace_id: str):
         assert json_task["task_id"] == task_id
         assert json_task["namespace_id"] == namespace_id
         assert json_task["create_time"] is not None
-        assert json_task["start_time"] is None
+        assert json_task.get("start_time", None) is None
 
         from wizard.worker import Worker
         worker = Worker(worker_id=0)
@@ -34,8 +37,16 @@ async def test_api(base_url: str, namespace_id: str):
         assert json_task["namespace_id"] == namespace_id
         assert json_task["create_time"] is not None
         assert json_task["start_time"] is not None
+        assert json_task.get("end_time", None) is None
 
         await worker.process_task(task)
 
+        json_task: dict = client.get(f"/task/{task_id}").raise_for_status().json()
+        assert json_task["task_id"] == task_id
+        assert json_task["namespace_id"] == namespace_id
+        assert json_task["create_time"] is not None
+        assert json_task["start_time"] is not None
+        assert json_task["end_time"] is not None
+        assert json_task["output"]["markdown"] == "Hello World!"
 
-
+        logger.info(json_task)

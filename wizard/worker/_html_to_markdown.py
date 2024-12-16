@@ -21,5 +21,5 @@ class HTMLToMarkdown(BaseWorker):
         html = input_dict["html"]
         url = input_dict["url"]
         result_dict = self._convert(html)
-        result_dict["markdown"] = self.pattern.sub("\n", result_dict["markdown"])
+        result_dict["markdown"] = self.pattern.sub("\n", result_dict["markdown"]).strip()
         return result_dict

@@ -1,21 +1,28 @@
 from datetime import datetime
-from typing import Optional, Dict
 
 import shortuuid
 from pydantic import BaseModel, Field, ConfigDict
 
-
-class Task(BaseModel):
-    task_id: str = Field(default_factory=shortuuid.uuid)
-    priority: int = Field(default=5)
-    namespace_id: str
-    function: str
-    input: Dict
-    create_time: datetime = Field(default_factory=datetime.now)
-    output: Optional[Dict] = None
-    exception: Optional[Dict] = None
-    start_time: Optional[datetime] = None
-    end_time: Optional[datetime] = None
-    cancel_time: Optional[datetime] = None
+class Base(BaseModel):
+    created_at: datetime = Field(default_factory=datetime.now)
+    updated_at: datetime = Field(default_factory=datetime.now)
+    deleted_at: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True)
+
+class Task(Base):
+    task_id: str = Field(default_factory=shortuuid.uuid)
+    priority: int = Field(default=5)
+
+    namespace_id: str
+    user_id: str
+
+    function: str
+    input: dict
+
+    output: dict | None = None
+    exception: dict | None = None
+
+    started_at: datetime | None = None
+    ended_at: datetime | None = None
+    canceled_at: datetime | None = None

@@ -1,52 +1,55 @@
 import httpx
 
-from tests.helper.fixture import base_url, namespace_id
+from tests.helper.fixture import client
 from wizard.common.logger import get_logger
 
 logger = get_logger("tests")
 
 
-async def test_api(base_url: str, namespace_id: str):
-    with httpx.Client(base_url=base_url) as client:
-        json_response: dict = client.post("/task", json={
-            "function": "html_to_markdown",
-            "input": {
-                "html": "<p>Hello World!</p>",
-                "url": "foo"
-            },
-            "namespace_id": namespace_id
-        }).raise_for_status().json()
+async def test_api(client: httpx.Client):
+    namespace_id: str = "foo"
+    user_id: str = "bar"
 
-        task_id: str = json_response["task_id"]
-        assert len(task_id) == 22
+    json_response: dict = client.post("/api/v1/tasks", json={
+        "function": "html_to_markdown",
+        "input": {
+            "html": "<p>Hello World!</p>",
+            "url": "foo"
+        },
+        "namespace_id": namespace_id,
+        "user_id": user_id
+    }).raise_for_status().json()
 
-        json_task: dict = client.get(f"/task/{task_id}").raise_for_status().json()
-        assert json_task["task_id"] == task_id
-        assert json_task["namespace_id"] == namespace_id
-        assert json_task["create_time"] is not None
-        assert json_task.get("start_time", None) is None
+    task_id: str = json_response["task_id"]
+    assert len(task_id) == 22
 
-        from wizard.worker import Worker
-        worker = Worker(worker_id=0)
-        task = await worker.fetch_and_claim_task()
-        assert task is not None
-        assert task.task_id == task_id
+    json_task: dict = client.get(f"/api/v1/tasks/{task_id}").raise_for_status().json()
+    assert json_task["task_id"] == task_id
+    assert json_task["namespace_id"] == namespace_id
+    assert json_task["created_at"] is not None
+    assert json_task.get("started_at", None) is None
 
-        json_task: dict = client.get(f"/task/{task_id}").raise_for_status().json()
-        assert json_task["task_id"] == task_id
-        assert json_task["namespace_id"] == namespace_id
-        assert json_task["create_time"] is not None
-        assert json_task["start_time"] is not None
-        assert json_task.get("end_time", None) is None
+    from wizard.worker import Worker
+    worker = Worker(worker_id=0)
+    task = await worker.fetch_and_claim_task()
+    assert task is not None
+    assert task.task_id == task_id
 
-        await worker.process_task(task)
+    json_task: dict = client.get(f"/api/v1/tasks/{task_id}").raise_for_status().json()
+    assert json_task["task_id"] == task_id
+    assert json_task["namespace_id"] == namespace_id
+    assert json_task["created_at"] is not None
+    assert json_task["started_at"] is not None
+    assert json_task.get("ended_at", None) is None
 
-        json_task: dict = client.get(f"/task/{task_id}").raise_for_status().json()
-        assert json_task["task_id"] == task_id
-        assert json_task["namespace_id"] == namespace_id
-        assert json_task["create_time"] is not None
-        assert json_task["start_time"] is not None
-        assert json_task["end_time"] is not None
-        assert json_task["output"]["markdown"] == "Hello World!"
+    await worker.process_task(task)
 
-        logger.info(json_task)
+    json_task: dict = client.get(f"/api/v1/tasks/{task_id}").raise_for_status().json()
+    assert json_task["task_id"] == task_id
+    assert json_task["namespace_id"] == namespace_id
+    assert json_task["created_at"] is not None
+    assert json_task["started_at"] is not None
+    assert json_task["ended_at"] is not None
+    assert json_task["output"]["markdown"] == "Hello World!"
+
+    logger.info(json_task)

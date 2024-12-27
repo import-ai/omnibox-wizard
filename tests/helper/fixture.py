@@ -6,12 +6,12 @@ import time
 import asyncpg
 import httpx
 import pytest
-import shortuuid
+from fastapi.testclient import TestClient
 from testcontainers.postgres import PostgresContainer
 
+from wizard.api.server import app
 from wizard.common import project_root
 from wizard.common.logger import get_logger
-from wizard.db import session_context
 
 logger = get_logger("fixture")
 
@@ -30,21 +30,15 @@ async def check_db(dsn: str, retry_cnt: int = 10):
 
 
 @pytest.fixture(scope="session")
-async def db_url() -> str:
+def db_url() -> str:
     driver = "asyncpg"
     with PostgresContainer("postgres:17-alpine", driver=driver) as postgres:
         url = postgres.get_connection_url()
-        await check_db(postgres.get_connection_url(driver=None))
+        asyncio.run(check_db(postgres.get_connection_url(driver=None)))
 
         os.environ["DB_URL"] = url
         logger.debug({"db_url": url, "env": {"DB_URL": os.getenv("DB_URL")}})
 
-        from wizard.db.entity import Base
-
-        async with session_context() as session:
-            async with session.bind.begin() as connection:
-                await connection.run_sync(Base.metadata.create_all)
-        logger.debug({"message": "db init success", "env": {"DB_URL": os.getenv("DB_URL")}})
         yield url
 
 
@@ -94,21 +88,6 @@ async def worker_init(db_url: str) -> bool:
 
 
 @pytest.fixture(scope="session")
-async def namespace_id(db_url: str) -> str:
-    logger.debug({
-        "message": "start create namespace",
-        "db_url": db_url,
-        "env": {"DB_URL": os.getenv("DB_URL")}
-    })
-    from wizard.db.entity import NamespaceConfig
-    from wizard.db import session_context
-    async with session_context() as session:
-        namespace_config = NamespaceConfig(namespace_id=shortuuid.uuid(), max_concurrency=1)
-        session.add(namespace_config)
-        await session.commit()
-        await session.refresh(namespace_config)
-    logger.debug({
-        "message": "create namespace success",
-        "namespace_id": namespace_config.namespace_id
-    })
-    yield namespace_config.namespace_id
+def client(db_url: str) -> str:
+    with TestClient(app) as client:
+        yield client

@@ -3,9 +3,9 @@ from typing import Annotated
 
 from fastapi import APIRouter, Body
 
-from wizard.api.task import task_router
+from wizard.api.tasks import task_router
 
-start_time: datetime = datetime.now()
+started_at: datetime = datetime.now()
 v1_router = APIRouter(prefix="/api/v1")
 v1_router.include_router(task_router)
 
@@ -19,4 +19,4 @@ async def api_v1_render(data: Annotated[dict, Body()]):
 
 @v1_router.get("/health", tags=["Metrics"])
 async def api_v1_health():
-    return {"status": 200, "uptime": str(datetime.now() - start_time)}
+    return {"status": 200, "uptime": str(datetime.now() - started_at)}

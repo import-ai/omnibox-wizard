@@ -8,7 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from wizard.common.exception import CommonException
 from wizard.common.logger import get_logger
 from wizard.db import get_session_factory
-from wizard.db.entity import Task as ORMTask, NamespaceConfig
+from wizard.db.entity import Task as ORMTask
 from wizard.entity import Task
 from wizard.worker import HTMLToMarkdown
 
@@ -29,7 +29,7 @@ class Worker:
                     {
                         "worker_id": self.worker_id,
                         "namespace_id": task.namespace_id,
-                    } | task.model_dump(include={"task_id", "create_time", "start_time"})
+                    } | task.model_dump(include={"task_id", "created_at", "started_at"})
                 )
                 await self.process_task(task)
             else:
@@ -50,7 +50,7 @@ class Worker:
                             ORMTask.namespace_id,
                             func.count(ORMTask.task_id).label('running_count')
                         )
-                        .where(ORMTask.start_time != None, ORMTask.end_time == None, ORMTask.cancel_time == None)
+                        .where(ORMTask.started_at != None, ORMTask.ended_at == None, ORMTask.canceled_at == None)
                         .group_by(ORMTask.namespace_id)
                         .subquery()
                     )
@@ -58,14 +58,13 @@ class Worker:
                     # Subquery to find one eligible task_id that can be started
                     task_id_subquery = (
                         select(ORMTask.task_id)
-                        .join(NamespaceConfig, ORMTask.namespace_id == NamespaceConfig.namespace_id)
                         .outerjoin(running_tasks_sub_query,
                                    ORMTask.namespace_id == running_tasks_sub_query.c.namespace_id)
-                        .where(ORMTask.start_time == None)
-                        .where(ORMTask.cancel_time == None)
+                        .where(ORMTask.started_at == None)
+                        .where(ORMTask.canceled_at == None)
                         .where(
-                            func.coalesce(running_tasks_sub_query.c.running_count, 0) < NamespaceConfig.max_concurrency)
-                        .order_by(desc(ORMTask.priority), asc(ORMTask.create_time))
+                            func.coalesce(running_tasks_sub_query.c.running_count, 0) < ORMTask.concurrency_threshold)
+                        .order_by(desc(ORMTask.priority), asc(ORMTask.created_at))
                         .limit(1)
                         .subquery()
                     )
@@ -82,7 +81,7 @@ class Worker:
 
                     if orm_task:
                         # Mark the task as started
-                        orm_task.start_time = datetime.now()
+                        orm_task.started_at = datetime.now()
                         session.add(orm_task)
                         task = Task.model_validate(orm_task)
                         await session.commit()
@@ -106,21 +105,21 @@ class Worker:
                 async with session.begin():
                     orm_task = await session.get(ORMTask, task.task_id)
                     orm_task.output = output
-                    orm_task.end_time = datetime.now()
+                    orm_task.ended_at = datetime.now()
                     session.add(orm_task)
                     task = Task.model_validate(orm_task)
                     await session.commit()
             self.logger.info(
                 {
                     "worker_id": self.worker_id,
-                } | task.model_dump(include={"task_id", "create_time", "start_time", "end_time"}))
+                } | task.model_dump(include={"task_id", "created_at", "started_at", "ended_at"}))
         except Exception as e:
             # Update the task with the exception details
             async with self.session_factory() as session:
                 async with session.begin():
                     orm_task = await session.get(ORMTask, task.task_id)
                     orm_task.exception = {"error": CommonException.parse_exception(e)}
-                    orm_task.end_time = datetime.now()
+                    orm_task.ended_at = datetime.now()
                     session.add(orm_task)
                     await session.commit()
 
@@ -128,7 +127,7 @@ class Worker:
                 {
                     "worker_id": self.worker_id,
                     "error": CommonException.parse_exception(e)
-                } | task.model_dump(include={"task_id", "create_time", "start_time", "end_time"})
+                } | task.model_dump(include={"task_id", "created_at", "started_at", "ended_at"})
             )
 
     async def call(self, function: str, input_data: dict) -> dict:

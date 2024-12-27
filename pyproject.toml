@@ -1,8 +1,9 @@
 [tool.poetry]
-name = "magic-box-worker"
+name = "magic-box-wizard"
 version = "0.1.0"
 description = ""
 authors = ["Lucien Shui <lucien@lucien.ink>"]
+license = "Apache License 2.0"
 readme = "README.md"
 
 [tool.poetry.dependencies]

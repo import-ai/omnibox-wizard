@@ -6,20 +6,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from wizard.api.depends import get_trace_info, get_session
-from wizard.entity import Task
 from wizard.common.exception import CommonException
 from wizard.common.trace_info import TraceInfo
-from wizard.db import session_context
-from wizard.db.entity import Base, Task as ORMTask
+from wizard.db.entity import Task as ORMTask
+from wizard.entity import Task
 
-
-async def init():
-    async with session_context() as session:
-        async with session.bind.begin() as connection:
-            await connection.run_sync(Base.metadata.create_all)
-
-
-task_router = APIRouter(prefix="/task")
+task_router = APIRouter(prefix="/tasks")
 
 
 @task_router.post("", response_model=Task, response_model_include={"task_id"})

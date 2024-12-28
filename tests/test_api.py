@@ -1,7 +1,7 @@
 import httpx
 
 from tests.helper.fixture import client
-from wizard.common.logger import get_logger
+from common.logger import get_logger
 
 logger = get_logger("tests")
 
@@ -29,7 +29,7 @@ async def test_api(client: httpx.Client):
     assert json_task["created_at"] is not None
     assert json_task.get("started_at", None) is None
 
-    from wizard.worker import Worker
+    from wizard.wand.worker import Worker
     worker = Worker(worker_id=0)
     task = await worker.fetch_and_claim_task()
     assert task is not None

@@ -5,8 +5,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 
 from wizard.api.v1 import v1_router
-from wizard.common.exception import CommonException
-from wizard.common.logger import get_logger
+from common.exception import CommonException
+from common.logger import get_logger
 from wizard.db import session_context
 from wizard.db.entity import Base
 

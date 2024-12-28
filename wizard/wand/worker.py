@@ -5,12 +5,12 @@ from typing import Optional
 from sqlalchemy import select, func, desc, asc
 from sqlalchemy.exc import IntegrityError
 
-from wizard.common.exception import CommonException
-from wizard.common.logger import get_logger
+from common.exception import CommonException
+from common.logger import get_logger
 from wizard.db import get_session_factory
 from wizard.db.entity import Task as ORMTask
 from wizard.entity import Task
-from wizard.worker import HTMLToMarkdown
+from wizard.wand.html_to_markdown import HTMLToMarkdown
 
 
 class Worker:

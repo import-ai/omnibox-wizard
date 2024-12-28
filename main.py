@@ -1,7 +1,7 @@
 import asyncio
 from argparse import Namespace, ArgumentParser
 
-from wizard.worker import Worker
+from wizard.wand.worker import Worker
 
 
 def get_args() -> Namespace:

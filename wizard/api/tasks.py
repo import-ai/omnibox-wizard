@@ -6,8 +6,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from wizard.api.depends import get_trace_info, get_session
-from wizard.common.exception import CommonException
-from wizard.common.trace_info import TraceInfo
+from common.exception import CommonException
+from common.trace_info import TraceInfo
 from wizard.db.entity import Task as ORMTask
 from wizard.entity import Task
 

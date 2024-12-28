@@ -8,15 +8,16 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 from testcontainers.postgres import PostgresContainer
+from testcontainers.chroma import ChromaContainer
 
 from wizard.api.server import app
-from wizard.common import project_root
-from wizard.common.logger import get_logger
+from common import project_root
+from common.logger import get_logger
 
 logger = get_logger("fixture")
 
 
-async def check_db(dsn: str, retry_cnt: int = 10):
+async def check_postgres_url(dsn: str, retry_cnt: int = 10):
     for attempt in range(retry_cnt):
         try:
             conn = await asyncpg.connect(dsn=dsn)
@@ -30,20 +31,38 @@ async def check_db(dsn: str, retry_cnt: int = 10):
 
 
 @pytest.fixture(scope="session")
-def db_url() -> str:
+def postgres_url() -> str:
     driver = "asyncpg"
-    with PostgresContainer("postgres:17-alpine", driver=driver) as postgres:
+    with PostgresContainer(image="postgres:17-alpine", driver=driver) as postgres:
         url = postgres.get_connection_url()
-        asyncio.run(check_db(postgres.get_connection_url(driver=None)))
+        asyncio.run(check_postgres_url(postgres.get_connection_url(driver=None)))
 
         os.environ["DB_URL"] = url
         logger.debug({"db_url": url, "env": {"DB_URL": os.getenv("DB_URL")}})
 
         yield url
 
+@pytest.fixture(scope="function")
+def chromadb_endpoint() -> str:
+    with ChromaContainer(image="chromadb/chroma:0.5.23") as chromadb:
+        server_info: dict = chromadb.get_config()
+        endpoint: str = server_info["endpoint"]
+        def check_chromadb_ready() -> bool:
+            for i in range(10):
+                try:
+                    with httpx.Client(base_url=f"http://{endpoint}", timeout=3) as client:  # noqa
+                        response: httpx.Response = client.get("/api/v1/heartbeat")
+                    response.raise_for_status()
+                    return True
+                except httpx.ConnectError:
+                    time.sleep(1)
+            raise RuntimeError("ChromaDB container failed to become healthy in time.")
+
+        check_chromadb_ready()
+        yield endpoint
 
 @pytest.fixture(scope="session")
-async def base_url(db_url: str) -> str:
+async def base_url(postgres_url: str) -> str:
     base_url = "http://127.0.0.1:8000/api/v1"
 
     def health_check() -> bool:
@@ -76,7 +95,7 @@ async def base_url(db_url: str) -> str:
 
 
 @pytest.fixture(scope="session")
-async def worker_init(db_url: str) -> bool:
+async def worker_init(postgres_url: str) -> bool:
     env: dict = os.environ.copy()
     cwd: str = project_root.path()
     worker_process = subprocess.Popen(["python3", "main.py", "--workers", "1"], cwd=cwd, env=env)
@@ -88,6 +107,6 @@ async def worker_init(db_url: str) -> bool:
 
 
 @pytest.fixture(scope="session")
-def client(db_url: str) -> str:
+def client(postgres_url: str) -> str:
     with TestClient(app) as client:
         yield client

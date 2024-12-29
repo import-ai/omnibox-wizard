@@ -13,7 +13,7 @@ class InsertRequest(BaseModel):
 class ChatRequest(BaseModel):
     session_id: str
     query: str
-    namespace: str
+    namespace_id: str
     element_id_list: Optional[List[str]] = Field(default=None)
 
 

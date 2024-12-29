@@ -66,7 +66,8 @@ class Loader(Generic[_Config]):
         self.env_prefix: str | None = env_prefix
         self.config_path: str | None = config_path
 
-    def fields(self, config_model: Type[_Config] | None = None, prefix: List[str] = None) -> List[Tuple[List[str], FieldInfo]]:
+    def fields(self, config_model: Type[_Config] | None = None, prefix: List[str] = None) -> List[
+        Tuple[List[str], FieldInfo]]:
         fields: List[Tuple[List[str], FieldInfo]] = []
         prefix: List[str] = prefix or []
         for key, field_info in config_model.model_fields.items():  # noqa
@@ -124,7 +125,9 @@ class Loader(Generic[_Config]):
         logger.debug({"cli_config": cli_config})
         config_merge = merge_dicts(config_merge, cli_config)
         logger.debug({"config_merge": config_merge})
-        return self.config_model.model_validate(config_merge)
+        config = self.config_model.model_validate(config_merge)
+        logger.debug({"config_dump": config.model_dump()})
+        return config
 
 
 __all__ = ["Loader"]

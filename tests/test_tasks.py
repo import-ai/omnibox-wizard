@@ -6,7 +6,7 @@ from common.logger import get_logger
 logger = get_logger("tests")
 
 
-async def test_api(client: httpx.Client):
+async def test_tasks(client: httpx.Client):
     namespace_id: str = "foo"
     user_id: str = "bar"
 

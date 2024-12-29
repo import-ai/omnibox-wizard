@@ -1,6 +1,8 @@
 import asyncio
 from argparse import Namespace, ArgumentParser
 
+from common.config_loader import Loader
+from wizard.config import Config, ENV_PREFIX
 from wizard.wand.worker import Worker
 
 
@@ -13,7 +15,9 @@ def get_args() -> Namespace:
 
 async def main():
     args = get_args()
-    workers = [Worker(worker_id=i) for i in range(args.workers)]
+    loader = Loader(Config, env_prefix=ENV_PREFIX)
+    config = loader.load()
+    workers = [Worker(config=config, worker_id=i) for i in range(args.workers)]
     await asyncio.gather(*(worker.run() for worker in workers))
 
 

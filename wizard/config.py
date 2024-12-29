@@ -26,9 +26,14 @@ class GrimoireConfig(BaseModel):
     rewrite: RewriteConfig = Field(default_factory=RewriteConfig)
 
 
+class DBConfig(BaseModel):
+    url: str = Field(default=None, examples=["postgresql+asyncpg://{username}:{password}@{host}:{port}/{db_name}"])
+
+
 class Config(BaseModel):
     vector: VectorConfig
-    # grimoire: GrimoireConfig
+    grimoire: GrimoireConfig
+    db: DBConfig = Field(default_factory=DBConfig)
 
 
 ENV_PREFIX: str = "MBW"

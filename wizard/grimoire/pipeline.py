@@ -24,7 +24,7 @@ class Pipeline:
         return retrieval_list
 
     async def astream(self, trace_info: TraceInfo, request: ChatRequest) -> AsyncIterator[ChatBaseResponse]:
-        retrieval_list = await self.retrieve(namespace=request.namespace, query=request.query)
+        retrieval_list = await self.retrieve(namespace=request.namespace_id, query=request.query)
         trace_info.info({"retrieval_count": len(retrieval_list)})
         yield ChatCitationListResponse(citation_list=[r.to_citation() for r in retrieval_list])
         async for delta in self.rag.astream(request.query, retrieval_list):

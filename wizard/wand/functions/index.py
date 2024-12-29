@@ -1,7 +1,8 @@
 from typing import List
 
+from wizard.config import Config
 from wizard.grimoire.entity.chunk import Chunk, ChunkType
-from wizard.grimoire.retriever.vector_db import VectorDB
+from wizard.grimoire.retriever.vector_db import AsyncVectorDB
 from wizard.wand.functions.base_function import BaseFunction
 
 
@@ -9,11 +10,11 @@ def line_level(line: str) -> int:
     return len(line) - len(line.lstrip('#'))
 
 
-def split_markdown(namespace: str, resource_id: str, title: str, markdown_text: str) -> List[Chunk]:
-    common_info = {"resource_id": resource_id, "namespace": namespace, "title": title}
+def split_markdown(title: str, markdown_text: str, meta_info: dict) -> List[Chunk]:
+    meta_info = meta_info | {"title": title}
     lines: List[str] = markdown_text.split('\n')
     body = Chunk(text=f"title: {title}\n" + markdown_text, chunk_type=ChunkType.doc,
-                 start_lineno=0, end_lineno=len(lines), **common_info)
+                 start_lineno=0, end_lineno=len(lines), **meta_info)
     chunk_list: List[Chunk] = [body]
     chunk_stack: List[Chunk] = []
     previous_lineno: int = 0
@@ -24,7 +25,7 @@ def split_markdown(namespace: str, resource_id: str, title: str, markdown_text: 
                 chunk_type=ChunkType.section,
                 start_lineno=previous_lineno,
                 end_lineno=lineno,
-                **common_info
+                **meta_info
             )
             current_level = line_level(lines[chunk.start_lineno])
             while len(chunk_stack) > 0 and line_level(lines[chunk_stack[-1].start_lineno]) >= current_level:
@@ -45,11 +46,25 @@ def split_markdown(namespace: str, resource_id: str, title: str, markdown_text: 
 
 
 class CreateOrUpdateIndex(BaseFunction):
-    def __init__(self, vector_db: VectorDB):
-        self.vector_db: VectorDB = vector_db
+    def __init__(self, config: Config):
+        self.vector_db: AsyncVectorDB = AsyncVectorDB(config.vector)
+
+    async def run(self, input_data: dict) -> dict:
+        title: str = input_data["title"]
+        content: str = input_data["content"]
+        meta_info: dict = input_data["meta_info"]
+        chunk_list: List[Chunk] = split_markdown(title, content, meta_info)
+        await self.vector_db.insert(chunk_list)
+        return {"success": True}
+
+
+class DeleteIndex(CreateOrUpdateIndex):
 
     async def run(self, input_data: dict) -> dict:
         namespace_id: str = input_data["namespace_id"]
         resource_id: str = input_data["resource_id"]
-        title: str = input_data["title"]
-        content: str = input_data["content"]
+        await self.vector_db.remove(namespace_id, resource_id)
+        return {"success": True}
+
+
+__all__ = ["CreateOrUpdateIndex", "DeleteIndex"]

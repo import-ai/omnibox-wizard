@@ -2,13 +2,10 @@ import re
 
 from markitdown._markitdown import HtmlConverter, DocumentConverterResult  # noqa
 
-
-class BaseWorker:
-    async def run(self, input_data: dict) -> dict:
-        raise NotImplementedError
+from wizard.wand.functions.base_function import BaseFunction
 
 
-class HTMLToMarkdown(BaseWorker):
+class HTMLToMarkdown(BaseFunction):
     def __init__(self):
         self.converter = HtmlConverter()
         self.pattern = re.compile(r"\n+")

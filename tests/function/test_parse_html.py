@@ -1,5 +1,5 @@
 from common import project_root
-from wizard.wand import HTMLToMarkdown
+from wizard.wand.functions.html_to_markdown import HTMLToMarkdown
 
 
 async def test_parse_html():

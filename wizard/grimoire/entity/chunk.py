@@ -18,11 +18,14 @@ class ChunkType(str, Enum):
 
 class Chunk(BaseModel):
     title: str
-    element_id: str
+    resource_id: str
     text: str = Field(description="Chunk content")
     chunk_type: ChunkType = Field(description="Chunk type")
 
-    namespace: str
+    namespace_id: str
+    user_id: str
+    parent_id: str
+    space_type: Literal["private", "teamspace"]
 
     chunk_id: str = Field(description="ID of chunk", default_factory=shortuuid.uuid)
     created_timestamp: float = Field(description="Unix timestamp in float format", default_factory=time.time)
@@ -41,11 +44,11 @@ class TextRetrieval(BaseRetrieval):
     chunk: Chunk
 
     def to_prompt(self) -> str:
-        return self.chunk.text
+        return "\n".join([f"Title: {self.chunk.title}", f"Chunk: {self.chunk.text}"])
 
     def to_citation(self) -> Citation:
         return Citation(
             title=self.chunk.title,
             snippet=self.chunk.text,
-            link=f"{self.chunk.element_id}[{self.chunk.start_lineno}:{self.chunk.end_lineno}]"
+            link=self.chunk.resource_id
         )

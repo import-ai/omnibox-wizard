@@ -108,7 +108,7 @@ class Loader(Generic[_Config]):
         c = vars(args)
         return {k: v for k, v in c.items() if v is not None}
 
-    def load(self, env_prefix: str | None = None, config_path: str | None = None):
+    def load(self, env_prefix: str | None = None, config_path: str | None = None) -> _Config:
         env_prefix = env_prefix or self.env_prefix
         config_path = config_path or self.config_path
         config_merge: dict = {}

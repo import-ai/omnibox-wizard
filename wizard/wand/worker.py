@@ -10,13 +10,15 @@ from common.logger import get_logger
 from wizard.db import get_session_factory
 from wizard.db.entity import Task as ORMTask
 from wizard.entity import Task
-from wizard.wand.html_to_markdown import HTMLToMarkdown
+from wizard.wand.functions.html_to_markdown import HTMLToMarkdown
 
 
 class Worker:
     def __init__(self, worker_id: int):
         self.worker_id = worker_id
+
         self.html_to_markdown = HTMLToMarkdown()
+
         self.logger = get_logger("worker")
 
         self.session_factory = get_session_factory()

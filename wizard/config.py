@@ -1,3 +1,5 @@
+from typing import Optional
+
 from pydantic import BaseModel, Field
 
 
@@ -14,8 +16,19 @@ class VectorConfig(BaseModel):
     batch_size: int = Field(default=1)
 
 
+class RewriteConfig(BaseModel):
+    openai: Optional[OpenAIConfig] = Field(default=None)
+    max_results: int = Field(default=3)
+
+
+class GrimoireConfig(BaseModel):
+    openai: OpenAIConfig
+    rewrite: RewriteConfig = Field(default_factory=RewriteConfig)
+
+
 class Config(BaseModel):
     vector: VectorConfig
+    # grimoire: GrimoireConfig
 
 
 ENV_PREFIX: str = "MBW"

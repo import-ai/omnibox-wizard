@@ -14,11 +14,12 @@ class VectorConfig(BaseModel):
     host: str
     port: int = Field(default=8000)
     batch_size: int = Field(default=1)
+    max_results: int = Field(default=10)
 
 
 class RewriteConfig(BaseModel):
     openai: Optional[OpenAIConfig] = Field(default=None)
-    max_results: int = Field(default=3)
+    max_results: int = Field(default=10)
 
 
 class GrimoireConfig(BaseModel):

@@ -1,4 +1,4 @@
-from typing import List, Optional, Literal
+from typing import List, Literal, Tuple
 
 from pydantic import BaseModel, Field
 
@@ -10,11 +10,17 @@ class InsertRequest(BaseModel):
     content: str = Field(description="Document content")
 
 
-class ChatRequest(BaseModel):
+class Condition(BaseModel):
+    namespace_id: str
+    resource_ids: List[str] | None = Field(default=None)
+    parent_ids: List[str] | None = Field(default=None)
+    created_at: Tuple[float, float] | None = Field(default=None)
+    updated_at: Tuple[float, float] | None = Field(default=None)
+
+
+class ChatRequest(Condition):
     session_id: str
     query: str
-    namespace_id: str
-    element_id_list: Optional[List[str]] = Field(default=None)
 
 
 class ChatBaseResponse(BaseModel):

@@ -1,6 +1,7 @@
 from typing import List
 
 from wizard.config import Config
+from wizard.entity import Task
 from wizard.grimoire.entity.chunk import Chunk, ChunkType
 from wizard.grimoire.retriever.vector_db import AsyncVectorDB
 from wizard.wand.functions.base_function import BaseFunction
@@ -49,10 +50,11 @@ class CreateOrUpdateIndex(BaseFunction):
     def __init__(self, config: Config):
         self.vector_db: AsyncVectorDB = AsyncVectorDB(config.vector)
 
-    async def run(self, input_data: dict) -> dict:
+    async def run(self, task: Task) -> dict:
+        input_data = task.input
         title: str = input_data["title"]
         content: str = input_data["content"]
-        meta_info: dict = input_data["meta_info"]
+        meta_info: dict = input_data["meta_info"] | {"namespace_id": task.namespace_id}
         chunk_list: List[Chunk] = split_markdown(title, content, meta_info)
         await self.vector_db.insert(chunk_list)
         return {"success": True}
@@ -60,8 +62,9 @@ class CreateOrUpdateIndex(BaseFunction):
 
 class DeleteIndex(CreateOrUpdateIndex):
 
-    async def run(self, input_data: dict) -> dict:
-        namespace_id: str = input_data["namespace_id"]
+    async def run(self, task: Task) -> dict:
+        input_data = task.input
+        namespace_id: str = task.namespace_id
         resource_id: str = input_data["resource_id"]
         await self.vector_db.remove(namespace_id, resource_id)
         return {"success": True}

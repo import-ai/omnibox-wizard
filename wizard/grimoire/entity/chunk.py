@@ -1,4 +1,5 @@
 import time
+from datetime import datetime
 from enum import Enum
 from typing import Optional, Literal
 
@@ -7,6 +8,8 @@ from pydantic import BaseModel, Field
 
 from wizard.grimoire.entity.retrieval import BaseRetrieval, Citation
 
+SpaceType = Literal["private", "teamspace"]
+
 
 class ChunkType(str, Enum):
     title: str = "title"  # document title
@@ -14,6 +17,10 @@ class ChunkType(str, Enum):
     section: str = "section"  # Part of document
     snippet: str = "snippet"  # Part of section
     keyword: str = "keyword"
+
+
+def timestamp_to_datetime(timestamp: float, date_format: str = "%Y-%m-%d %H:%M:%S") -> str:
+    return datetime.fromtimestamp(timestamp).strftime(date_format)
 
 
 class Chunk(BaseModel):
@@ -25,10 +32,11 @@ class Chunk(BaseModel):
     namespace_id: str
     user_id: str
     parent_id: str
-    space_type: Literal["private", "teamspace"]
+    space_type: SpaceType
 
     chunk_id: str = Field(description="ID of chunk", default_factory=shortuuid.uuid)
-    created_timestamp: float = Field(description="Unix timestamp in float format", default_factory=time.time)
+    created_at: float = Field(description="Unix timestamp in float format", default_factory=time.time)
+    updated_at: float = Field(description="Unix timestamp in float format", default_factory=time.time)
 
     start_lineno: Optional[int] = Field(description="The start line number of this chunk, line included", default=None)
     end_lineno: Optional[int] = Field(description="The end line number of this chunk, line excluded", default=None)
@@ -44,7 +52,12 @@ class TextRetrieval(BaseRetrieval):
     chunk: Chunk
 
     def to_prompt(self) -> str:
-        return "\n".join([f"Title: {self.chunk.title}", f"Chunk: {self.chunk.text}"])
+        return "\n".join([
+            f"Title: {self.chunk.title}",
+            f"Chunk: {self.chunk.text}",
+            f"Created at: {timestamp_to_datetime(self.chunk.created_at)}",
+            f"Updated at: {timestamp_to_datetime(self.chunk.updated_at)}",
+        ])
 
     def to_citation(self) -> Citation:
         return Citation(

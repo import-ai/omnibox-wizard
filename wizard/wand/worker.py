@@ -103,7 +103,7 @@ class Worker:
     async def process_task(self, task: Task):
         try:
             # Placeholder for actual processing logic
-            output = await self.call(task.function, task.input)
+            output = await self.worker_router(task)
 
             # Update the task with the result
             async with self.session_factory() as session:
@@ -135,7 +135,8 @@ class Worker:
                 } | task.model_dump(include={"task_id", "created_at", "started_at", "ended_at"})
             )
 
-    async def call(self, function: str, input_data: dict) -> dict:
+    async def worker_router(self, task: Task) -> dict:
+        function = task.function
         if function == "html_to_markdown":
             worker = self.html_to_markdown
         elif function == "create_or_update_index":
@@ -144,4 +145,4 @@ class Worker:
             worker = self.delete_index
         else:
             raise ValueError(f"Invalid function: {function}")
-        return await worker.run(input_data)
+        return await worker.run(task)

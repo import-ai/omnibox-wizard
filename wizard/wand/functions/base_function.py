@@ -1,3 +1,6 @@
+from wizard.entity import Task
+
+
 class BaseFunction:
-    async def run(self, input_data: dict) -> dict:
+    async def run(self, task: Task) -> dict:
         raise NotImplementedError

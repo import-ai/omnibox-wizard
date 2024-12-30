@@ -5,7 +5,9 @@ from typing import List, Tuple
 import chromadb
 from chromadb.utils.embedding_functions.openai_embedding_function import OpenAIEmbeddingFunction
 
+from common.trace_info import TraceInfo
 from wizard.config import VectorConfig
+from wizard.grimoire.entity.api import Condition
 from wizard.grimoire.entity.chunk import Chunk
 
 
@@ -36,11 +38,32 @@ class VectorDB:
     def remove(self, namespace_id: str, resource_id: str):
         self.collection.delete(where={"$and": [{"namespace_id": namespace_id}, {"resource_id": resource_id}]})
 
-    def query(self, namespace_id: str, query: str, k: int, resource_id_list: List[str] = None) -> List[
-        Tuple[Chunk, float]]:
-        where = {"namespace_id": namespace_id}
-        if resource_id_list is not None:
-            where = {"$and": [where, {"resource_id": {"$in": resource_id_list}}]}
+    def query(
+            self,
+            query: str,
+            k: int,
+            *,
+            condition: dict | Condition = None,
+            trace_info: TraceInfo
+    ) -> List[Tuple[Chunk, float]]:
+        if isinstance(condition, dict):
+            condition = Condition(**condition)
+        and_clause = [{"namespace_id": condition.namespace_id}]
+
+        or_clause = []
+        if condition.resource_ids is not None:
+            or_clause.append({"resource_id": {"$in": condition.resource_ids}})
+        if condition.parent_ids is not None:
+            or_clause.append({"parent_id": {"$in": condition.parent_ids}})
+        if or_clause:
+            and_clause.append({"$or": or_clause} if len(or_clause) > 1 else or_clause[0])
+
+        if condition.created_at is not None:
+            and_clause.append({"created_at": {"$gte": condition.created_at[0], "$lte": condition.created_at[1]}})
+        if condition.updated_at is not None:
+            and_clause.append({"updated_at": {"$gte": condition.updated_at[0], "$lte": condition.updated_at[1]}})
+        where = {"$and": and_clause} if len(and_clause) > 1 else and_clause[0]
+        trace_info.debug({"where": where, "condition": condition.model_dump()})
 
         batch_result_list: chromadb.QueryResult = self.collection.query(
             query_texts=[query], n_results=k, where=where)

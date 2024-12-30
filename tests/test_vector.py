@@ -23,7 +23,7 @@ async def db(chromadb_endpoint: str) -> AsyncVectorDB:
     config: Config = loader.load()
     db: AsyncVectorDB = AsyncVectorDB(config.vector)
     common_params = {
-        "chunk_type":ChunkType.keyword,
+        "chunk_type": ChunkType.keyword,
         "namespace_id": namespace,
         "user_id": "test",
         "space_type": "private",
@@ -45,7 +45,8 @@ async def db(chromadb_endpoint: str) -> AsyncVectorDB:
     ("bike", 3, 0, "car", "a"),
     ("chunk_type", 3, 0, "snake", "b")
 ])
-async def test_db_query(db: AsyncVectorDB, query: str, k: int, rank: int, expected_text: str, expected_resource_id: str):
+async def test_db_query(db: AsyncVectorDB, query: str, k: int, rank: int, expected_text: str,
+                        expected_resource_id: str):
     assert db.collection.count() > 0
     result_list: List[Tuple[Chunk, float]] = await db.query(namespace, query, k)
     assert len(result_list) == k

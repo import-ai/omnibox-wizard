@@ -1,21 +1,22 @@
 import asyncio
 import os
-from dotenv import load_dotenv
 import subprocess
 import time
 
 import asyncpg
 import httpx
 import pytest
+from dotenv import load_dotenv
 from fastapi.testclient import TestClient
-from testcontainers.postgres import PostgresContainer
 from testcontainers.chroma import ChromaContainer
+from testcontainers.postgres import PostgresContainer
 
-from common.config_loader import Loader
-from wizard.api.server import app
 from common import project_root
+from common.config_loader import Loader
 from common.logger import get_logger
+from wizard.api.server import app
 from wizard.config import Config, ENV_PREFIX
+from wizard.wand.worker import Worker
 
 logger = get_logger("fixture")
 
@@ -45,11 +46,13 @@ def postgres_url() -> str:
 
         yield url
 
+
 @pytest.fixture(scope="function")
 def chromadb_endpoint() -> str:
     with ChromaContainer(image="chromadb/chroma:0.5.23") as chromadb:
         server_info: dict = chromadb.get_config()
         endpoint: str = server_info["endpoint"]
+
         def check_chromadb_ready() -> bool:
             for i in range(10):
                 try:
@@ -63,6 +66,7 @@ def chromadb_endpoint() -> str:
 
         check_chromadb_ready()
         yield endpoint
+
 
 @pytest.fixture(scope="function")
 async def base_url(postgres_url: str) -> str:
@@ -108,6 +112,7 @@ async def worker_init(postgres_url: str) -> bool:
     worker_process.terminate()
     worker_process.wait()
 
+
 @pytest.fixture(scope="function")
 def config(postgres_url: str, chromadb_endpoint: str) -> Config:
     load_dotenv()
@@ -119,7 +124,13 @@ def config(postgres_url: str, chromadb_endpoint: str) -> Config:
     config = loader.load()
     yield config
 
+
 @pytest.fixture(scope="function")
-def client(config: Config) -> str:
+def client(config: Config) -> httpx.Client:
     with TestClient(app) as client:
         yield client
+
+
+@pytest.fixture(scope="function")
+def worker(config) -> Worker:
+    return Worker(config=config, worker_id=0)

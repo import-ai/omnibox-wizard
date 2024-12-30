@@ -19,10 +19,15 @@ class Task(Base):
 
     function: str
     input: dict
+    payload: dict | None = Field(default=None, description="Task payload, would pass through to the webhook")
 
     output: dict | None = None
     exception: dict | None = None
 
+    webhook: str | None = Field(default=None, description="Webhook url")
+
     started_at: datetime | None = None
     ended_at: datetime | None = None
     canceled_at: datetime | None = None
+
+    concurrency_threshold: int = Field(default=1, description="Concurrency threshold")

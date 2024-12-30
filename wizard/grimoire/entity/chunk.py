@@ -1,4 +1,5 @@
 import time
+from datetime import datetime
 from enum import Enum
 from typing import Optional, Literal
 
@@ -6,6 +7,8 @@ import shortuuid
 from pydantic import BaseModel, Field
 
 from wizard.grimoire.entity.retrieval import BaseRetrieval, Citation
+
+SpaceType = Literal["private", "teamspace"]
 
 
 class ChunkType(str, Enum):
@@ -16,16 +19,24 @@ class ChunkType(str, Enum):
     keyword: str = "keyword"
 
 
+def timestamp_to_datetime(timestamp: float, date_format: str = "%Y-%m-%d %H:%M:%S") -> str:
+    return datetime.fromtimestamp(timestamp).strftime(date_format)
+
+
 class Chunk(BaseModel):
     title: str
-    element_id: str
+    resource_id: str
     text: str = Field(description="Chunk content")
     chunk_type: ChunkType = Field(description="Chunk type")
 
-    namespace: str
+    namespace_id: str
+    user_id: str
+    parent_id: str
+    space_type: SpaceType
 
     chunk_id: str = Field(description="ID of chunk", default_factory=shortuuid.uuid)
-    created_timestamp: float = Field(description="Unix timestamp in float format", default_factory=time.time)
+    created_at: float = Field(description="Unix timestamp in float format", default_factory=time.time)
+    updated_at: float = Field(description="Unix timestamp in float format", default_factory=time.time)
 
     start_lineno: Optional[int] = Field(description="The start line number of this chunk, line included", default=None)
     end_lineno: Optional[int] = Field(description="The end line number of this chunk, line excluded", default=None)
@@ -41,11 +52,16 @@ class TextRetrieval(BaseRetrieval):
     chunk: Chunk
 
     def to_prompt(self) -> str:
-        return self.chunk.text
+        return "\n".join([
+            f"Title: {self.chunk.title}",
+            f"Chunk: {self.chunk.text}",
+            f"Created at: {timestamp_to_datetime(self.chunk.created_at)}",
+            f"Updated at: {timestamp_to_datetime(self.chunk.updated_at)}",
+        ])
 
     def to_citation(self) -> Citation:
         return Citation(
             title=self.chunk.title,
             snippet=self.chunk.text,
-            link=f"{self.chunk.element_id}[{self.chunk.start_lineno}:{self.chunk.end_lineno}]"
+            link=self.chunk.resource_id
         )

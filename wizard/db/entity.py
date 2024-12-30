@@ -25,9 +25,12 @@ class Task(Base):
 
     function: Mapped[str] = mapped_column(Text, nullable=False)
     input: Mapped[dict] = mapped_column(JSON, nullable=False)
+    payload: Mapped[dict] = mapped_column(JSON, nullable=True)
 
     output: Mapped[dict] = mapped_column(JSON, nullable=True)
     exception: Mapped[dict] = mapped_column(JSON, nullable=True)
+
+    webhook: Mapped[str] = mapped_column(Text, nullable=True)
 
     started_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)
     ended_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)
@@ -36,5 +39,8 @@ class Task(Base):
     concurrency_threshold: Mapped[int] = mapped_column(default=1, doc="Skip the task when concurrency bigger that it")
 
     __table_args__ = (
-        Index("idx_task_ns_pri_s_e_c_time", "namespace_id", "priority", "started_at", "ended_at", "canceled_at"),
+        Index(
+            "idx_task_ns_pri_s_e_c_time",
+            "namespace_id", "priority", "started_at", "ended_at", "canceled_at", "concurrency_threshold"
+        ),
     )

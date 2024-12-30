@@ -7,19 +7,24 @@ from sqlalchemy.exc import IntegrityError
 
 from common.exception import CommonException
 from common.logger import get_logger
+from wizard.config import Config
 from wizard.db import get_session_factory
 from wizard.db.entity import Task as ORMTask
 from wizard.entity import Task
-from wizard.wand.html_to_markdown import HTMLToMarkdown
+from wizard.wand.functions.html_to_markdown import HTMLToMarkdown
+from wizard.wand.functions.index import CreateOrUpdateIndex, DeleteIndex
 
 
 class Worker:
-    def __init__(self, worker_id: int):
+    def __init__(self, config: Config, worker_id: int):
         self.worker_id = worker_id
-        self.html_to_markdown = HTMLToMarkdown()
-        self.logger = get_logger("worker")
 
-        self.session_factory = get_session_factory()
+        self.html_to_markdown = HTMLToMarkdown()
+        self.create_or_update_index: CreateOrUpdateIndex = CreateOrUpdateIndex(config)
+        self.delete_index: DeleteIndex = DeleteIndex(config)
+
+        self.logger = get_logger("worker")
+        self.session_factory = get_session_factory(config.db.url)
 
     async def run(self):
         while True:
@@ -98,7 +103,7 @@ class Worker:
     async def process_task(self, task: Task):
         try:
             # Placeholder for actual processing logic
-            output = await self.call(task.function, task.input)
+            output = await self.worker_router(task)
 
             # Update the task with the result
             async with self.session_factory() as session:
@@ -130,9 +135,14 @@ class Worker:
                 } | task.model_dump(include={"task_id", "created_at", "started_at", "ended_at"})
             )
 
-    async def call(self, function: str, input_data: dict) -> dict:
+    async def worker_router(self, task: Task) -> dict:
+        function = task.function
         if function == "html_to_markdown":
             worker = self.html_to_markdown
+        elif function == "create_or_update_index":
+            worker = self.create_or_update_index
+        elif function == "delete_index":
+            worker = self.delete_index
         else:
             raise ValueError(f"Invalid function: {function}")
-        return await worker.run(input_data)
+        return await worker.run(task)

@@ -4,16 +4,22 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 
-from wizard.api.v1 import v1_router
+from common.config_loader import Loader
 from common.exception import CommonException
 from common.logger import get_logger
-from wizard.db import session_context
+from wizard.api.grimoire import init as grimoire_init
+from wizard.api.v1 import v1_router
+from wizard.config import ENV_PREFIX, Config
+from wizard.db import session_context, set_session_factory
 from wizard.db.entity import Base
 
 logger = get_logger("app")
 
 
 async def init():
+    loader = Loader(Config, env_prefix=ENV_PREFIX)
+    config: Config = loader.load()
+    set_session_factory(config.db.url)
     async with session_context() as session:
         async with session.bind.begin() as connection:
             await connection.run_sync(Base.metadata.create_all)
@@ -21,6 +27,7 @@ async def init():
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    await grimoire_init()
     await init()
     yield
 

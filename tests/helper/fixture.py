@@ -6,13 +6,17 @@ import time
 import asyncpg
 import httpx
 import pytest
+from dotenv import load_dotenv
 from fastapi.testclient import TestClient
-from testcontainers.postgres import PostgresContainer
 from testcontainers.chroma import ChromaContainer
+from testcontainers.postgres import PostgresContainer
 
-from wizard.api.server import app
 from common import project_root
+from common.config_loader import Loader
 from common.logger import get_logger
+from wizard.api.server import app
+from wizard.config import Config, ENV_PREFIX
+from wizard.wand.worker import Worker
 
 logger = get_logger("fixture")
 
@@ -30,23 +34,25 @@ async def check_postgres_url(dsn: str, retry_cnt: int = 10):
     raise RuntimeError("Postgres container failed to become healthy in time.")
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="function")
 def postgres_url() -> str:
     driver = "asyncpg"
     with PostgresContainer(image="postgres:17-alpine", driver=driver) as postgres:
         url = postgres.get_connection_url()
         asyncio.run(check_postgres_url(postgres.get_connection_url(driver=None)))
 
-        os.environ["DB_URL"] = url
-        logger.debug({"db_url": url, "env": {"DB_URL": os.getenv("DB_URL")}})
+        os.environ["MBW_DB_URL"] = url
+        logger.debug({"db_url": url, "env": {"MBW_DB_URL": os.getenv("MBW_DB_URL")}})
 
         yield url
+
 
 @pytest.fixture(scope="function")
 def chromadb_endpoint() -> str:
     with ChromaContainer(image="chromadb/chroma:0.5.23") as chromadb:
         server_info: dict = chromadb.get_config()
         endpoint: str = server_info["endpoint"]
+
         def check_chromadb_ready() -> bool:
             for i in range(10):
                 try:
@@ -61,7 +67,8 @@ def chromadb_endpoint() -> str:
         check_chromadb_ready()
         yield endpoint
 
-@pytest.fixture(scope="session")
+
+@pytest.fixture(scope="function")
 async def base_url(postgres_url: str) -> str:
     base_url = "http://127.0.0.1:8000/api/v1"
 
@@ -85,7 +92,7 @@ async def base_url(postgres_url: str) -> str:
                 raise RuntimeError(f"api_process exit with code {api_process.returncode}")
             time.sleep(1)
 
-        logger.debug({"base_url": base_url, "env": {"DB_URL": os.getenv("DB_URL")}})
+        logger.debug({"base_url": base_url, "env": {"MBW_DB_URL": os.getenv("MBW_DB_URL")}})
         yield base_url
 
         api_process.terminate()
@@ -94,7 +101,7 @@ async def base_url(postgres_url: str) -> str:
         raise RuntimeError("Server already exists")
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="function")
 async def worker_init(postgres_url: str) -> bool:
     env: dict = os.environ.copy()
     cwd: str = project_root.path()
@@ -106,7 +113,24 @@ async def worker_init(postgres_url: str) -> bool:
     worker_process.wait()
 
 
-@pytest.fixture(scope="session")
-def client(postgres_url: str) -> str:
+@pytest.fixture(scope="function")
+def config(postgres_url: str, chromadb_endpoint: str) -> Config:
+    load_dotenv()
+
+    os.environ[f"{ENV_PREFIX}_DB_URL"] = postgres_url
+    os.environ[f"{ENV_PREFIX}_VECTOR_HOST"], os.environ[f"{ENV_PREFIX}_VECTOR_PORT"] = chromadb_endpoint.split(":")
+
+    loader = Loader(Config, env_prefix=ENV_PREFIX)
+    config = loader.load()
+    yield config
+
+
+@pytest.fixture(scope="function")
+def client(config: Config) -> httpx.Client:
     with TestClient(app) as client:
         yield client
+
+
+@pytest.fixture(scope="function")
+def worker(config) -> Worker:
+    return Worker(config=config, worker_id=0)

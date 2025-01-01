@@ -27,8 +27,8 @@ async def init():
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    await grimoire_init()
     await init()
+    await grimoire_init()
     yield
 
 

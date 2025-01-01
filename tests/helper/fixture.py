@@ -52,6 +52,8 @@ def chromadb_endpoint() -> str:
     with ChromaContainer(image="chromadb/chroma:0.5.23") as chromadb:
         server_info: dict = chromadb.get_config()
         endpoint: str = server_info["endpoint"]
+        os.environ[f"{ENV_PREFIX}_VECTOR_HOST"] = server_info["host"]
+        os.environ[f"{ENV_PREFIX}_VECTOR_PORT"] = server_info["port"]
 
         def check_chromadb_ready() -> bool:
             for i in range(10):

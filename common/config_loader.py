@@ -3,11 +3,15 @@ import inspect
 import os
 from typing import Dict, Type, TypeVar, Optional, List, Generic, Literal, Tuple
 
-import yaml
 from pydantic import BaseModel
-from pydantic.fields import FieldInfo
+from pydantic.fields import FieldInfo  # noqa
 
 from common.logger import get_logger
+
+try:
+    import yaml
+except ImportError:
+    yaml = None
 
 logger = get_logger(__name__)
 
@@ -15,8 +19,10 @@ _Config = TypeVar("_Config", bound=BaseModel)
 
 
 def load_from_config_file(config_path: Optional[str] = None) -> Dict[str, str]:
+    if yaml is None:
+        raise ImportError("Please install pyyaml to use this feature")
     with open(config_path) as f:
-        return yaml.safe_load(f)
+        return yaml.safe_load(f)  # noqa
 
 
 def dict_prefix_filter(prefix: str, data: dict) -> dict:
@@ -61,10 +67,17 @@ def merge_dicts(old: dict, new: dict, *args: List[dict]):
 
 
 class Loader(Generic[_Config]):
-    def __init__(self, config_model: Type[_Config], env_prefix: str | None = None, config_path: str | None = None):
+    def __init__(
+            self,
+            config_model: Type[_Config],
+            env_prefix: str | None = None,
+            config_path: str | None = None,
+            config_dict: dict | None = None
+    ):
         self.config_model: Type[_Config] = config_model
         self.env_prefix: str | None = env_prefix
         self.config_path: str | None = config_path
+        self.config_dict: dict | None = config_dict
 
     def fields(self, config_model: Type[_Config] | None = None, prefix: List[str] = None) -> List[
         Tuple[List[str], FieldInfo]]:
@@ -109,18 +122,24 @@ class Loader(Generic[_Config]):
         c = vars(args)
         return {k: v for k, v in c.items() if v is not None}
 
-    def load(self, env_prefix: str | None = None, config_path: str | None = None) -> _Config:
+    def load(
+            self,
+            env_prefix: str | None = None,
+            config_path: str | None = None,
+            config_dict: dict | None = None
+    ) -> _Config:
         env_prefix = env_prefix or self.env_prefix
         config_path = config_path or self.config_path
-        config_merge: dict = {}
-        if env_prefix is not None:
-            env_config: Dict[str, str] = load_from_env(self.config_model, env_prefix)
-            logger.debug({"env_config": env_config})
-            config_merge = merge_dicts(config_merge, env_config)
+        config_dict = config_dict or self.config_dict
+        config_merge: dict = config_dict or {}
         if config_path is not None:
             yaml_config: Dict[str, str] = load_from_config_file(config_path)
             logger.debug({"yaml_config": yaml_config})
             config_merge = merge_dicts(config_merge, yaml_config)
+        if env_prefix is not None:
+            env_config: Dict[str, str] = load_from_env(self.config_model, env_prefix)
+            logger.debug({"env_config": env_config})
+            config_merge = merge_dicts(config_merge, env_config)
         cli_config: Dict[str, str] = self.load_from_cli()
         logger.debug({"cli_config": cli_config})
         config_merge = merge_dicts(config_merge, cli_config)

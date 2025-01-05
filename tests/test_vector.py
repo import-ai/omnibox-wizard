@@ -16,9 +16,6 @@ namespace = "pytest"
 async def db(chromadb_endpoint: str) -> AsyncVectorDB:
     from dotenv import load_dotenv
     load_dotenv()
-    host, port = chromadb_endpoint.split(":")
-    os.environ[f"{ENV_PREFIX}_VECTOR_HOST"] = host
-    os.environ[f"{ENV_PREFIX}_VECTOR_PORT"] = port
     loader = Loader(Config, env_prefix=ENV_PREFIX)
     config: Config = loader.load()
     db: AsyncVectorDB = AsyncVectorDB(config.vector)

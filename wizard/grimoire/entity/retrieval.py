@@ -2,8 +2,8 @@ from pydantic import BaseModel, Field
 
 
 class Citation(BaseModel):
-    title: str
-    snippet: str
+    title: str | None = None
+    snippet: str | None = None
     link: str
 
 

@@ -13,7 +13,7 @@ class RAG:
     def __init__(self, openai_config: OpenAIConfig):
         self.client = AsyncOpenAI(api_key=openai_config.api_key, base_url=openai_config.base_url)
         self.model = openai_config.model
-        with project_root.open("resource/prompt.md") as f:
+        with project_root.open("resources/prompts/rag.md") as f:
             self.prompt: str = f.read()
 
     @classmethod

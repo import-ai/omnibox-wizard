@@ -3,12 +3,14 @@ from datetime import datetime
 import shortuuid
 from pydantic import BaseModel, Field, ConfigDict
 
+
 class Base(BaseModel):
     created_at: datetime = Field(default_factory=datetime.now)
     updated_at: datetime = Field(default_factory=datetime.now)
     deleted_at: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True)
+
 
 class Task(Base):
     task_id: str = Field(default_factory=shortuuid.uuid)
@@ -23,8 +25,6 @@ class Task(Base):
 
     output: dict | None = None
     exception: dict | None = None
-
-    webhook: str | None = Field(default=None, description="Webhook url")
 
     started_at: datetime | None = None
     ended_at: datetime | None = None

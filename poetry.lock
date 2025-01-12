@@ -1108,20 +1108,22 @@ six = ">=1.15,<2"
 
 [[package]]
 name = "markitdown"
-version = "0.0.1a2"
+version = "0.0.1a3"
 description = ""
 optional = false
 python-versions = ">=3.10"
 files = [
-    {file = "markitdown-0.0.1a2-py3-none-any.whl", hash = "sha256:a23c5fdcd869bffa9e1d0270e7eecdce7f3d8e5fc7078a7bffbfee786723390b"},
-    {file = "markitdown-0.0.1a2.tar.gz", hash = "sha256:b4fb8234e01f743d9a31c5191ae446ccf8220b17ee90598323b185c145faa407"},
+    {file = "markitdown-0.0.1a3-py3-none-any.whl", hash = "sha256:6efcab2f05714675486dc2ddf912415734b1caa0343f73f75d852046f04e5f37"},
+    {file = "markitdown-0.0.1a3.tar.gz", hash = "sha256:f6c8f5f7f5541e91c6c535218318968fefd71e2a6faa0eb782b3492e04cd023d"},
 ]
 
 [package.dependencies]
 beautifulsoup4 = "*"
+charset-normalizer = "*"
 mammoth = "*"
 markdownify = "*"
 numpy = "*"
+openai = "*"
 openpyxl = "*"
 pandas = "*"
 pathvalidate = "*"

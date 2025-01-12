@@ -104,18 +104,6 @@ async def base_url(postgres_url: str) -> str:
 
 
 @pytest.fixture(scope="function")
-async def worker_init(postgres_url: str) -> bool:
-    env: dict = os.environ.copy()
-    cwd: str = project_root.path()
-    worker_process = subprocess.Popen(["python3", "main.py", "--workers", "1"], cwd=cwd, env=env)
-    if worker_process.poll() is not None:
-        raise RuntimeError(f"worker_process exit with code {worker_process.returncode}")
-    yield True
-    worker_process.terminate()
-    worker_process.wait()
-
-
-@pytest.fixture(scope="function")
 def config(postgres_url: str, chromadb_endpoint: str) -> Config:
     load_dotenv()
 
@@ -125,6 +113,18 @@ def config(postgres_url: str, chromadb_endpoint: str) -> Config:
     loader = Loader(Config, env_prefix=ENV_PREFIX)
     config = loader.load()
     yield config
+
+
+@pytest.fixture(scope="function")
+async def worker_init(config: Config) -> bool:
+    env: dict = os.environ.copy()
+    cwd: str = project_root.path()
+    worker_process = subprocess.Popen(["python3", "main.py", "--workers", "1"], cwd=cwd, env=env)
+    if worker_process.poll() is not None:
+        raise RuntimeError(f"worker_process exit with code {worker_process.returncode}")
+    yield True
+    worker_process.terminate()
+    worker_process.wait()
 
 
 @pytest.fixture(scope="function")

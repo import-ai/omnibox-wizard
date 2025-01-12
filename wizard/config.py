@@ -31,10 +31,15 @@ class DBConfig(BaseModel):
     url: str = Field(default=None, examples=["postgresql+asyncpg://{username}:{password}@{host}:{port}/{db_name}"])
 
 
+class BackendConfig(BaseModel):
+    base_url: str
+
+
 class Config(BaseModel):
     vector: VectorConfig
     grimoire: GrimoireConfig
     db: DBConfig = Field(default_factory=DBConfig)
+    backend: BackendConfig
 
 
 ENV_PREFIX: str = "MBW"

@@ -24,9 +24,9 @@ def timestamp_to_datetime(timestamp: float, date_format: str = "%Y-%m-%d %H:%M:%
 
 
 class Chunk(BaseModel):
-    title: str
+    title: str | None = Field(default=None, description="Chunk title, usually the title of the document")
     resource_id: str
-    text: str = Field(description="Chunk content")
+    text: str | None = Field(default=None, description="Chunk content")
     chunk_type: ChunkType = Field(description="Chunk type")
 
     namespace_id: str
@@ -44,7 +44,7 @@ class Chunk(BaseModel):
 
     @property
     def metadata(self) -> dict:
-        return {k: v for k, v in self.model_dump(exclude_none=True).items() if k not in ["chunk_id", "text"]}
+        return self.model_dump(exclude_none=True, exclude={"chunk_id", "text"})
 
 
 class TextRetrieval(BaseRetrieval):

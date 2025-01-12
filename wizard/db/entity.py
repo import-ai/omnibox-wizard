@@ -30,8 +30,6 @@ class Task(Base):
     output: Mapped[dict] = mapped_column(JSON, nullable=True)
     exception: Mapped[dict] = mapped_column(JSON, nullable=True)
 
-    webhook: Mapped[str] = mapped_column(Text, nullable=True)
-
     started_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)
     ended_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)
     canceled_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)

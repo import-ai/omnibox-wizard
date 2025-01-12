@@ -1,10 +1,11 @@
 from contextlib import asynccontextmanager
+import json
 
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession, AsyncEngine
 
 
 def get_session_factory(dsn: str) -> async_sessionmaker:
-    engine: AsyncEngine = create_async_engine(dsn)
+    engine: AsyncEngine = create_async_engine(dsn, json_serializer=lambda x: json.dumps(x, ensure_ascii=False, separators=(",", ":")))
     return async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
 
 

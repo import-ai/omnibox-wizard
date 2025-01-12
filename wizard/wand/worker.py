@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from datetime import datetime
 from typing import Optional
 
@@ -22,7 +23,7 @@ class Worker:
 
         self.worker_id = worker_id
 
-        self.html_to_markdown = HTMLToMarkdown()
+        self.html_to_markdown = HTMLToMarkdown(config)
         self.create_or_update_index: CreateOrUpdateIndex = CreateOrUpdateIndex(config)
         self.delete_index: DeleteIndex = DeleteIndex(config)
 
@@ -48,7 +49,13 @@ class Worker:
 
     async def run(self):
         while True:
-            await self.run_once()
+            try:
+                await self.run_once()
+            except Exception as e:
+                self.logger.exception({
+                    "worker_id": self.worker_id,
+                    "error": CommonException.parse_exception(e)
+                })
             await asyncio.sleep(1)
 
     async def fetch_and_claim_task(self) -> Optional[Task]:
@@ -124,7 +131,8 @@ class Worker:
                 {
                     "worker_id": self.worker_id,
                     "error": CommonException.parse_exception(e)
-                } | Task.model_validate(orm_task).model_dump(include={"task_id", "created_at", "started_at", "ended_at"})
+                } | Task.model_validate(orm_task).model_dump(
+                    include={"task_id", "created_at", "started_at", "ended_at"})
             )
         else:
             # Update the task with the result
@@ -138,7 +146,8 @@ class Worker:
             self.logger.info(
                 {
                     "worker_id": self.worker_id,
-                } | Task.model_validate(orm_task).model_dump(include={"task_id", "created_at", "started_at", "ended_at"}))
+                } | Task.model_validate(orm_task).model_dump(
+                    include={"task_id", "created_at", "started_at", "ended_at"}))
 
         return Task.model_validate(orm_task)
 
@@ -149,12 +158,18 @@ class Worker:
                 json=task.model_dump(exclude_none=True, mode="json"),
                 headers={"X-Trace-ID": task.task_id}
             )
-            assert response.is_success, response.text
-            response.raise_for_status()
+            (logging.info if response.is_success else logging.error)(
+                {
+                    "worker_id": self.worker_id,
+                    "task_id": task.task_id,
+                    "status_code": response.status_code,
+                    "response": response.text
+                }
+            )
 
     async def worker_router(self, task: Task) -> dict:
         function = task.function
-        if function == "html_to_markdown":
+        if function == "collect":
             worker = self.html_to_markdown
         elif function == "create_or_update_index":
             worker = self.create_or_update_index

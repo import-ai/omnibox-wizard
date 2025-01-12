@@ -21,7 +21,7 @@ async def test_tasks(client: httpx.Client, config: Config):
 
     for i in range(3):
         json_response: dict = client.post("/api/v1/tasks", json={
-            "function": "html_to_markdown",
+            "function": "collect",
             "input": {
                 "html": "<p>Hello World!</p>",
                 "url": "foo"

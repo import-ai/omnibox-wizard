@@ -18,13 +18,13 @@ asyncpg = "^0.30.0"
 markitdown = "^0.0.1a2"
 chromadb-client = "^0.5.23"
 openai = "^1.58.1"
+httpx = "^0.28.1"
 
 
 [tool.poetry.group.test.dependencies]
 pytest = "^8.3.4"
 pytest-asyncio = "^0.25.0"
 testcontainers = "^4.9.0"
-httpx = "^0.28.1"
 python-dotenv = "^1.0.1"
 
 [build-system]

@@ -5,7 +5,6 @@ import re
 from bs4 import BeautifulSoup, Comment, Tag
 from openai import AsyncOpenAI
 
-from common import project_root
 from common.trace_info import TraceInfo
 from wizard.config import OpenAIConfig
 from wizard.entity import Task
@@ -15,9 +14,6 @@ from wizard.wand.functions.base_function import BaseFunction
 class HTMLReader(BaseFunction):
     LINE_BREAK_PATTERN: re.Pattern = re.compile(r"\n+")
     SPACE_PATTERN: re.Pattern = re.compile(r"\s{2,}")
-
-    MARKDOWN_EXTRACT_PATTERN: re.Pattern = re.compile(r"```markdown\n(.*?)\n```", re.DOTALL)
-    JSON_EXTRACT_PATTERN: re.Pattern = re.compile(r"```json\n(.*?)\n```", re.DOTALL)
 
     SCHEMA = jsonlib.dumps({
         "type": "object",
@@ -35,7 +31,7 @@ class HTMLReader(BaseFunction):
         "required": ["title", "author", "date"]
     }, ensure_ascii=False, indent=2)
 
-    content_selector_config = {
+    CONTENT_SELECTOR = {
         "github.com": {
             "name": "article",
             "class_": "markdown-body"
@@ -54,9 +50,6 @@ class HTMLReader(BaseFunction):
 
     }
 
-    with project_root.open("resources/prompts/functions/html_reader.md") as f:
-        PROMPT_TEMPLATE: str = f.read()
-
     def __init__(self, openai_config: OpenAIConfig):
         self.client = AsyncOpenAI(api_key=openai_config.api_key, base_url=openai_config.base_url)
         self.model = openai_config.model
@@ -64,8 +57,8 @@ class HTMLReader(BaseFunction):
     @classmethod
     def content_selector(cls, url: str, soup: BeautifulSoup) -> Tag:
         domain = url.split("/")[2]
-        if config := cls.content_selector_config.get(domain, None):
-            if content := soup.find(**config):
+        if selector := cls.CONTENT_SELECTOR.get(domain, None):
+            if content := soup.find(**selector):
                 return content
         return soup
 
@@ -91,7 +84,6 @@ class HTMLReader(BaseFunction):
             for svg_tag in soup.find_all('svg'):
                 # Replace the contents of the svg tag with a placeholder
                 svg_tag.clear()
-                svg_tag.string = "placeholder"
 
         # Clean base64 images if clean_base64 is True
         if clean_base64:
@@ -135,7 +127,7 @@ class HTMLReader(BaseFunction):
         if not instruction:
             instruction = "Extract the main content from the given HTML and convert it to Markdown format."
         if schema:
-            instruction = "Extract the specified information from a list of news threads and present it in a structured JSON format."
+            instruction = "Extract the specified information from the given HTML and present it in a structured JSON format. If any of the fields are not found in the HTML document, set their values to `Unknown` in the JSON output."
             prompt = f"{instruction}\n```html\n{text}\n```\nThe JSON schema is as follows:```json\n{schema}\n```"
         else:
             prompt = f"{instruction}\n```html\n{text}\n```"
@@ -155,6 +147,15 @@ class HTMLReader(BaseFunction):
             response = openai_response.choices[0].message.content
         return response
 
+    @classmethod
+    def get_code_block(cls, markdown: str, lang: str) -> str:
+        head_sep: str = f"```{lang}\n"
+        tail_sep: str = "\n```"
+
+        partial_content: str = head_sep.join(markdown.split(head_sep)[1:]).strip()
+        content: str = tail_sep.join(partial_content.split(tail_sep)[:-1]).strip()
+        return content
+
     async def extract_content(self, html: str, instruction: str = None, schema: str = None,
                               stream: bool = False) -> str | dict:
         prompt = self.create_prompt(html, instruction, schema)
@@ -163,49 +164,12 @@ class HTMLReader(BaseFunction):
             model=self.model, messages=messages, temperature=0, stream=stream)
         response = await self.get_response(openai_response, stream)
         if schema:
-            str_json_response: str = self.JSON_EXTRACT_PATTERN.search(response).group(1)
+            str_json_response: str = self.get_code_block(response, "json")
             json_response: dict = jsonlib.loads(str_json_response)
             return json_response
         else:
-            markdown_response: str = self.MARKDOWN_EXTRACT_PATTERN.search(response).group(1)
+            markdown_response: str = self.get_code_block(response, "markdown")
             return markdown_response
-
-    @classmethod
-    def get_code_block(cls, markdown: str, lang: str) -> str:
-        head_sep: str = f"{lang}```\n"
-        tail_sep: str = "\n```"
-
-        partial_content: str = head_sep.join(markdown.split(head_sep)[1:]).strip()
-        content: str = tail_sep.join(partial_content.split(tail_sep)[:-1]).strip()
-        return content
-
-    async def extract_v2(self, html: str, stream: bool = False) -> tuple[dict, str]:
-        openai_response = await self.client.chat.completions.create(
-            model=self.model, messages=[
-                {"role": "system", "content": self.PROMPT_TEMPLATE},
-                {"role": "user", "content": html}
-            ], temperature=0, stream=stream
-        )
-        response = await self.get_response(openai_response, stream)
-
-        json_sep: str = "```json\n"
-        markdown_sep: str = "```markdown\n"
-        code_sep: str = "```"
-
-        split_by_markdown: list[str] = response.split(markdown_sep)
-        assert len(split_by_markdown) >= 2, "Markdown not found in response"
-
-        raw_str_json_response: str = split_by_markdown[0].strip()
-
-        raw_markdown_response: str = markdown_sep.join(split_by_markdown[1:]).strip()
-        markdown_response: str = code_sep.join(raw_markdown_response.split(code_sep)[:-1]).strip()
-
-        raw_str_json_body: str = json_sep.join(raw_str_json_response.split(json_sep)[1:]).strip()
-        str_json_response: str = code_sep.join(raw_str_json_body.split(code_sep)[:-1]).strip()
-
-        json_response: dict = jsonlib.loads(str_json_response)
-
-        return json_response, markdown_response
 
     async def run(self, task: Task, trace_info: TraceInfo, stream: bool = False) -> dict:
         input_dict = task.input
@@ -216,12 +180,10 @@ class HTMLReader(BaseFunction):
                                        compress=True, remove_empty_tag=True, enable_content_selector=True)
         trace_info.info({"len(html)": len(html), "len(cleaned_html)": len(cleaned_html)})
 
-        # metadata, content = await asyncio.gather(
-        #     self.extract_content(cleaned_html, schema=self.SCHEMA),
-        #     self.extract_content(cleaned_html, stream=stream)
-        # )
-
-        metadata, content = await self.extract_v2(cleaned_html, stream=stream)
+        metadata, content = await asyncio.gather(
+            self.extract_content(cleaned_html, schema=self.SCHEMA),
+            self.extract_content(cleaned_html, stream=stream)
+        )
 
         filtered_metadata: dict = {k: v for k, v in metadata.items() if v != "Unknown"}
 

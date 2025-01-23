@@ -14,6 +14,7 @@ from testcontainers.postgres import PostgresContainer
 from common import project_root
 from common.config_loader import Loader
 from common.logger import get_logger
+from common.trace_info import TraceInfo
 from wizard.api.server import app
 from wizard.config import Config, ENV_PREFIX
 from wizard.wand.worker import Worker
@@ -116,6 +117,24 @@ def config(postgres_url: str, chromadb_endpoint: str) -> Config:
 
 
 @pytest.fixture(scope="function")
+def remote_config() -> Config:
+    load_dotenv()
+
+    os.environ[f"{ENV_PREFIX}_DB_URL"] = "postgresql+asyncpg://magic_box:magic_box@postgres:5432/magic_box"
+    os.environ[f"{ENV_PREFIX}_VECTOR_HOST"], os.environ[f"{ENV_PREFIX}_VECTOR_PORT"] = "chromadb:8001".split(":")
+
+    loader = Loader(Config, env_prefix=ENV_PREFIX)
+    config = loader.load()
+    yield config
+
+
+@pytest.fixture(scope="function")
+def remote_client(remote_config: Config) -> httpx.Client:
+    with TestClient(app) as client:
+        yield client
+
+
+@pytest.fixture(scope="function")
 async def worker_init(config: Config) -> bool:
     env: dict = os.environ.copy()
     cwd: str = project_root.path()
@@ -136,3 +155,8 @@ def client(config: Config) -> httpx.Client:
 @pytest.fixture(scope="function")
 def worker(config) -> Worker:
     return Worker(config=config, worker_id=0)
+
+
+@pytest.fixture(scope="function")
+def trace_info() -> TraceInfo:
+    return TraceInfo(logger=get_logger("test"))

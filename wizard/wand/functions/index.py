@@ -1,5 +1,6 @@
 from typing import List
 
+from common.trace_info import TraceInfo
 from wizard.config import Config
 from wizard.entity import Task
 from wizard.grimoire.entity.chunk import Chunk, ChunkType
@@ -55,7 +56,7 @@ class DeleteIndex(BaseFunction):
     def __init__(self, config: Config):
         self.vector_db: AsyncVectorDB = AsyncVectorDB(config.vector)
 
-    async def run(self, task: Task) -> dict:
+    async def run(self, task: Task, trace_info: TraceInfo) -> dict:
         input_data = task.input
         namespace_id: str = task.namespace_id
         resource_id: str = input_data["resource_id"]
@@ -65,7 +66,7 @@ class DeleteIndex(BaseFunction):
 
 class CreateOrUpdateIndex(DeleteIndex):
 
-    async def run(self, task: Task) -> dict:
+    async def run(self, task: Task, trace_info: TraceInfo) -> dict:
         input_data = task.input
         resource_id: str = input_data["meta_info"]["resource_id"]
         await self.vector_db.remove(task.namespace_id, resource_id)

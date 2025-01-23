@@ -19,6 +19,7 @@ markitdown = "^0.0.1a2"
 chromadb-client = "^0.5.23"
 openai = "^1.58.1"
 httpx = "^0.28.1"
+beautifulsoup4 = "^4.12.3"
 
 
 [tool.poetry.group.test.dependencies]

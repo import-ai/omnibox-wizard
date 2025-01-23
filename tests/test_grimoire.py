@@ -109,3 +109,13 @@ def test_grimoire_stream(client: httpx.Client, vector_db_init: bool, namespace_i
     request = ChatRequest(session_id="fake_id", namespace_id=namespace_id, query=query,
                           resource_ids=resource_ids, parent_ids=parent_ids)
     assert_stream(api_stream(client, request))
+
+
+@pytest.mark.parametrize("query, resource_ids, parent_ids", [
+    ("下周计划", None, None),
+])
+def test_grimoire_stream(remote_client: httpx.Client, namespace_id: str, query: str,
+                         resource_ids: List[str] | None, parent_ids: List[str] | None):
+    request = ChatRequest(session_id="fake_id", namespace_id=namespace_id, query=query,
+                          resource_ids=resource_ids, parent_ids=parent_ids)
+    assert_stream(api_stream(remote_client, request))

@@ -7,17 +7,17 @@ from markitdown._markitdown import HtmlConverter, DocumentConverterResult  # noq
 from openai import AsyncOpenAI
 
 from common import project_root
-from wizard.config import Config, OpenAIConfig
+from common.trace_info import TraceInfo
+from wizard.config import OpenAIConfig
 from wizard.entity import Task
 from wizard.wand.functions.base_function import BaseFunction
 
 
 class HTMLToMarkdown(BaseFunction):
-    def __init__(self, config: Config):
+    def __init__(self, openai_config: OpenAIConfig):
         self.converter = HtmlConverter()
         self.pattern = re.compile(r"\n+")
 
-        openai_config: OpenAIConfig = config.grimoire.openai
         self.client = AsyncOpenAI(api_key=openai_config.api_key, base_url=openai_config.base_url)
         self.model = openai_config.model
 
@@ -43,7 +43,7 @@ class HTMLToMarkdown(BaseFunction):
         response = openai_response.choices[0].message.content
         return response
 
-    async def run(self, task: Task) -> dict:
+    async def run(self, task: Task, trace_info: TraceInfo) -> dict:
         input_dict = task.input
         html = input_dict["html"]
         url = input_dict["url"]

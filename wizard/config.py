@@ -35,9 +35,14 @@ class BackendConfig(BaseModel):
     base_url: str
 
 
+class TaskConfig(BaseModel):
+    reader: OpenAIConfig
+
+
 class Config(BaseModel):
     vector: VectorConfig
     grimoire: GrimoireConfig
+    task: TaskConfig
     db: DBConfig = Field(default_factory=DBConfig)
     backend: BackendConfig
 

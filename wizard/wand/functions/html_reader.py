@@ -2,6 +2,7 @@ import asyncio
 import json as jsonlib
 import re
 
+from bs4 import BeautifulSoup, Comment, Tag
 from openai import AsyncOpenAI
 
 from common.trace_info import TraceInfo
@@ -11,21 +12,8 @@ from wizard.wand.functions.base_function import BaseFunction
 
 
 class HTMLReader(BaseFunction):
-    SCRIPT_PATTERN: re.Pattern = re.compile(r"< *script.*?/ *script *>", re.IGNORECASE | re.MULTILINE | re.DOTALL)
-    STYLE_PATTERN: re.Pattern = re.compile(r"< *style.*?/ *style *>", re.IGNORECASE | re.MULTILINE | re.DOTALL)
-    META_PATTERN: re.Pattern = re.compile(r"< *meta.*?>", re.IGNORECASE | re.MULTILINE | re.DOTALL)
-    COMMENT_PATTERN: re.Pattern = re.compile(r"< *!--.*?-- *>", re.IGNORECASE | re.MULTILINE | re.DOTALL)
-    LINK_PATTERN: re.Pattern = re.compile(r"< *link.*?>", re.IGNORECASE | re.MULTILINE | re.DOTALL)
-    BASE64_IMG_PATTERN: re.Pattern = re.compile(r'<img[^>]+src="data:image/[^;]+;base64,[^"]+"[^>]*>')
-    SVG_PATTERN: re.Pattern = re.compile(r"(<svg[^>]*>)(.*?)(</svg>)", re.DOTALL)
-
-    REMOVE_ATTRIBUTES_PATTERN_EXCEPT_IMG = re.compile(r"(<(?!img\b)[a-zA-Z][^>\s]*)(?:\s+[^>]*)?(>)", re.IGNORECASE)
-
     LINE_BREAK_PATTERN: re.Pattern = re.compile(r"\n+")
     SPACE_PATTERN: re.Pattern = re.compile(r"\s{2,}")
-
-    MARKDOWN_EXTRACT_PATTERN: re.Pattern = re.compile(r"```markdown\n(.*?)\n```", re.DOTALL)
-    JSON_EXTRACT_PATTERN: re.Pattern = re.compile(r"```json\n(.*?)\n```", re.DOTALL)
 
     SCHEMA = jsonlib.dumps({
         "type": "object",
@@ -43,37 +31,93 @@ class HTMLReader(BaseFunction):
         "required": ["title", "author", "date"]
     }, ensure_ascii=False, indent=2)
 
+    CONTENT_SELECTOR = {
+        "github.com": {
+            "name": "article",
+            "class_": "markdown-body"
+        },
+        "medium.com": {
+            "name": "article"
+        },
+        "mp.weixin.qq.com": {
+            "name": "div",
+            "class_": "rich_media_content"
+        },
+        "news.qq.com": {
+            "name": "div",
+            "class_": "content-article"
+        }
+
+    }
+
     def __init__(self, openai_config: OpenAIConfig):
         self.client = AsyncOpenAI(api_key=openai_config.api_key, base_url=openai_config.base_url)
         self.model = openai_config.model
 
-    def replace_svg(self, html: str, new_content: str = "this is a placeholder") -> str:
-        return self.SVG_PATTERN.sub(
-            lambda match: f"{match.group(1)}{new_content}{match.group(3)}",
-            html
-        )
+    @classmethod
+    def content_selector(cls, url: str, soup: BeautifulSoup) -> Tag:
+        domain = url.split("/")[2]
+        if selector := cls.CONTENT_SELECTOR.get(domain, None):
+            if content := soup.find(**selector):
+                return content
+        return soup
 
-    def replace_base64_images(self, html: str, new_image_src: str = "#") -> str:
-        return self.BASE64_IMG_PATTERN.sub(f'<img src="{new_image_src}"/>', html)
+    def clean_html(self, url: str, html: str, *, clean_svg: bool = False, clean_base64: bool = False,
+                   compress: bool = False, remove_empty_tag: bool = False, remove_atts: bool = False,
+                   allowed_attrs: set | None = None, enable_content_selector: bool = False) -> str:
+        soup = BeautifulSoup(html, 'html.parser')
 
-    def clean_html(self, html: str, clean_svg: bool = False, clean_base64: bool = False,
-                   remove_attributes: bool = False, compress: bool = False) -> str:
-        html = self.SCRIPT_PATTERN.sub("", html)
-        html = self.STYLE_PATTERN.sub("", html)
-        html = self.META_PATTERN.sub("", html)
-        html = self.COMMENT_PATTERN.sub("", html)
-        html = self.LINK_PATTERN.sub("", html)
+        if enable_content_selector:
+            soup = self.content_selector(url, soup)
 
+        # Remove script, style, meta, and link tags
+        for tag_name in ['script', 'style', 'meta', 'link']:
+            for tag in soup.find_all(tag_name):
+                tag.decompose()
+
+        # Remove comments
+        for comment in soup.find_all(string=lambda text: isinstance(text, Comment)):
+            comment.extract()
+
+        # Clean SVG tags if clean_svg is True
         if clean_svg:
-            html = self.replace_svg(html)
+            for svg_tag in soup.find_all('svg'):
+                # Replace the contents of the svg tag with a placeholder
+                svg_tag.clear()
+
+        # Clean base64 images if clean_base64 is True
         if clean_base64:
-            html = self.replace_base64_images(html)
-        if remove_attributes:
-            html = self.REMOVE_ATTRIBUTES_PATTERN_EXCEPT_IMG.sub(r"\1\2", html)
+            for img_tag in soup.find_all('img'):
+                src = img_tag.get('src', '')
+                if src.startswith('data:image/') and 'base64,' in src:
+                    img_tag['src'] = '#'
+
+        # Remove attributes if remove_atts is True
+        if remove_atts and not allowed_attrs:
+            allowed_attrs = {"src", "alt", "class", "hidden", "style"}
+
+        # Remove attributes if allowed_attrs is not None
+        if allowed_attrs:
+            for tag in soup.find_all():
+                tag.attrs = {k: v for k, v in tag.attrs.items() if k in allowed_attrs}
+
+        # Remove empty tags if remove_empty_tag is True
+        if remove_empty_tag:
+            for tag in soup.find_all():
+                if (tag.name and tag.name.lower() == "img") or tag.find("img") is not None:
+                    continue
+                if not tag.get_text(strip=True):
+                    tag.decompose()
+
+        # Convert the modified soup back to a string
+        cleaned_html = str(soup)
+
+        # Compress whitespace if compress is True
         if compress:
-            html = self.LINE_BREAK_PATTERN.sub(" ", html)
-            html = self.SPACE_PATTERN.sub(" ", html)
-        return html
+            # Replace multiple whitespace characters with a single space
+            cleaned_html = self.SPACE_PATTERN.sub(' ', cleaned_html).strip()
+
+        return cleaned_html
 
     @classmethod
     def create_prompt(cls, text: str, instruction: str = None, schema: str = None) -> str:
@@ -83,19 +127,15 @@ class HTMLReader(BaseFunction):
         if not instruction:
             instruction = "Extract the main content from the given HTML and convert it to Markdown format."
         if schema:
-            instruction = "Extract the specified information from a list of news threads and present it in a structured JSON format."
+            instruction = "Extract the specified information from the given HTML and present it in a structured JSON format. If any of the fields are not found in the HTML document, set their values to `Unknown` in the JSON output."
             prompt = f"{instruction}\n```html\n{text}\n```\nThe JSON schema is as follows:```json\n{schema}\n```"
         else:
             prompt = f"{instruction}\n```html\n{text}\n```"
 
         return prompt
 
-    async def extract_content(self, html: str, instruction: str = None, schema: str = None,
-                              stream: bool = False) -> str | dict:
-        prompt = self.create_prompt(html, instruction, schema)
-        messages = [{"role": "user", "content": prompt}]
-        openai_response = await self.client.chat.completions.create(
-            model=self.model, messages=messages, temperature=0, stream=stream)
+    @classmethod
+    async def get_response(cls, openai_response, stream: bool) -> str:
         if stream:
             response = ""
             async for chunk in openai_response:
@@ -105,12 +145,30 @@ class HTMLReader(BaseFunction):
             print(flush=True)
         else:
             response = openai_response.choices[0].message.content
+        return response
+
+    @classmethod
+    def get_code_block(cls, markdown: str, lang: str) -> str:
+        head_sep: str = f"```{lang}\n"
+        tail_sep: str = "\n```"
+
+        partial_content: str = head_sep.join(markdown.split(head_sep)[1:]).strip()
+        content: str = tail_sep.join(partial_content.split(tail_sep)[:-1]).strip()
+        return content
+
+    async def extract_content(self, html: str, instruction: str = None, schema: str = None,
+                              stream: bool = False) -> str | dict:
+        prompt = self.create_prompt(html, instruction, schema)
+        messages = [{"role": "user", "content": prompt}]
+        openai_response = await self.client.chat.completions.create(
+            model=self.model, messages=messages, temperature=0, stream=stream)
+        response = await self.get_response(openai_response, stream)
         if schema:
-            str_json_response: str = self.JSON_EXTRACT_PATTERN.search(response).group(1)
+            str_json_response: str = self.get_code_block(response, "json")
             json_response: dict = jsonlib.loads(str_json_response)
             return json_response
         else:
-            markdown_response: str = self.MARKDOWN_EXTRACT_PATTERN.search(response).group(1)
+            markdown_response: str = self.get_code_block(response, "markdown")
             return markdown_response
 
     async def run(self, task: Task, trace_info: TraceInfo, stream: bool = False) -> dict:
@@ -118,7 +176,8 @@ class HTMLReader(BaseFunction):
         html = input_dict["html"]
         url = input_dict["url"]
 
-        cleaned_html = self.clean_html(html, clean_svg=True, clean_base64=True)
+        cleaned_html = self.clean_html(url, html, clean_svg=True, clean_base64=True, remove_atts=True,
+                                       compress=True, remove_empty_tag=True, enable_content_selector=True)
         trace_info.info({"len(html)": len(html), "len(cleaned_html)": len(cleaned_html)})
 
         metadata, content = await asyncio.gather(

@@ -8,18 +8,20 @@ from dotenv import load_dotenv
 from common import project_root
 from common.trace_info import TraceInfo
 from tests.helper.fixture import trace_info
-from wizard.config import OpenAIConfig
+from wizard.config import OpenAIConfig, ReaderConfig
 from wizard.entity import Task
 from wizard.wand.functions.html_reader import HTMLReader
 
 
 @pytest.fixture(scope="function")
-def openai_config() -> OpenAIConfig:
+def reader_config() -> ReaderConfig:
     load_dotenv(dotenv_path=project_root.path(".env"))
-    return OpenAIConfig(
-        api_key=os.environ["MBW_TASK_READER_API_KEY"],
-        base_url=os.environ["MBW_TASK_READER_BASE_URL"],
-        model=os.environ["MBW_TASK_READER_MODEL"],
+    return ReaderConfig(
+        openai=OpenAIConfig(
+            api_key=os.environ["MBW_TASK_READER_OPENAI_API_KEY"],
+            base_url=os.environ["MBW_TASK_READER_OPENAI_BASE_URL"],
+            model=os.environ["MBW_TASK_READER_OPENAI_MODEL"],
+        )
     )
 
 
@@ -29,15 +31,15 @@ def task() -> Task:
         return pickle.load(f)
 
 
-async def test_html_reader(openai_config: OpenAIConfig, task: Task, trace_info: TraceInfo):
-    c = HTMLReader(openai_config)
+async def test_html_reader(reader_config: ReaderConfig, task: Task, trace_info: TraceInfo):
+    c = HTMLReader(reader_config)
     result = await c.run(task, trace_info)
     print(jsonlib.dumps(result, ensure_ascii=False, separators=(",", ":")))
     # assert "Implement a notification system for updates and alerts." in result["markdown"]
 
 
-async def test_html_clean(openai_config: OpenAIConfig, task: Task):
-    c = HTMLReader(openai_config)
+async def test_html_clean(reader_config: ReaderConfig, task: Task):
+    c = HTMLReader(reader_config)
     html = task.input["html"]
     url = task.input["url"]
     print(f"raw length: {len(html)}")

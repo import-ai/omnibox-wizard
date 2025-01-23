@@ -35,8 +35,13 @@ class BackendConfig(BaseModel):
     base_url: str
 
 
+class ReaderConfig(BaseModel):
+    openai: OpenAIConfig
+    timeout: float = Field(default=180, description="timeout second for reading html")
+
+
 class TaskConfig(BaseModel):
-    reader: OpenAIConfig
+    reader: ReaderConfig
 
 
 class Config(BaseModel):

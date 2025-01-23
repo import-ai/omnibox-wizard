@@ -2,6 +2,7 @@ import asyncio
 import json as jsonlib
 import re
 
+from bs4 import BeautifulSoup, Comment
 from openai import AsyncOpenAI
 
 from common.trace_info import TraceInfo
@@ -11,16 +12,6 @@ from wizard.wand.functions.base_function import BaseFunction
 
 
 class HTMLReader(BaseFunction):
-    SCRIPT_PATTERN: re.Pattern = re.compile(r"< *script.*?/ *script *>", re.IGNORECASE | re.MULTILINE | re.DOTALL)
-    STYLE_PATTERN: re.Pattern = re.compile(r"< *style.*?/ *style *>", re.IGNORECASE | re.MULTILINE | re.DOTALL)
-    META_PATTERN: re.Pattern = re.compile(r"< *meta.*?>", re.IGNORECASE | re.MULTILINE | re.DOTALL)
-    COMMENT_PATTERN: re.Pattern = re.compile(r"< *!--.*?-- *>", re.IGNORECASE | re.MULTILINE | re.DOTALL)
-    LINK_PATTERN: re.Pattern = re.compile(r"< *link.*?>", re.IGNORECASE | re.MULTILINE | re.DOTALL)
-    BASE64_IMG_PATTERN: re.Pattern = re.compile(r'<img[^>]+src="data:image/[^;]+;base64,[^"]+"[^>]*>')
-    SVG_PATTERN: re.Pattern = re.compile(r"(<svg[^>]*>)(.*?)(</svg>)", re.DOTALL)
-
-    REMOVE_ATTRIBUTES_PATTERN_EXCEPT_IMG = re.compile(r"(<(?!img\b)[a-zA-Z][^>\s]*)(?:\s+[^>]*)?(>)", re.IGNORECASE)
-
     LINE_BREAK_PATTERN: re.Pattern = re.compile(r"\n+")
     SPACE_PATTERN: re.Pattern = re.compile(r"\s{2,}")
 
@@ -47,33 +38,60 @@ class HTMLReader(BaseFunction):
         self.client = AsyncOpenAI(api_key=openai_config.api_key, base_url=openai_config.base_url)
         self.model = openai_config.model
 
-    def replace_svg(self, html: str, new_content: str = "this is a placeholder") -> str:
-        return self.SVG_PATTERN.sub(
-            lambda match: f"{match.group(1)}{new_content}{match.group(3)}",
-            html
-        )
-
-    def replace_base64_images(self, html: str, new_image_src: str = "#") -> str:
-        return self.BASE64_IMG_PATTERN.sub(f'<img src="{new_image_src}"/>', html)
-
     def clean_html(self, html: str, clean_svg: bool = False, clean_base64: bool = False,
-                   remove_attributes: bool = False, compress: bool = False) -> str:
-        html = self.SCRIPT_PATTERN.sub("", html)
-        html = self.STYLE_PATTERN.sub("", html)
-        html = self.META_PATTERN.sub("", html)
-        html = self.COMMENT_PATTERN.sub("", html)
-        html = self.LINK_PATTERN.sub("", html)
+                   compress: bool = False, remove_empty_tag: bool = False, remove_atts: bool = False,
+                   allowed_attrs: set | None = None) -> str:
+        soup = BeautifulSoup(html, 'html.parser')
 
+        # Remove script, style, meta, and link tags
+        for tag_name in ['script', 'style', 'meta', 'link']:
+            for tag in soup.find_all(tag_name):
+                tag.decompose()
+
+        # Remove comments
+        for comment in soup.find_all(string=lambda text: isinstance(text, Comment)):
+            comment.extract()
+
+        # Clean SVG tags if clean_svg is True
         if clean_svg:
-            html = self.replace_svg(html)
+            for svg_tag in soup.find_all('svg'):
+                # Replace the contents of the svg tag with a placeholder
+                svg_tag.clear()
+                svg_tag.string = "placeholder"
+
+        # Clean base64 images if clean_base64 is True
         if clean_base64:
-            html = self.replace_base64_images(html)
-        if remove_attributes:
-            html = self.REMOVE_ATTRIBUTES_PATTERN_EXCEPT_IMG.sub(r"\1\2", html)
+            for img_tag in soup.find_all('img'):
+                src = img_tag.get('src', '')
+                if src.startswith('data:image/') and 'base64,' in src:
+                    img_tag['src'] = '#'
+
+        # Remove attributes if remove_atts is True
+        if remove_atts and not allowed_attrs:
+            allowed_attrs = {"src", "alt", "class", "hidden", "style"}
+
+        # Remove attributes if allowed_attrs is not None
+        if allowed_attrs:
+            for tag in soup.find_all():
+                tag.attrs = {k: v for k, v in tag.attrs.items() if k in allowed_attrs}
+
+        # Remove empty tags if remove_empty_tag is True
+        if remove_empty_tag:
+            for tag in soup.find_all():
+                if (tag.name and tag.name.lower() == "img") or tag.find("img") is not None:
+                    continue
+                if not tag.get_text(strip=True):
+                    tag.decompose()
+
+        # Convert the modified soup back to a string
+        cleaned_html = str(soup)
+
+        # Compress whitespace if compress is True
         if compress:
-            html = self.LINE_BREAK_PATTERN.sub(" ", html)
-            html = self.SPACE_PATTERN.sub(" ", html)
-        return html
+            # Replace multiple whitespace characters with a single space
+            cleaned_html = self.SPACE_PATTERN.sub(' ', cleaned_html).strip()
+
+        return cleaned_html
 
     @classmethod
     def create_prompt(cls, text: str, instruction: str = None, schema: str = None) -> str:
@@ -118,7 +136,8 @@ class HTMLReader(BaseFunction):
         html = input_dict["html"]
         url = input_dict["url"]
 
-        cleaned_html = self.clean_html(html, clean_svg=True, clean_base64=True)
+        cleaned_html = self.clean_html(html, clean_svg=True, clean_base64=True, remove_atts=True,
+                                       compress=True, remove_empty_tag=True)
         trace_info.info({"len(html)": len(html), "len(cleaned_html)": len(cleaned_html)})
 
         metadata, content = await asyncio.gather(

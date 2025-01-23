@@ -44,5 +44,17 @@ async def test_html_clean(openai_config: OpenAIConfig):
     with project_root.open("tests/resources/input.json", "r") as f:
         input_dict: dict = jsonlib.load(f)
     html = input_dict["html"]
-    result = c.clean_html(html, clean_svg=True, clean_base64=True, remove_attributes=True)
-    print(result)
+    print(f"raw length: {len(html)}")
+    result = c.clean_html(html)
+    print(f"cleaned length: {len(result)}")
+    result = c.clean_html(html, clean_svg=True)
+    print(f"after clean svg: {len(result)}")
+    result = c.clean_html(html, clean_svg=True, clean_base64=True)
+    print(f"after clean base64: {len(result)}")
+    result = c.clean_html(html, clean_svg=True, clean_base64=True, remove_atts=True)
+    print(f"after remove attributes: {len(result)}")
+    result = c.clean_html(html, clean_svg=True, clean_base64=True, remove_atts=True, compress=True)
+    print(f"after compress: {len(result)}")
+    result = c.clean_html(html, clean_svg=True, clean_base64=True, remove_atts=True,
+                          compress=True, remove_empty_tag=True)
+    print(f"after remove empty tag: {len(result)}")

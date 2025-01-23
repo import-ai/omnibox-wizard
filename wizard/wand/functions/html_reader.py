@@ -1,12 +1,13 @@
 import asyncio
 import json as jsonlib
 import re
+from urllib.parse import urlparse
 
 from bs4 import BeautifulSoup, Comment, Tag
 from openai import AsyncOpenAI
 
 from common.trace_info import TraceInfo
-from wizard.config import OpenAIConfig
+from wizard.config import OpenAIConfig, ReaderConfig
 from wizard.entity import Task
 from wizard.wand.functions.base_function import BaseFunction
 
@@ -46,13 +47,17 @@ class HTMLReader(BaseFunction):
         "news.qq.com": {
             "name": "div",
             "class_": "content-article"
+        },
+        "zhuanlan.zhihu.com": {
+            "name": "article"
         }
-
     }
 
-    def __init__(self, openai_config: OpenAIConfig):
+    def __init__(self, reader_config: ReaderConfig):
+        openai_config: OpenAIConfig = reader_config.openai
         self.client = AsyncOpenAI(api_key=openai_config.api_key, base_url=openai_config.base_url)
-        self.model = openai_config.model
+        self.model: str = openai_config.model
+        self.timeout: float = reader_config.timeout
 
     @classmethod
     def content_selector(cls, url: str, soup: BeautifulSoup) -> Tag:
@@ -127,7 +132,9 @@ class HTMLReader(BaseFunction):
         if not instruction:
             instruction = "Extract the main content from the given HTML and convert it to Markdown format."
         if schema:
-            instruction = "Extract the specified information from the given HTML and present it in a structured JSON format. If any of the fields are not found in the HTML document, set their values to `Unknown` in the JSON output."
+            instruction = ("Extract the specified information from the given HTML and present it in a structured JSON "
+                           "format. If any of the fields are not found in the HTML document, set their values to "
+                           "`Unknown` in the JSON output.")
             prompt = f"{instruction}\n```html\n{text}\n```\nThe JSON schema is as follows:```json\n{schema}\n```"
         else:
             prompt = f"{instruction}\n```html\n{text}\n```"
@@ -176,14 +183,31 @@ class HTMLReader(BaseFunction):
         html = input_dict["html"]
         url = input_dict["url"]
 
+        domain: str = urlparse(url).netloc
+        trace_info = trace_info.bind(domain=domain)
+
         cleaned_html = self.clean_html(url, html, clean_svg=True, clean_base64=True, remove_atts=True,
                                        compress=True, remove_empty_tag=True, enable_content_selector=True)
-        trace_info.info({"len(html)": len(html), "len(cleaned_html)": len(cleaned_html)})
+        trace_info.info({
+            "len(html)": len(html),
+            "len(cleaned_html)": len(cleaned_html),
+            "compress_rate": f"{len(cleaned_html) * 100 / len(html): .2f}%"
+        })
 
-        metadata, content = await asyncio.gather(
-            self.extract_content(cleaned_html, schema=self.SCHEMA),
-            self.extract_content(cleaned_html, stream=stream)
-        )
+        metadata_task = asyncio.create_task(self.extract_content(cleaned_html, schema=self.SCHEMA))
+        content_task = asyncio.create_task(self.extract_content(cleaned_html, stream=stream))
+
+        try:
+            metadata = await asyncio.wait_for(metadata_task, timeout=self.timeout)
+        except asyncio.TimeoutError:
+            trace_info.error({"error": "metadata TimeoutError"})
+            metadata = {}
+
+        try:
+            content = await asyncio.wait_for(content_task, timeout=self.timeout)
+        except asyncio.TimeoutError:
+            trace_info.error({"error": "content TimeoutError"})
+            content = "Timeout, please retry."
 
         filtered_metadata: dict = {k: v for k, v in metadata.items() if v != "Unknown"}
 

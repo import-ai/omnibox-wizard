@@ -2,7 +2,7 @@ import asyncio
 import json as jsonlib
 import re
 
-from bs4 import BeautifulSoup, Comment
+from bs4 import BeautifulSoup, Comment, Tag
 from openai import AsyncOpenAI
 
 from common.trace_info import TraceInfo
@@ -34,14 +34,44 @@ class HTMLReader(BaseFunction):
         "required": ["title", "author", "date"]
     }, ensure_ascii=False, indent=2)
 
+    content_selector_config = {
+        "github.com": {
+            "name": "article",
+            "class_": "markdown-body"
+        },
+        "medium.com": {
+            "name": "article"
+        },
+        "mp.weixin.qq.com": {
+            "name": "div",
+            "class_": "rich_media_content"
+        },
+        "news.qq.com": {
+            "name": "div",
+            "class_": "content-article"
+        }
+
+    }
+
     def __init__(self, openai_config: OpenAIConfig):
         self.client = AsyncOpenAI(api_key=openai_config.api_key, base_url=openai_config.base_url)
         self.model = openai_config.model
 
-    def clean_html(self, html: str, clean_svg: bool = False, clean_base64: bool = False,
+    @classmethod
+    def content_selector(cls, url: str, soup: BeautifulSoup) -> Tag:
+        domain = url.split("/")[2]
+        if config := cls.content_selector_config.get(domain, None):
+            if content := soup.find(**config):
+                return content
+        return soup
+
+    def clean_html(self, url: str, html: str, *, clean_svg: bool = False, clean_base64: bool = False,
                    compress: bool = False, remove_empty_tag: bool = False, remove_atts: bool = False,
-                   allowed_attrs: set | None = None) -> str:
+                   allowed_attrs: set | None = None, enable_content_selector: bool = False) -> str:
         soup = BeautifulSoup(html, 'html.parser')
+
+        if enable_content_selector:
+            soup = self.content_selector(url, soup)
 
         # Remove script, style, meta, and link tags
         for tag_name in ['script', 'style', 'meta', 'link']:
@@ -136,8 +166,8 @@ class HTMLReader(BaseFunction):
         html = input_dict["html"]
         url = input_dict["url"]
 
-        cleaned_html = self.clean_html(html, clean_svg=True, clean_base64=True, remove_atts=True,
-                                       compress=True, remove_empty_tag=True)
+        cleaned_html = self.clean_html(url, html, clean_svg=True, clean_base64=True, remove_atts=True,
+                                       compress=True, remove_empty_tag=True, enable_content_selector=True)
         trace_info.info({"len(html)": len(html), "len(cleaned_html)": len(cleaned_html)})
 
         metadata, content = await asyncio.gather(

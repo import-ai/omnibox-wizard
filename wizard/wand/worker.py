@@ -145,7 +145,7 @@ class Worker:
     async def callback(self, task: Task, trace_info: TraceInfo):
         async with httpx.AsyncClient(base_url=self.config.backend.base_url) as client:
             http_response: httpx.Response = await client.post(
-                f"/api/v1/tasks/callback",
+                f"/internal/api/tasks/callback",
                 json=task.model_dump(exclude_none=True, mode="json"),
                 headers={"X-Trace-ID": task.task_id}
             )

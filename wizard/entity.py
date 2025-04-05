@@ -6,8 +6,8 @@ from pydantic import BaseModel, Field, ConfigDict
 
 class Base(BaseModel):
     created_at: datetime = Field(default_factory=datetime.now)
-    updated_at: datetime = Field(default_factory=datetime.now)
-    deleted_at: datetime | None = None
+    updated_at: datetime | None = Field(default=None)
+    deleted_at: datetime | None = Field(default=None)
 
     model_config = ConfigDict(from_attributes=True)
 

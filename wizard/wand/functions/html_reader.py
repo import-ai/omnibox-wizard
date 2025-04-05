@@ -50,6 +50,10 @@ class HTMLReader(BaseFunction):
         },
         "zhuanlan.zhihu.com": {
             "name": "article"
+        },
+        "www.163.com": {
+            "name": "div",
+            "class_": "post_body"
         }
     }
 

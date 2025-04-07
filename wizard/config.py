@@ -47,4 +47,4 @@ class Config(BaseModel):
     backend: BackendConfig
 
 
-ENV_PREFIX: str = "MBW"
+ENV_PREFIX: str = "OBW"

@@ -18,9 +18,9 @@ def reader_config() -> ReaderConfig:
     load_dotenv(dotenv_path=project_root.path(".env"))
     return ReaderConfig(
         openai=OpenAIConfig(
-            api_key=os.environ["MBW_TASK_READER_OPENAI_API_KEY"],
-            base_url=os.environ["MBW_TASK_READER_OPENAI_BASE_URL"],
-            model=os.environ["MBW_TASK_READER_OPENAI_MODEL"],
+            api_key=os.environ["OBW_TASK_READER_OPENAI_API_KEY"],
+            base_url=os.environ["OBW_TASK_READER_OPENAI_BASE_URL"],
+            model=os.environ["OBW_TASK_READER_OPENAI_MODEL"],
         )
     )
 

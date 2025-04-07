@@ -66,7 +66,7 @@ async def base_url() -> str:
                 raise RuntimeError(f"api_process exit with code {api_process.returncode}")
             time.sleep(1)
 
-        logger.debug({"base_url": base_url, "env": {"MBW_DB_URL": os.getenv("MBW_DB_URL")}})
+        logger.debug({"base_url": base_url, "env": {"OBW_DB_URL": os.getenv("OBW_DB_URL")}})
         yield base_url
 
         api_process.terminate()

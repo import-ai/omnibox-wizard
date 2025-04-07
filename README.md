@@ -1,1 +1,1 @@
-# Magic Box Worker
+# OmniBox Worker

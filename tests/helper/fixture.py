@@ -43,7 +43,7 @@ def chromadb_endpoint() -> str:
 
 
 @pytest.fixture(scope="function")
-async def base_url(postgres_url: str) -> str:
+async def base_url() -> str:
     base_url = "http://127.0.0.1:8000/api/v1"
 
     def health_check() -> bool:
@@ -90,7 +90,6 @@ def config(chromadb_endpoint: str) -> Config:
 def remote_config() -> Config:
     load_dotenv()
 
-    os.environ[f"{ENV_PREFIX}_DB_URL"] = "postgresql+asyncpg://magic_box:magic_box@postgres:5432/magic_box"
     os.environ[f"{ENV_PREFIX}_VECTOR_HOST"], os.environ[f"{ENV_PREFIX}_VECTOR_PORT"] = "chromadb:8001".split(":")
 
     loader = Loader(Config, env_prefix=ENV_PREFIX)

@@ -172,7 +172,7 @@ class HTMLReader(BaseFunction):
         prompt = self.create_prompt(html, instruction, schema)
         messages = [{"role": "user", "content": prompt}]
         openai_response = await self.client.chat.completions.create(
-            model=self.model, messages=messages, temperature=0, stream=stream)
+            model=self.model, messages=messages, temperature=0, frequency_penalty=0.1, stream=stream)
         response = await self.get_response(openai_response, stream)
         if schema:
             str_json_response: str = self.get_code_block(response, "json")

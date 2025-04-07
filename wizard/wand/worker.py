@@ -9,6 +9,7 @@ from common.logger import get_logger
 from common.trace_info import TraceInfo
 from wizard.config import Config
 from wizard.entity import Task
+from wizard.wand.functions.base_function import BaseFunction
 from wizard.wand.functions.html_reader import HTMLReader
 from wizard.wand.functions.index import CreateOrUpdateIndex, DeleteIndex
 
@@ -19,9 +20,11 @@ class Worker:
 
         self.worker_id = worker_id
 
-        self.html_reader = HTMLReader(config.task.reader)
-        self.create_or_update_index: CreateOrUpdateIndex = CreateOrUpdateIndex(config)
-        self.delete_index: DeleteIndex = DeleteIndex(config)
+        self.worker_dict: dict[str, BaseFunction] = {
+            "collect": HTMLReader(config.task.reader),
+            "create_or_update_index": CreateOrUpdateIndex(config),
+            "delete_index": DeleteIndex(config)
+        }
 
         self.logger = get_logger(f"worker_{self.worker_id}")
 
@@ -33,16 +36,14 @@ class Worker:
         })
 
     async def run_once(self):
-        task: Task = await self.fetch_and_claim_task()
+        task: Task = await self.fetch_task()
         if task:
             trace_info: TraceInfo = self.get_trace_info(task)
             trace_info.info({"message": "fetch_task"} | task.model_dump(include={"created_at", "started_at"}))
             processed_task: Task = await self.process_task(task, trace_info)
             await self.callback(processed_task, trace_info)
         else:
-            self.logger.debug({
-                "message": "No available task, waiting..."
-            })
+            self.logger.debug({"message": "No available task, waiting..."})
 
     async def run(self):
         while True:
@@ -54,12 +55,12 @@ class Worker:
                 })
             await asyncio.sleep(1)
 
-    async def fetch_and_claim_task(self) -> Optional[Task]:
+    async def fetch_task(self) -> Optional[Task]:
         task: Optional[Task] = None
         try:
             async with httpx.AsyncClient(base_url=self.config.backend.base_url) as client:
                 http_response: httpx.Response = await client.get(f"/internal/api/v1/tasks/fetch")
-                logging_func: Callable = self.logger.info if http_response.is_success else self.logger.error
+                logging_func: Callable = self.logger.debug if http_response.is_success else self.logger.error
                 json_response = http_response.json()
                 logging_func({"status_code": http_response.status_code, "response": json_response})
                 if json_response:
@@ -81,7 +82,7 @@ class Worker:
             # Update the task with the result
             task.output = output
 
-        task.ended_at = datetime.now()
+        task.updated_at = task.ended_at = datetime.now()
         logging_func(task.model_dump(include={"created_at", "started_at", "ended_at"}))
 
         return task
@@ -93,17 +94,9 @@ class Worker:
                 json=task.model_dump(exclude_none=True, mode="json"),
                 headers={"X-Trace-ID": task.task_id}
             )
-            logging_func: Callable[[dict], None] = trace_info.info if http_response.is_success else trace_info.error
+            logging_func: Callable[[dict], None] = trace_info.debug if http_response.is_success else trace_info.error
             logging_func({"status_code": http_response.status_code, "response": http_response.json()})
 
     async def worker_router(self, task: Task, trace_info: TraceInfo) -> dict:
-        function = task.function
-        if function == "collect":
-            worker = self.html_reader
-        elif function == "create_or_update_index":
-            worker = self.create_or_update_index
-        elif function == "delete_index":
-            worker = self.delete_index
-        else:
-            raise ValueError(f"Invalid function: {function}")
+        worker = self.worker_dict[task.function]
         return await worker.run(task, trace_info)

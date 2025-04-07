@@ -5,9 +5,9 @@ import httpx
 from common.logger import get_logger
 from common.trace_info import TraceInfo
 from tests.helper.fixture import client, config
+from tests.helper.fixture import trace_info
 from wizard.config import Config, ENV_PREFIX
 from wizard.wand.worker import Worker
-from tests.helper.fixture import trace_info
 
 logger = get_logger("tests")
 
@@ -49,7 +49,7 @@ async def test_tasks(client: httpx.Client, config: Config, trace_info: TraceInfo
 
     for i in range(3):
         task_id = task_ids[i]
-        task = await worker.fetch_and_claim_task()
+        task = await worker.fetch_task()
         assert task is not None
         assert task.task_id == task_id
 

@@ -1,4 +1,4 @@
-name: magic-box
+name: omnibox
 
 services:
   chromadb:

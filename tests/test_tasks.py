@@ -3,15 +3,16 @@ import os
 import httpx
 
 from common.logger import get_logger
+from common.trace_info import TraceInfo
 from tests.helper.fixture import client, config
+from tests.helper.fixture import trace_info
 from wizard.config import Config, ENV_PREFIX
 from wizard.wand.worker import Worker
 
 logger = get_logger("tests")
 
 
-
-async def test_tasks(client: httpx.Client, config: Config):
+async def test_tasks(client: httpx.Client, config: Config, trace_info: TraceInfo):
     enable_callback: bool = os.environ.get(f"{ENV_PREFIX}_TESTS_ENABLE_WORKER_CALLBACK", "false").lower() == "true"
     namespace_id: str = "foo"
     payload: dict = {"spaceType": "private"}
@@ -48,7 +49,7 @@ async def test_tasks(client: httpx.Client, config: Config):
 
     for i in range(3):
         task_id = task_ids[i]
-        task = await worker.fetch_and_claim_task()
+        task = await worker.fetch_task()
         assert task is not None
         assert task.task_id == task_id
 
@@ -59,7 +60,7 @@ async def test_tasks(client: httpx.Client, config: Config):
         assert json_task["started_at"] is not None
         assert json_task.get("ended_at", None) is None
 
-        task = await worker.process_task(task)
+        task = await worker.process_task(task, trace_info)
 
         json_task: dict = client.get(f"/api/v1/tasks/{task_id}").raise_for_status().json()
         assert json_task["task_id"] == task_id
@@ -70,6 +71,6 @@ async def test_tasks(client: httpx.Client, config: Config):
         assert json_task["output"]["markdown"] == "Hello World!"
 
         if enable_callback:
-            await worker.callback(task)
+            await worker.callback(task, trace_info)
 
         logger.info({"task": json_task, "round": i})

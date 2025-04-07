@@ -1,15 +1,12 @@
-import asyncio
 import os
 import subprocess
 import time
 
-import asyncpg
 import httpx
 import pytest
 from dotenv import load_dotenv
 from fastapi.testclient import TestClient
 from testcontainers.chroma import ChromaContainer
-from testcontainers.postgres import PostgresContainer
 
 from common import project_root
 from common.config_loader import Loader
@@ -20,32 +17,6 @@ from wizard.config import Config, ENV_PREFIX
 from wizard.wand.worker import Worker
 
 logger = get_logger("fixture")
-
-
-async def check_postgres_url(dsn: str, retry_cnt: int = 10):
-    for attempt in range(retry_cnt):
-        try:
-            conn = await asyncpg.connect(dsn=dsn)
-            await conn.execute('SELECT 1')
-            await conn.close()
-            return
-        except (asyncpg.exceptions.CannotConnectNowError, OSError,
-                asyncpg.PostgresError, asyncpg.exceptions.ConnectionDoesNotExistError):
-            await asyncio.sleep(1)
-    raise RuntimeError("Postgres container failed to become healthy in time.")
-
-
-@pytest.fixture(scope="function")
-def postgres_url() -> str:
-    driver = "asyncpg"
-    with PostgresContainer(image="postgres:17-alpine", driver=driver) as postgres:
-        url = postgres.get_connection_url()
-        asyncio.run(check_postgres_url(postgres.get_connection_url(driver=None)))
-
-        os.environ["MBW_DB_URL"] = url
-        logger.debug({"db_url": url, "env": {"MBW_DB_URL": os.getenv("MBW_DB_URL")}})
-
-        yield url
 
 
 @pytest.fixture(scope="function")
@@ -72,7 +43,7 @@ def chromadb_endpoint() -> str:
 
 
 @pytest.fixture(scope="function")
-async def base_url(postgres_url: str) -> str:
+async def base_url() -> str:
     base_url = "http://127.0.0.1:8000/api/v1"
 
     def health_check() -> bool:
@@ -105,10 +76,9 @@ async def base_url(postgres_url: str) -> str:
 
 
 @pytest.fixture(scope="function")
-def config(postgres_url: str, chromadb_endpoint: str) -> Config:
+def config(chromadb_endpoint: str) -> Config:
     load_dotenv()
 
-    os.environ[f"{ENV_PREFIX}_DB_URL"] = postgres_url
     os.environ[f"{ENV_PREFIX}_VECTOR_HOST"], os.environ[f"{ENV_PREFIX}_VECTOR_PORT"] = chromadb_endpoint.split(":")
 
     loader = Loader(Config, env_prefix=ENV_PREFIX)
@@ -120,7 +90,6 @@ def config(postgres_url: str, chromadb_endpoint: str) -> Config:
 def remote_config() -> Config:
     load_dotenv()
 
-    os.environ[f"{ENV_PREFIX}_DB_URL"] = "postgresql+asyncpg://magic_box:magic_box@postgres:5432/magic_box"
     os.environ[f"{ENV_PREFIX}_VECTOR_HOST"], os.environ[f"{ENV_PREFIX}_VECTOR_PORT"] = "chromadb:8001".split(":")
 
     loader = Loader(Config, env_prefix=ENV_PREFIX)

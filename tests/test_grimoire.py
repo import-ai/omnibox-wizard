@@ -63,7 +63,7 @@ async def add_index(
 
     task_id = json_response["task_id"]
 
-    task: Task = await worker.fetch_and_claim_task()
+    task: Task = await worker.fetch_task()
     await worker.process_task(task)
 
     json_task: dict = client.get(f"/api/v1/tasks/{task_id}").raise_for_status().json()

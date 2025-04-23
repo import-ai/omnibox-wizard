@@ -1,20 +1,20 @@
 from datetime import datetime
 
-import shortuuid
 from pydantic import BaseModel, Field, ConfigDict
+from pydantic.alias_generators import to_camel
 
 
 class Base(BaseModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
     created_at: datetime = Field(default_factory=datetime.now)
     updated_at: datetime | None = Field(default=None)
     deleted_at: datetime | None = Field(default=None)
 
-    model_config = ConfigDict(from_attributes=True)
-
 
 class Task(Base):
-    task_id: str = Field(default_factory=shortuuid.uuid)
-    priority: int = Field(default=5)
+    task_id: str = Field(alias="id")
+    priority: int
 
     namespace_id: str
     user_id: str
@@ -29,5 +29,3 @@ class Task(Base):
     started_at: datetime | None = None
     ended_at: datetime | None = None
     canceled_at: datetime | None = None
-
-    concurrency_threshold: int = Field(default=1, description="Concurrency threshold")

@@ -59,7 +59,7 @@ class Worker:
         task: Optional[Task] = None
         try:
             async with httpx.AsyncClient(base_url=self.config.backend.base_url) as client:
-                http_response: httpx.Response = await client.get(f"/internal/api/v1/tasks/fetch")
+                http_response: httpx.Response = await client.get(f"/internal/api/v1/wizard/task")
                 logging_func: Callable = self.logger.debug if http_response.is_success else self.logger.error
                 if http_response.status_code == 204:
                     logging_func({"status_code": http_response.status_code})
@@ -96,7 +96,7 @@ class Worker:
     async def callback(self, task: Task, trace_info: TraceInfo):
         async with httpx.AsyncClient(base_url=self.config.backend.base_url) as client:
             http_response: httpx.Response = await client.post(
-                f"/internal/api/v1/tasks/callback",
+                f"/internal/api/v1/wizard/callback",
                 json=task.model_dump(
                     exclude_none=True, mode="json", by_alias=True,
                     include={"task_id", "exception", "output", "ended_at"},

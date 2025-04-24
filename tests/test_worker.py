@@ -16,7 +16,7 @@ class TestClient(httpx.Client):
         self.email: str = shortuuid.uuid() + "@example.com"
         self.namespace: str = shortuuid.uuid()
 
-        response: httpx.Response = self.post("/internal/api/v1/signup", json={
+        response: httpx.Response = self.post("/internal/api/v1/sign-up", json={
             "username": self.username,
             "password": "password",
             "password_repeat": "password",
@@ -52,9 +52,9 @@ def client(remote_config: Config) -> TestClient:
 
 @pytest.fixture(scope="function")
 def task_id(client: TestClient) -> int:
-    response: httpx.Response = client.post("/api/v1/tasks/collect", json={
+    response: httpx.Response = client.post("/api/v1/wizard/collect", json={
         "url": "https://example.com",
-        "html": "<p>Hello World!</p>",
+        "html": "<html><header><title>Test Title</title></header><body><p>Hello World!</p></body></html>",
         "title": "Test",
         "namespace": client.namespace,
         "spaceType": "private"

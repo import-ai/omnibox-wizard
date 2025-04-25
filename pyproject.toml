@@ -1,29 +1,33 @@
-[tool.poetry]
+[project]
 name = "omnibox-wizard"
 version = "0.1.0"
-description = ""
-authors = ["Lucien Shui <lucien@lucien.ink>"]
-license = "Apache License 2.0"
+description = "OmniBox Wizard"
+authors = [
+    {name = "Lucien Shui",email = "lucien@lucien.ink"}
+]
+license = {text = "Apache License 2.0"}
 readme = "README.md"
+requires-python = ">=3.12,<4.0"
+dependencies = [
+    "pydantic (>=2.11.3,<3.0.0)",
+    "fastapi (>=0.115.12,<0.116.0)",
+    "uvicorn (>=0.34.2,<0.35.0)",
+    "shortuuid (>=1.0.13,<2.0.0)",
+    "chromadb-client (>=1.0.7,<2.0.0)",
+    "openai (>=1.76.0,<2.0.0)",
+    "httpx (>=0.28.1,<0.29.0)",
+    "beautifulsoup4 (>=4.13.4,<5.0.0)"
+]
+
+[tool.poetry]
 package-mode = false
 
-[tool.poetry.dependencies]
-python = "^3.12"
-pydantic = "^2.10.3"
-fastapi = "^0.115.6"
-uvicorn = "^0.32.1"
-shortuuid = "^1.0.13"
-chromadb-client = "^0.5.23"
-openai = "^1.58.1"
-httpx = "^0.28.1"
-beautifulsoup4 = "^4.12.3"
-
 [tool.poetry.group.test.dependencies]
-pytest = "^8.3.4"
-pytest-asyncio = "^0.25.0"
-testcontainers = "^4.9.0"
-python-dotenv = "^1.0.1"
+pytest = "^8.3.5"
+pytest-asyncio = "^0.26.0"
+testcontainers = "^4.10.0"
+python-dotenv = "^1.1.0"
 
 [build-system]
-requires = ["poetry-core"]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
 build-backend = "poetry.core.masonry.api"

@@ -22,6 +22,7 @@ async def init():
     loader = Loader(Config, env_prefix=ENV_PREFIX)
     config: Config = loader.load()
     pipeline = Pipeline(config)
+    await pipeline.async_init()
 
 
 async def call_stream(p: Pipeline, request: ChatRequest, trace_info: TraceInfo) -> AsyncIterator[dict]:

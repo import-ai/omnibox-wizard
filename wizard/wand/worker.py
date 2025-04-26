@@ -28,6 +28,10 @@ class Worker:
 
         self.logger = get_logger(f"worker_{self.worker_id}")
 
+    async def async_init(self):
+        for worker in self.worker_dict.values():
+            await worker.async_init()
+
     def get_trace_info(self, task: Task) -> TraceInfo:
         return TraceInfo(task.task_id, self.logger, payload={
             "task_id": task.task_id,
@@ -81,11 +85,9 @@ class Worker:
         try:
             output = await self.worker_router(task, trace_info)
         except Exception as e:
-            # Update the task with the exception details
             task.exception = {"error": CommonException.parse_exception(e)}
             logging_func = trace_info.bind(error=CommonException.parse_exception(e)).exception
         else:
-            # Update the task with the result
             task.output = output
 
         task.updated_at = task.ended_at = datetime.now()

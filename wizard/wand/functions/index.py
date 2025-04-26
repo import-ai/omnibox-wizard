@@ -4,7 +4,7 @@ from common.trace_info import TraceInfo
 from wizard.config import Config
 from wizard.entity import Task
 from wizard.grimoire.entity.chunk import Chunk, ChunkType
-from wizard.grimoire.retriever.vector_db import AsyncVectorDB
+from wizard.grimoire.retriever.vector_db import VectorDB
 from wizard.wand.functions.base_function import BaseFunction
 
 
@@ -12,8 +12,11 @@ def line_level(line: str) -> int:
     return len(line) - len(line.lstrip('#'))
 
 
-def split_markdown(title: str | None = None, markdown_text: str | None = None, meta_info: dict | None = None) -> List[
-    Chunk]:
+def split_markdown(
+        title: str | None = None,
+        markdown_text: str | None = None,
+        meta_info: dict | None = None
+) -> List[Chunk]:
     if not (markdown_text or title):
         raise ValueError("title and markdown_text cannot be None at the same time")
     meta_info = (meta_info or {}) | {"title": title}
@@ -54,7 +57,10 @@ def split_markdown(title: str | None = None, markdown_text: str | None = None, m
 
 class DeleteIndex(BaseFunction):
     def __init__(self, config: Config):
-        self.vector_db: AsyncVectorDB = AsyncVectorDB(config.vector)
+        self.vector_db: VectorDB = VectorDB(config.vector)
+
+    async def async_init(self):
+        await self.vector_db.async_init()
 
     async def run(self, task: Task, trace_info: TraceInfo) -> dict:
         input_data = task.input
@@ -78,7 +84,7 @@ class CreateOrUpdateIndex(DeleteIndex):
 
         meta_info: dict = input_data["meta_info"] | {"namespace_id": task.namespace_id}
         chunk_list: List[Chunk] = split_markdown(title, content, meta_info)
-        await self.vector_db.insert(chunk_list)
+        await self.vector_db.insert(task.namespace_id, chunk_list)
         return {"success": True}
 
 

@@ -45,7 +45,10 @@ async def add_index(
         parent_id: str,
         user_id: str
 ):
-    json_response: dict = client.post("/api/v1/tasks", json={
+    task_body: dict = {
+        "id": resource_id,  # Use resource id as fake task id
+        "priority": 5,
+
         "function": "create_or_update_index",
         "input": {
             "title": title,
@@ -59,21 +62,15 @@ async def add_index(
         },
         "namespace_id": namespace_id,
         "user_id": user_id
-    }).raise_for_status().json()
+    }
 
-    task_id = json_response["task_id"]
+    task: Task = Task.model_validate(task_body)
+    processed_task = await worker.process_task(task, worker.get_trace_info(task))
 
-    task: Task = await worker.fetch_task()
-    await worker.process_task(task)
+    assert processed_task.created_at is not None
+    assert processed_task.ended_at is not None
 
-    json_task: dict = client.get(f"/api/v1/tasks/{task_id}").raise_for_status().json()
-    assert json_task["task_id"] == task_id
-    assert json_task["namespace_id"] == namespace_id
-    assert json_task["created_at"] is not None
-    assert json_task["started_at"] is not None
-    assert json_task["ended_at"] is not None
-
-    output = json_task["output"]
+    output = processed_task.output
     assert output["success"] is True
 
 
@@ -114,8 +111,8 @@ def test_grimoire_stream(client: httpx.Client, vector_db_init: bool, namespace_i
 @pytest.mark.parametrize("query, resource_ids, parent_ids", [
     ("下周计划", None, None),
 ])
-def test_grimoire_stream(remote_client: httpx.Client, namespace_id: str, query: str,
-                         resource_ids: List[str] | None, parent_ids: List[str] | None):
+def test_grimoire_stream_remote(remote_client: httpx.Client, namespace_id: str, query: str,
+                                resource_ids: List[str] | None, parent_ids: List[str] | None):
     request = ChatRequest(session_id="fake_id", namespace_id=namespace_id, query=query,
                           resource_ids=resource_ids, parent_ids=parent_ids)
     assert_stream(api_stream(remote_client, request))

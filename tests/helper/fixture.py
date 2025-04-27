@@ -6,7 +6,7 @@ import httpx
 import pytest
 from dotenv import load_dotenv
 from fastapi.testclient import TestClient
-from testcontainers.chroma import ChromaContainer
+from tests.helper.chroma_container import ChromaContainer
 
 from common import project_root
 from common.config_loader import Loader
@@ -21,7 +21,7 @@ logger = get_logger("fixture")
 
 @pytest.fixture(scope="function")
 def chromadb_endpoint() -> str:
-    with ChromaContainer(image="chromadb/chroma:0.5.23") as chromadb:
+    with ChromaContainer(image="chromadb/chroma:1.0.7") as chromadb:
         server_info: dict = chromadb.get_config()
         endpoint: str = server_info["endpoint"]
         os.environ[f"{ENV_PREFIX}_VECTOR_HOST"] = server_info["host"]
@@ -31,7 +31,7 @@ def chromadb_endpoint() -> str:
             for i in range(10):
                 try:
                     with httpx.Client(base_url=f"http://{endpoint}", timeout=3) as client:  # noqa
-                        response: httpx.Response = client.get("/api/v1/heartbeat")
+                        response: httpx.Response = client.get("/api/v2/healthcheck")
                     response.raise_for_status()
                     return True
                 except httpx.ConnectError:
@@ -122,8 +122,10 @@ def client(config: Config) -> httpx.Client:
 
 
 @pytest.fixture(scope="function")
-def worker(config) -> Worker:
-    return Worker(config=config, worker_id=0)
+async def worker(config) -> Worker:
+    worker = Worker(config=config, worker_id=0)
+    await worker.async_init()
+    return worker
 
 
 @pytest.fixture(scope="function")

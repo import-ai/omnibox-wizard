@@ -6,15 +6,18 @@ from wizard.grimoire.entity.api import ChatRequest, ChatBaseResponse, ChatDeltaR
 from wizard.grimoire.entity.chunk import TextRetrieval, Chunk
 from wizard.grimoire.entity.retrieval import Score
 from wizard.grimoire.rag import RAG
-from wizard.grimoire.retriever.vector_db import AsyncVectorDB
+from wizard.grimoire.retriever.vector_db import VectorDB
 
 
 class Pipeline:
 
     def __init__(self, config: Config):
-        self.vector_db: AsyncVectorDB = AsyncVectorDB(config.vector)
+        self.vector_db: VectorDB = VectorDB(config.vector)
         self.max_recall_results: int = config.vector.max_results
         self.rag: RAG = RAG(config.grimoire.openai)
+
+    async def async_init(self):
+        await self.vector_db.async_init()
 
     async def retrieve(self, request: ChatRequest, trace_info: TraceInfo) -> List[TextRetrieval]:
         recall_result_list: List[Tuple[Chunk, float]] = await self.vector_db.query(

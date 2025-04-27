@@ -71,8 +71,10 @@ def task_id(client: TestClient) -> int:
 
 
 @pytest.fixture(scope="function")
-def worker(remote_config: Config) -> Worker:
-    return Worker(config=remote_config, worker_id=0)
+async def worker(remote_config: Config) -> Worker:
+    worker = Worker(config=remote_config, worker_id=0)
+    await worker.async_init()
+    return worker
 
 
 async def test_fetch_task(worker: Worker, task_id: int):
@@ -80,6 +82,5 @@ async def test_fetch_task(worker: Worker, task_id: int):
     assert task.task_id == task_id
 
 
-async def test_run_once(remote_config: Config, task_id: int):
-    worker = Worker(config=remote_config, worker_id=0)
+async def test_run_once(worker: Worker, task_id: int):
     await worker.run_once()

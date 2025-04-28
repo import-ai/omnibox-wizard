@@ -7,23 +7,25 @@ import httpx
 from common.exception import CommonException
 from common.logger import get_logger
 from common.trace_info import TraceInfo
-from wizard.config import Config
+from wizard.config import WorkerConfig
 from wizard.entity import Task
 from wizard.wand.functions.base_function import BaseFunction
+from wizard.wand.functions.file_reader import FileReader
 from wizard.wand.functions.html_reader import HTMLReader
 from wizard.wand.functions.index import CreateOrUpdateIndex, DeleteIndex
 
 
 class Worker:
-    def __init__(self, config: Config, worker_id: int):
-        self.config: Config = config
+    def __init__(self, config: WorkerConfig, worker_id: int):
+        self.config: WorkerConfig = config
 
         self.worker_id = worker_id
 
         self.worker_dict: dict[str, BaseFunction] = {
             "collect": HTMLReader(config.task.reader),
-            "create_or_update_index": CreateOrUpdateIndex(config),
-            "delete_index": DeleteIndex(config)
+            "create_or_update_index": CreateOrUpdateIndex(config.vector),
+            "delete_index": DeleteIndex(config.vector),
+            "file_reader": FileReader(config.task.minio)
         }
 
         self.logger = get_logger(f"worker_{self.worker_id}")

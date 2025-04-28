@@ -2,8 +2,8 @@ import httpx
 import pytest
 import shortuuid
 
-from tests.helper.fixture import remote_config
-from wizard.config import Config
+from tests.helper.fixture import remote_worker_config
+from wizard.config import WorkerConfig
 from wizard.entity import Task
 from wizard.wand.worker import Worker
 
@@ -45,8 +45,8 @@ class TestClient(httpx.Client):
 
 
 @pytest.fixture(scope="function")
-def client(remote_config: Config) -> TestClient:
-    with TestClient(base_url=remote_config.backend.base_url) as client:
+def client(remote_worker_config: WorkerConfig) -> TestClient:
+    with TestClient(base_url=remote_worker_config.backend.base_url) as client:
         yield client
 
 
@@ -71,8 +71,8 @@ def task_id(client: TestClient) -> int:
 
 
 @pytest.fixture(scope="function")
-async def worker(remote_config: Config) -> Worker:
-    worker = Worker(config=remote_config, worker_id=0)
+async def worker(remote_worker_config: WorkerConfig) -> Worker:
+    worker = Worker(config=remote_worker_config, worker_id=0)
     await worker.async_init()
     return worker
 

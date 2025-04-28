@@ -76,9 +76,6 @@ async def base_url() -> str:
 @pytest.fixture(scope="function")
 def config(chromadb_endpoint: str) -> Config:
     load_dotenv()
-
-    os.environ[f"{ENV_PREFIX}_VECTOR_HOST"], os.environ[f"{ENV_PREFIX}_VECTOR_PORT"] = chromadb_endpoint.split(":")
-
     loader = Loader(Config, env_prefix=ENV_PREFIX)
     config = loader.load()
     yield config

@@ -40,7 +40,6 @@ async def add_index(
         title: str,
         content: str,
         namespace_id: str,
-        space_type: str,
         resource_id: str,
         parent_id: str,
         user_id: str
@@ -55,7 +54,6 @@ async def add_index(
             "content": content,
             "meta_info": {
                 "user_id": user_id,
-                "space_type": space_type,
                 "resource_id": resource_id,
                 "parent_id": parent_id,
             },
@@ -90,7 +88,7 @@ def namespace_id() -> str:
 async def vector_db_init(client: httpx.Client, worker: Worker, namespace_id: str):
     for resource_id, parent_id, title, content in create_test_case[1]:
         await add_index(
-            client, worker, title=title, content=content, namespace_id=namespace_id, space_type="private",
+            client, worker, title=title, content=content, namespace_id=namespace_id,
             resource_id=resource_id, parent_id=parent_id, user_id="test"
         )
 

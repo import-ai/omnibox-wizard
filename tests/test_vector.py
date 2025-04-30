@@ -23,7 +23,6 @@ async def db(chromadb_endpoint: str) -> VectorDB:
         "chunk_type": ChunkType.keyword,
         "namespace_id": namespace_id,
         "user_id": "test",
-        "space_type": "private",
         "parent_id": "test"
     }
 

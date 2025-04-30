@@ -8,8 +8,6 @@ from pydantic import BaseModel, Field
 
 from wizard.grimoire.entity.retrieval import BaseRetrieval, Citation
 
-SpaceType = Literal["private", "teamspace"]
-
 
 class ChunkType(str, Enum):
     title: str = "title"  # document title
@@ -32,7 +30,6 @@ class Chunk(BaseModel):
     namespace_id: str
     user_id: str
     parent_id: str
-    space_type: SpaceType
 
     chunk_id: str = Field(description="ID of chunk", default_factory=shortuuid.uuid)
     created_at: float = Field(description="Unix timestamp in float format", default_factory=time.time)

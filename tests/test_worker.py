@@ -57,7 +57,6 @@ def task_id(client: TestClient) -> int:
         "html": "<html><header><title>Test Title</title></header><body><p>Hello World!</p></body></html>",
         "title": "Test",
         "namespace": client.namespace,
-        "spaceType": "private"
     })
 
     json_response: dict = response.json()

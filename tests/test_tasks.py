@@ -15,7 +15,6 @@ logger = get_logger("tests")
 async def test_tasks(client: httpx.Client, config: Config, trace_info: TraceInfo):
     enable_callback: bool = os.environ.get(f"{ENV_PREFIX}_TESTS_ENABLE_WORKER_CALLBACK", "false").lower() == "true"
     namespace_id: str = "foo"
-    payload: dict = {"spaceType": "private"}
     user_id: str = "bar"
 
     task_ids: [str] = []
@@ -28,8 +27,7 @@ async def test_tasks(client: httpx.Client, config: Config, trace_info: TraceInfo
                 "url": "foo"
             },
             "namespace_id": namespace_id,
-            "user_id": user_id,
-            "payload": payload
+            "user_id": user_id
         }).raise_for_status().json()
 
         task_id: str = json_response["task_id"]

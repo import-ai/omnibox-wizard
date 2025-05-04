@@ -4,15 +4,15 @@ import httpx
 
 from common.logger import get_logger
 from common.trace_info import TraceInfo
-from tests.helper.fixture import client, config
+from tests.helper.fixture import client, worker_config
 from tests.helper.fixture import trace_info
-from wizard.config import Config, ENV_PREFIX
+from wizard.config import WorkerConfig, ENV_PREFIX
 from wizard.wand.worker import Worker
 
 logger = get_logger("tests")
 
 
-async def test_tasks(client: httpx.Client, config: Config, trace_info: TraceInfo):
+async def test_tasks(client: httpx.Client, worker_config: WorkerConfig, trace_info: TraceInfo):
     enable_callback: bool = os.environ.get(f"{ENV_PREFIX}_TESTS_ENABLE_WORKER_CALLBACK", "false").lower() == "true"
     namespace_id: str = "foo"
     user_id: str = "bar"
@@ -43,7 +43,7 @@ async def test_tasks(client: httpx.Client, config: Config, trace_info: TraceInfo
 
         logger.info({"task_created": json_task, "round": i})
 
-    worker = Worker(config=config, worker_id=0)
+    worker = Worker(config=worker_config, worker_id=0)
     await worker.async_init()
 
     for i in range(3):

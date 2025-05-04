@@ -6,14 +6,15 @@ import httpx
 import pytest
 from dotenv import load_dotenv
 from fastapi.testclient import TestClient
-from tests.helper.chroma_container import ChromaContainer
 
 from common import project_root
 from common.config_loader import Loader
 from common.logger import get_logger
 from common.trace_info import TraceInfo
+from tests.helper.backend_client import BackendClient
+from tests.helper.chroma_container import ChromaContainer
 from wizard.api.server import app
-from wizard.config import Config, ENV_PREFIX
+from wizard.config import Config, ENV_PREFIX, WorkerConfig
 from wizard.wand.worker import Worker
 
 logger = get_logger("fixture")
@@ -26,19 +27,6 @@ def chromadb_endpoint() -> str:
         endpoint: str = server_info["endpoint"]
         os.environ[f"{ENV_PREFIX}_VECTOR_HOST"] = server_info["host"]
         os.environ[f"{ENV_PREFIX}_VECTOR_PORT"] = server_info["port"]
-
-        def check_chromadb_ready() -> bool:
-            for i in range(10):
-                try:
-                    with httpx.Client(base_url=f"http://{endpoint}", timeout=3) as client:  # noqa
-                        response: httpx.Response = client.get("/api/v2/healthcheck")
-                    response.raise_for_status()
-                    return True
-                except httpx.ConnectError:
-                    time.sleep(1)
-            raise RuntimeError("ChromaDB container failed to become healthy in time.")
-
-        check_chromadb_ready()
         yield endpoint
 
 
@@ -78,10 +66,15 @@ async def base_url() -> str:
 @pytest.fixture(scope="function")
 def config(chromadb_endpoint: str) -> Config:
     load_dotenv()
-
-    os.environ[f"{ENV_PREFIX}_VECTOR_HOST"], os.environ[f"{ENV_PREFIX}_VECTOR_PORT"] = chromadb_endpoint.split(":")
-
     loader = Loader(Config, env_prefix=ENV_PREFIX)
+    config = loader.load()
+    yield config
+
+
+@pytest.fixture(scope="function")
+def worker_config(chromadb_endpoint: str) -> WorkerConfig:
+    load_dotenv()
+    loader = Loader(WorkerConfig, env_prefix=ENV_PREFIX)
     config = loader.load()
     yield config
 
@@ -93,6 +86,17 @@ def remote_config() -> Config:
     os.environ[f"{ENV_PREFIX}_VECTOR_HOST"], os.environ[f"{ENV_PREFIX}_VECTOR_PORT"] = "chromadb:8001".split(":")
 
     loader = Loader(Config, env_prefix=ENV_PREFIX)
+    config = loader.load()
+    yield config
+
+
+@pytest.fixture(scope="function")
+def remote_worker_config() -> WorkerConfig:
+    load_dotenv()
+
+    os.environ[f"{ENV_PREFIX}_VECTOR_HOST"], os.environ[f"{ENV_PREFIX}_VECTOR_PORT"] = "chromadb:8001".split(":")
+
+    loader = Loader(WorkerConfig, env_prefix=ENV_PREFIX)
     config = loader.load()
     yield config
 
@@ -122,8 +126,8 @@ def client(config: Config) -> httpx.Client:
 
 
 @pytest.fixture(scope="function")
-async def worker(config) -> Worker:
-    worker = Worker(config=config, worker_id=0)
+async def worker(worker_config: WorkerConfig) -> Worker:
+    worker = Worker(config=worker_config, worker_id=0)
     await worker.async_init()
     return worker
 
@@ -131,3 +135,9 @@ async def worker(config) -> Worker:
 @pytest.fixture(scope="function")
 def trace_info() -> TraceInfo:
     return TraceInfo(logger=get_logger("test"))
+
+
+@pytest.fixture(scope="function")
+def backend_client(remote_worker_config: WorkerConfig) -> BackendClient:
+    with BackendClient(base_url=remote_worker_config.backend.base_url) as client:
+        yield client

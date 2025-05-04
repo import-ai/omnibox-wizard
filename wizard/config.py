@@ -43,6 +43,11 @@ class TaskConfig(BaseModel):
 class Config(BaseModel):
     vector: VectorConfig
     grimoire: GrimoireConfig
+    backend: BackendConfig
+
+
+class WorkerConfig(BaseModel):
+    vector: VectorConfig
     task: TaskConfig
     backend: BackendConfig
 

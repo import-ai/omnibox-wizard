@@ -1,7 +1,7 @@
 from typing import List
 
 from common.trace_info import TraceInfo
-from wizard.config import Config
+from wizard.config import VectorConfig
 from wizard.entity import Task
 from wizard.grimoire.entity.chunk import Chunk, ChunkType
 from wizard.grimoire.retriever.vector_db import VectorDB
@@ -56,8 +56,8 @@ def split_markdown(
 
 
 class DeleteIndex(BaseFunction):
-    def __init__(self, config: Config):
-        self.vector_db: VectorDB = VectorDB(config.vector)
+    def __init__(self, config: VectorConfig):
+        self.vector_db: VectorDB = VectorDB(config)
 
     async def async_init(self):
         await self.vector_db.async_init()

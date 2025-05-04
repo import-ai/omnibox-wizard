@@ -16,7 +16,9 @@ dependencies = [
     "chromadb-client (>=1.0.7,<2.0.0)",
     "openai (>=1.76.0,<2.0.0)",
     "httpx (>=0.28.1,<0.29.0)",
-    "beautifulsoup4 (>=4.13.4,<5.0.0)"
+    "beautifulsoup4 (>=4.13.4,<5.0.0)",
+    "markitdown[docx,pdf,pptx] (>=0.1.1,<0.2.0)",
+    "langchain (>=0.3.24,<0.4.0)",
 ]
 
 [tool.poetry]

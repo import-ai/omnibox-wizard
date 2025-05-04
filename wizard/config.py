@@ -36,17 +36,8 @@ class ReaderConfig(BaseModel):
     timeout: float = Field(default=180, description="timeout second for reading html")
 
 
-class MinioConfig(BaseModel):
-    endpoint: str
-    access_key: str
-    secret_key: str
-    secure: bool = Field(default=False)
-    bucket: str = Field(default="obw")
-
-
 class TaskConfig(BaseModel):
     reader: ReaderConfig
-    minio: MinioConfig
 
 
 class Config(BaseModel):

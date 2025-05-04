@@ -6,28 +6,18 @@ import httpx
 import pytest
 from dotenv import load_dotenv
 from fastapi.testclient import TestClient
-from testcontainers.minio import MinioContainer
 
 from common import project_root
 from common.config_loader import Loader
 from common.logger import get_logger
 from common.trace_info import TraceInfo
+from tests.helper.backend_client import BackendClient
 from tests.helper.chroma_container import ChromaContainer
 from wizard.api.server import app
 from wizard.config import Config, ENV_PREFIX, WorkerConfig
 from wizard.wand.worker import Worker
 
 logger = get_logger("fixture")
-
-
-@pytest.fixture(scope="function")
-def minio_endpoint() -> str:
-    with MinioContainer(image="quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z") as minio:
-        config = minio.get_config()
-        os.environ[f"{ENV_PREFIX}_TASK_MINIO_ACCESS_KEY"] = config["access_key"]
-        os.environ[f"{ENV_PREFIX}_TASK_MINIO_SECRET_KEY"] = config["secret_key"]
-        os.environ[f"{ENV_PREFIX}_TASK_MINIO_ENDPOINT"] = config["endpoint"]
-        yield config["endpoint"]
 
 
 @pytest.fixture(scope="function")
@@ -82,7 +72,7 @@ def config(chromadb_endpoint: str) -> Config:
 
 
 @pytest.fixture(scope="function")
-def worker_config(chromadb_endpoint: str, minio_endpoint: str) -> WorkerConfig:
+def worker_config(chromadb_endpoint: str) -> WorkerConfig:
     load_dotenv()
     loader = Loader(WorkerConfig, env_prefix=ENV_PREFIX)
     config = loader.load()
@@ -145,3 +135,9 @@ async def worker(worker_config: WorkerConfig) -> Worker:
 @pytest.fixture(scope="function")
 def trace_info() -> TraceInfo:
     return TraceInfo(logger=get_logger("test"))
+
+
+@pytest.fixture(scope="function")
+def backend_client(remote_worker_config: WorkerConfig) -> BackendClient:
+    with BackendClient(base_url=remote_worker_config.backend.base_url) as client:
+        yield client

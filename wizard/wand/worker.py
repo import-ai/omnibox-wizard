@@ -1,6 +1,7 @@
 import asyncio
 from datetime import datetime
 from typing import Optional, Callable
+import traceback  # added for formatted traceback
 
 import httpx
 
@@ -25,7 +26,7 @@ class Worker:
             "collect": HTMLReader(config.task.reader),
             "create_or_update_index": CreateOrUpdateIndex(config.vector),
             "delete_index": DeleteIndex(config.vector),
-            "file_reader": FileReader(config.task.minio)
+            "file_reader": FileReader(config.backend)
         }
 
         self.logger = get_logger(f"worker_{self.worker_id}")
@@ -87,7 +88,7 @@ class Worker:
         try:
             output = await self.worker_router(task, trace_info)
         except Exception as e:
-            task.exception = {"error": CommonException.parse_exception(e)}
+            task.exception = {"error": CommonException.parse_exception(e), "traceback": traceback.format_exc()}
             logging_func = trace_info.bind(error=CommonException.parse_exception(e)).exception
         else:
             task.output = output

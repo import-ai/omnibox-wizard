@@ -4,25 +4,21 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 
-from common.config_loader import Loader
 from common.exception import CommonException
 from common.logger import get_logger
 from wizard.api.grimoire import init as grimoire_init
 from wizard.api.v1 import v1_router
-from wizard.config import ENV_PREFIX, Config
 
 logger = get_logger("app")
 
 
 async def init():
-    loader = Loader(Config, env_prefix=ENV_PREFIX)
-    config: Config = loader.load()
+    await grimoire_init()
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     await init()
-    await grimoire_init()
     yield
 
 

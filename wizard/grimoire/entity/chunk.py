@@ -27,7 +27,6 @@ class Chunk(BaseModel):
     text: str | None = Field(default=None, description="Chunk content")
     chunk_type: ChunkType = Field(description="Chunk type")
 
-    namespace_id: str
     user_id: str
     parent_id: str
 
@@ -35,9 +34,7 @@ class Chunk(BaseModel):
     created_at: float = Field(description="Unix timestamp in float format", default_factory=time.time)
     updated_at: float = Field(description="Unix timestamp in float format", default_factory=time.time)
 
-    start_lineno: Optional[int] = Field(description="The start line number of this chunk, line included", default=None)
-    end_lineno: Optional[int] = Field(description="The end line number of this chunk, line excluded", default=None)
-    parent_chunk_id: Optional[str] = Field(description="A chunk could be split into many smaller chunks", default=None)
+    start_index: Optional[int] = Field(description="The start line number of this chunk, line included", default=None)
 
     @property
     def metadata(self) -> dict:

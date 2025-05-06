@@ -13,7 +13,7 @@ from wizard.entity import Task
 from wizard.wand.functions.base_function import BaseFunction
 from wizard.wand.functions.file_reader import FileReader
 from wizard.wand.functions.html_reader import HTMLReader
-from wizard.wand.functions.index import CreateOrUpdateIndex, DeleteIndex
+from wizard.wand.functions.index import UpsertIndex, DeleteIndex
 
 
 class Worker:
@@ -24,7 +24,7 @@ class Worker:
 
         self.worker_dict: dict[str, BaseFunction] = {
             "collect": HTMLReader(config.task.reader),
-            "create_or_update_index": CreateOrUpdateIndex(config.vector),
+            "create_or_update_index": UpsertIndex(config.vector),
             "delete_index": DeleteIndex(config.vector),
             "file_reader": FileReader(config.backend)
         }

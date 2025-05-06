@@ -1,5 +1,3 @@
-import asyncio
-from concurrent.futures.thread import ThreadPoolExecutor
 from typing import List, Tuple
 
 import chromadb
@@ -11,37 +9,6 @@ from wizard.grimoire.entity.api import Condition
 from wizard.grimoire.entity.chunk import Chunk
 
 AsyncCollection = chromadb.api.async_api.AsyncCollection
-
-
-class AsyncVectorDB:
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.executor = ThreadPoolExecutor()
-
-    async def insert(self, *args, **kwargs):
-        loop = asyncio.get_event_loop()
-
-        def func(_args, _kwargs):
-            return super(AsyncVectorDB, self).insert(*_args, **_kwargs)
-
-        return await loop.run_in_executor(self.executor, func, args, kwargs)
-
-    async def remove(self, *args, **kwargs):
-        loop = asyncio.get_event_loop()
-
-        def func(_args, _kwargs):
-            return super(AsyncVectorDB, self).remove(*_args, **_kwargs)
-
-        return await loop.run_in_executor(self.executor, func, args, kwargs)
-
-    async def query(self, *args, **kwargs) -> List[Tuple[Chunk, float]]:
-        loop = asyncio.get_event_loop()
-
-        def func(_args, _kwargs):
-            return super(AsyncVectorDB, self).query(*_args, **_kwargs)
-
-        return await loop.run_in_executor(self.executor, func, args, kwargs)
 
 
 class VectorDB:
@@ -119,4 +86,4 @@ class VectorDB:
         return result_list
 
 
-__all__ = ["VectorDB", "AsyncVectorDB"]
+__all__ = ["VectorDB"]

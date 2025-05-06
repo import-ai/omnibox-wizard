@@ -218,6 +218,6 @@ class HTMLReader(BaseFunction):
         title: str = filtered_metadata.get("title", input_dict.get("title", None)) or url
         content = "\n".join([row for row in content.split("\n") if row != f"# {title}"]).strip()
 
-        result_dict: dict = {"url": url, "title": title, "markdown": content} | filtered_metadata
+        result_dict: dict = {"title": title, "markdown": content} | filtered_metadata
         trace_info.info({k: v for k, v in result_dict.items() if k != "markdown"})
         return result_dict

@@ -1,3 +1,4 @@
+import mimetypes
 import os
 import tempfile
 
@@ -35,14 +36,19 @@ class FileReader(BaseFunction):
             local_path: str = os.path.join(temp_dir, filename)
             await self.download(resource_id, local_path)
 
-            if mimetype in ["pptx", "docx", "pdf"]:
+            mime_ext: str | None = mimetypes.guess_extension(mimetype)
+
+            if mime_ext in [".pptx", ".docx", ".pdf"]:
                 result = self.markitdown.convert(local_path)
                 markdown: str = result.text_content
-            if mimetype in ["text/markdown"]:
+            elif mime_ext in [".md", ".txt"]:
                 with open(local_path, 'r') as f:
                     markdown: str = f.read()
             else:
-                raise ValueError(f"Unsupported mimetype: {mimetype}")
+                return {
+                    "message": "unsupported_type",
+                    "mime_ext": mime_ext
+                }
 
         result_dict: dict = {
             "title": title,

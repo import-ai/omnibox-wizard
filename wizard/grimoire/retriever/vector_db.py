@@ -54,7 +54,7 @@ class VectorDB:
     ) -> List[Tuple[Chunk, float]]:
         if isinstance(condition, dict):
             condition = Condition(**condition)
-        and_clause = [{"namespace_id": condition.namespace_id}]
+        and_clause = []
 
         or_clause = []
         if condition.resource_ids is not None:
@@ -68,7 +68,10 @@ class VectorDB:
             and_clause.append({"created_at": {"$gte": condition.created_at[0], "$lte": condition.created_at[1]}})
         if condition.updated_at is not None:
             and_clause.append({"updated_at": {"$gte": condition.updated_at[0], "$lte": condition.updated_at[1]}})
-        where = {"$and": and_clause} if len(and_clause) > 1 else and_clause[0]
+        if and_clause:
+            where = {"$and": and_clause} if len(and_clause) > 1 else and_clause[0]
+        else:
+            where = None
         if trace_info:
             trace_info.debug({"where": where, "condition": condition.model_dump()})
 

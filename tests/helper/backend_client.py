@@ -43,7 +43,7 @@ class BackendClient(httpx.Client):
             assert response.status_code == 200, response.json()
 
     def parent_id(self, space_type: str) -> str:
-        response = self.get('/api/v1/resources/root', params={
+        response = self.get(f'/api/v1/namespaces/{self.namespace_id}/resources/root', params={
             'namespace_id': self.namespace_id, 'space_type': space_type
         })
         return response.json()['id']

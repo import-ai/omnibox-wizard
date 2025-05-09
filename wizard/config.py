@@ -36,14 +36,14 @@ class ReaderConfig(BaseModel):
     timeout: float = Field(default=180, description="timeout second for reading html")
 
 
-class MarkdownSpliterConfig(BaseModel):
+class SpliterConfig(BaseModel):
     chunk_size: int = Field(default=1024)
     chunk_overlap: int = Field(default=128)
 
 
 class TaskConfig(BaseModel):
     reader: ReaderConfig
-    markdown_spliter: MarkdownSpliterConfig = Field(default_factory=MarkdownSpliterConfig)
+    spliter: SpliterConfig = Field(default_factory=SpliterConfig)
 
 
 class Config(BaseModel):

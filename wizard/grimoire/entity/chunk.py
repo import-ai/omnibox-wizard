@@ -12,7 +12,6 @@ from wizard.grimoire.entity.retrieval import BaseRetrieval, Citation
 class ChunkType(str, Enum):
     title: str = "title"  # document title
     doc: str = "doc"  # Whole document
-    section: str = "section"  # Part of document
     snippet: str = "snippet"  # Part of section
     keyword: str = "keyword"
 
@@ -34,7 +33,8 @@ class Chunk(BaseModel):
     created_at: float = Field(description="Unix timestamp in float format", default_factory=time.time)
     updated_at: float = Field(description="Unix timestamp in float format", default_factory=time.time)
 
-    start_index: Optional[int] = Field(description="The start line number of this chunk, line included", default=None)
+    start_index: Optional[int] = Field(description="The start char index of this chunk", default=None)
+    end_index: Optional[int] = Field(description="The end char index of this chunk, index excluded", default=None)
 
     @property
     def metadata(self) -> dict:

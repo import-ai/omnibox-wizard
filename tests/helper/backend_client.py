@@ -27,7 +27,7 @@ class BackendClient(httpx.Client):
 
         self.headers["Authorization"] = f"Bearer {self.access_token}"
 
-        response: httpx.Response = self.get("/api/v1/namespaces")
+        response: httpx.Response = self.get("/api/v1/namespaces/user")
         namespace_list_result: dict = response.json()
         assert response.is_success, namespace_list_result
         assert len(namespace_list_result) > 0

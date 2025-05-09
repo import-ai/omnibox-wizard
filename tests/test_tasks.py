@@ -50,7 +50,7 @@ async def test_tasks(client: httpx.Client, worker_config: WorkerConfig, trace_in
         task_id = task_ids[i]
         task = await worker.fetch_task()
         assert task is not None
-        assert task.task_id == task_id
+        assert task.id == task_id
 
         json_task: dict = client.get(f"/api/v1/tasks/{task_id}").raise_for_status().json()
         assert json_task["task_id"] == task_id

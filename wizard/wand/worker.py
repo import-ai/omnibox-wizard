@@ -1,7 +1,7 @@
 import asyncio
+import traceback
 from datetime import datetime
 from typing import Optional, Callable
-import traceback  # added for formatted traceback
 
 import httpx
 
@@ -24,8 +24,8 @@ class Worker:
 
         self.worker_dict: dict[str, BaseFunction] = {
             "collect": HTMLReader(config.task.reader),
-            "create_or_update_index": UpsertIndex(config.vector),
-            "delete_index": DeleteIndex(config.vector),
+            "create_or_update_index": UpsertIndex(config),
+            "delete_index": DeleteIndex(config),
             "file_reader": FileReader(config.backend)
         }
 
@@ -36,8 +36,8 @@ class Worker:
             await worker.async_init()
 
     def get_trace_info(self, task: Task) -> TraceInfo:
-        return TraceInfo(task.task_id, self.logger, payload={
-            "task_id": task.task_id,
+        return TraceInfo(task.id, self.logger, payload={
+            "task_id": task.id,
             "namespace_id": task.namespace_id,
             "function": task.function
         })
@@ -103,10 +103,10 @@ class Worker:
             http_response: httpx.Response = await client.post(
                 f"/internal/api/v1/wizard/callback",
                 json=task.model_dump(
-                    exclude_none=True, mode="json", by_alias=True,
-                    include={"task_id", "exception", "output", "ended_at"},
+                    exclude_none=True, mode="json",
+                    include={"id", "exception", "output"},
                 ),
-                headers={"X-Trace-ID": task.task_id}
+                headers={"X-Trace-ID": task.id}
             )
             logging_func: Callable[[dict], None] = trace_info.debug if http_response.is_success else trace_info.error
             logging_func({"status_code": http_response.status_code, "response": http_response.json()})

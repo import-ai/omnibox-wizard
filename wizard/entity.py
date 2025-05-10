@@ -1,19 +1,16 @@
 from datetime import datetime
 
-from pydantic import BaseModel, Field, ConfigDict
-from pydantic.alias_generators import to_camel
+from pydantic import BaseModel, Field
 
 
 class Base(BaseModel):
-    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
-
     created_at: datetime = Field(default_factory=datetime.now)
     updated_at: datetime | None = Field(default=None)
     deleted_at: datetime | None = Field(default=None)
 
 
 class Task(Base):
-    task_id: str = Field(alias="id")
+    id: str
     priority: int
 
     namespace_id: str

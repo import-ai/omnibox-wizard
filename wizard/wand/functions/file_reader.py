@@ -16,6 +16,10 @@ class FileReader(BaseFunction):
         self.markitdown: MarkItDown = MarkItDown()
         self.base_url: str = config.base_url
 
+        self.mimetype_mapping: dict[str, str] = {
+            "text/x-markdown": ".md"
+        }
+
     async def download(self, resource_id: str, target: str):
         async with httpx.AsyncClient(base_url=self.base_url) as client:
             async with client.stream('GET', f'/internal/api/v1/resources/files/{resource_id}') as response:
@@ -23,6 +27,15 @@ class FileReader(BaseFunction):
                 with open(target, 'wb') as f:
                     async for chunk in response.aiter_bytes():
                         f.write(chunk)
+
+    def guess_extension(self, mimetype: str) -> str | None:
+        if mime_ext := mimetypes.guess_extension(mimetype):
+            return mime_ext
+        if mime_ext := self.mimetype_mapping.get(mimetype, None):
+            return mime_ext
+        if mimetype.startswith("text/"):
+            return ".txt"
+        return None
 
     async def run(self, task: Task, trace_info: TraceInfo) -> dict:
         task_input: dict = task.input
@@ -36,7 +49,7 @@ class FileReader(BaseFunction):
             local_path: str = os.path.join(temp_dir, filename)
             await self.download(resource_id, local_path)
 
-            mime_ext: str | None = mimetypes.guess_extension(mimetype)
+            mime_ext: str | None = self.guess_extension(mimetype)
 
             if mime_ext in [".pptx", ".docx", ".pdf"]:
                 result = self.markitdown.convert(local_path)

@@ -27,7 +27,7 @@ class BackendClient(httpx.Client):
 
         self.headers["Authorization"] = f"Bearer {self.access_token}"
 
-        response: httpx.Response = self.get("/api/v1/namespaces")
+        response: httpx.Response = self.get("/api/v1/namespaces/user")
         namespace_list_result: dict = response.json()
         assert response.is_success, namespace_list_result
         assert len(namespace_list_result) > 0
@@ -43,7 +43,7 @@ class BackendClient(httpx.Client):
             assert response.status_code == 200, response.json()
 
     def parent_id(self, space_type: str) -> str:
-        response = self.get('/api/v1/resources/root', params={
+        response = self.get(f'/api/v1/namespaces/{self.namespace_id}/resources/root', params={
             'namespace_id': self.namespace_id, 'space_type': space_type
         })
         return response.json()['id']

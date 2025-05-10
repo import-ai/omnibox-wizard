@@ -20,7 +20,7 @@ def uploaded_file(backend_client: BackendClient) -> dict:
         parent_id: str = backend_client.parent_id('private')
 
         with open(filepath, 'rb') as f:
-            response = backend_client.post('/api/v1/resources/files', files={
+            response = backend_client.post(f'/api/v1/namespaces/{backend_client.namespace_id}/resources/files', files={
                 "file": (filepath, f, mimetype)
             }, data={
                 'namespace_id': backend_client.namespace_id,
@@ -33,7 +33,8 @@ def uploaded_file(backend_client: BackendClient) -> dict:
 def test_download_file(backend_client: BackendClient, uploaded_file: dict):
     resource_id: str = uploaded_file['resource_id']
     filepath: str = uploaded_file['filepath']
-    with backend_client.stream('GET', f'/api/v1/resources/files/{resource_id}') as response:
+    with backend_client.stream(
+            'GET', f'/api/v1/namespaces/{backend_client.namespace_id}/resources/files/{resource_id}') as response:
         response.raise_for_status()
         content_disposition: str = response.headers.get('Content-Disposition')
         filename: str = content_disposition.split('filename="')[-1].rstrip('"')

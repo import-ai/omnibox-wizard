@@ -1,6 +1,5 @@
 import json as jsonlib
 import os
-import pickle
 
 import pytest
 from dotenv import load_dotenv
@@ -27,15 +26,25 @@ def reader_config() -> ReaderConfig:
 
 @pytest.fixture(scope="function")
 def task() -> Task:
-    with project_root.open("tests/resources/tasks/tencent_news.pkl", "rb") as f:
-        return pickle.load(f)
+    with project_root.open("tests/resources/files/index.html") as f:
+        html: str = f.read()
+        yield Task(
+            id='test',
+            priority=5,
+            namespace_id='test',
+            user_id='test',
+            function="collect",
+            input={
+                'url': 'https://example.com',
+                'html': html,
+            }
+        )
 
 
 async def test_html_reader(reader_config: ReaderConfig, task: Task, trace_info: TraceInfo):
     c = HTMLReader(reader_config)
     result = await c.run(task, trace_info)
     print(jsonlib.dumps(result, ensure_ascii=False, separators=(",", ":")))
-    # assert "Implement a notification system for updates and alerts." in result["markdown"]
 
 
 async def test_html_clean(reader_config: ReaderConfig, task: Task):

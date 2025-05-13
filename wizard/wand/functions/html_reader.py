@@ -174,7 +174,7 @@ class HTMLReader(BaseFunction):
         messages = [{"role": "user", "content": prompt}]
         openai_response = await self.client.chat.completions.create(
             model=self.model, messages=messages, temperature=0, frequency_penalty=0.1,
-            stream=stream, extra_body={"enable_thinking": False}
+            stream=stream, extra_body={"chat_template_kwargs": {"enable_thinking": False}}
         )
         response = await self.get_response(openai_response, stream)
         if schema:

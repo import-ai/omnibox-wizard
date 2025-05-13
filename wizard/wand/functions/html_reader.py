@@ -134,7 +134,8 @@ class HTMLReader(BaseFunction):
         Create a prompt for the model with optional instruction and JSON schema.
         """
         if not instruction:
-            instruction = "Extract the main content from the given HTML and convert it to Markdown format."
+            instruction = ("Extract the main content from the given HTML and convert it to Markdown format. "
+                           "Your response should starts with ```markdown, end with ```.")
         if schema:
             instruction = ("Extract the specified information from the given HTML and present it in a structured JSON "
                            "format. If any of the fields are not found in the HTML document, set their values to "
@@ -172,7 +173,9 @@ class HTMLReader(BaseFunction):
         prompt = self.create_prompt(html, instruction, schema)
         messages = [{"role": "user", "content": prompt}]
         openai_response = await self.client.chat.completions.create(
-            model=self.model, messages=messages, temperature=0, frequency_penalty=0.1, stream=stream)
+            model=self.model, messages=messages, temperature=0, frequency_penalty=0.1,
+            stream=stream, extra_body={"enable_thinking": False}
+        )
         response = await self.get_response(openai_response, stream)
         if schema:
             str_json_response: str = self.get_code_block(response, "json")

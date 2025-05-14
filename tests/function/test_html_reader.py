@@ -26,23 +26,20 @@ def reader_config() -> ReaderConfig:
 
 @pytest.fixture(scope="function")
 def task() -> Task:
-    with project_root.open("tests/resources/files/index.html") as f:
-        html: str = f.read()
+    with project_root.open("tests/resources/files/input.json") as f:
         yield Task(
             id='test',
             priority=5,
             namespace_id='test',
             user_id='test',
             function="collect",
-            input={
-                'url': 'https://example.com',
-                'html': html,
-            }
+            input=jsonlib.load(f)
         )
 
 
 async def test_html_reader(reader_config: ReaderConfig, task: Task, trace_info: TraceInfo):
     c = HTMLReader(reader_config)
+    print(task.input['url'])
     result = await c.run(task, trace_info)
     print(jsonlib.dumps(result, ensure_ascii=False, separators=(",", ":")))
 

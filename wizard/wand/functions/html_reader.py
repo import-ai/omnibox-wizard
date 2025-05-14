@@ -87,7 +87,7 @@ class HTMLReader(BaseFunction):
             soup = self.content_selector(url, soup)
 
         # Remove script, style, meta, and link tags
-        for tag_name in ['script', 'style', 'meta', 'link', 'span']:
+        for tag_name in ['script', 'style', 'meta', 'link']:
             for tag in soup.find_all(tag_name):
                 tag.decompose()
 

@@ -57,5 +57,6 @@ class TextRetrieval(BaseRetrieval):
         return Citation(
             title=self.chunk.title,
             snippet=self.chunk.text,
-            link=self.chunk.resource_id
+            link=self.chunk.resource_id,
+            updated_at=timestamp_to_datetime(self.chunk.updated_at)
         )

@@ -32,7 +32,8 @@ class RAG:
         messages = [
             {"role": "system", "content": template.format_map({
                 "now": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "context": context
+                "context": context,
+                "lang": "简体中文"
             })},
             {"role": "user", "content": query}
         ]

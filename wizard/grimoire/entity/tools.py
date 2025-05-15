@@ -1,24 +1,9 @@
-import json as jsonlib
-import os
 from functools import partial
 from typing import Literal, Callable, TypedDict
 
 from pydantic import BaseModel, Field
 
-from common import project_root
-
 ToolName = Literal["knowledge_search", "web_search"]
-
-
-def get_tool_schema(tool_type: ToolName | str) -> dict:
-    with project_root.open(os.path.join("resources/tool_schema", f'{tool_type}.json')) as f:
-        schema: dict = jsonlib.load(f)
-    return schema
-
-
-TOOL_SCHEMA: dict[str, dict] = {
-    tool: get_tool_schema(tool) for tool in os.listdir(project_root.path("resources/tool_schema"))
-}
 
 
 class Condition(BaseModel):
@@ -39,11 +24,6 @@ class Tool(BaseModel):
     name: ToolName
     schema: dict
 
-    def __init__(self, /, **kwargs):
-        if "schema" not in kwargs:
-            kwargs["schema"] = TOOL_SCHEMA[kwargs["type"]]
-        super().__init__(**kwargs)
-
     def to_executor_config(self, func: Callable, /, **kwargs) -> ToolExecutorConfig:
         return ToolExecutorConfig(
             name=self.name,
@@ -54,6 +34,25 @@ class Tool(BaseModel):
 
 class KnowledgeTool(Tool, Condition):
     name: Literal["knowledge_search"] = "knowledge_search"
+    schema: dict = {
+        "type": "function",
+        "function": {
+            "name": "knowledge_search",
+            "description": "Search the user's private knowledge base for relevant information matching the given query.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "The query to search for."
+                    }
+                },
+                "required": [
+                    "query"
+                ]
+            }
+        }
+    }
 
     def to_condition(self) -> Condition:
         return Condition(
@@ -70,3 +69,26 @@ class KnowledgeTool(Tool, Condition):
 
 class WebSearchTool(Tool):
     name: Literal["web_search"] = "web_search"
+    schema: dict = {
+        "type": "function",
+        "function": {
+            "name": "web_search",
+            "description": "Search the internet for the given query.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "The query to search for."
+                    },
+                    "page_number": {
+                        "type": "integer",
+                        "description": "The page number to search for."
+                    }
+                },
+                "required": [
+                    "query"
+                ]
+            }
+        }
+    }

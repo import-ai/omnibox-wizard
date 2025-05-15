@@ -22,7 +22,7 @@ class ChatRequest(BaseChatRequest, Condition):
 
 
 class AgentRequest(BaseChatRequest):
-    messages: List[ChatCompletionMessageParam] | None = Field(default=None)
+    messages: List[ChatCompletionMessageParam] | None = Field(default_factory=list)
     tools: List[KnowledgeTool | WebSearchTool] | None = Field(default=None)
     citation_cnt: int = Field(default=0)
 

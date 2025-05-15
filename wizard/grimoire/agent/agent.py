@@ -1,3 +1,4 @@
+from datetime import datetime
 from functools import partial
 from typing import AsyncIterable
 
@@ -5,6 +6,7 @@ from openai import AsyncOpenAI, AsyncStream, NOT_GIVEN
 from openai.types.chat import ChatCompletionChunk
 from openai.types.chat.chat_completion_chunk import ChoiceDeltaToolCall
 
+from common import project_root
 from common.trace_info import TraceInfo
 from wizard.config import OpenAIConfig, ToolsConfig, VectorConfig
 from wizard.grimoire.agent.tools import ToolExecutor
@@ -21,6 +23,9 @@ class Agent(BaseStreamable):
     def __init__(self, openai_config: OpenAIConfig, tools_config: ToolsConfig, vector_config: VectorConfig):
         self.client = AsyncOpenAI(api_key=openai_config.api_key, base_url=openai_config.base_url)
         self.model = openai_config.model
+
+        with project_root.open("resources/prompts/system.md") as f:
+            self.system_prompt = f.read()
 
         self.web_search_retriever = SearXNG(base_url=tools_config.searxng_base_url)
         self.knowledge_database_retriever = VectorDB(config=vector_config)
@@ -82,7 +87,20 @@ class Agent(BaseStreamable):
         }
         tool_executor = ToolExecutor(executor_config)
 
-        messages = [*AgentRequest.messages, {"role": "user", "content": agent_request.query}]
+        messages = agent_request.messages or []
+
+        if not messages:
+            prompt: str = self.system_prompt.format_map({
+                "now": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "lang": "简体中文"
+            })
+            system_message: dict = {"role": "system", "content": prompt}
+            messages.append(system_message)
+            yield ChatOpenAIMessageResponse(message=system_message)
+
+        user_message: dict = {"role": "user", "content": agent_request.query}
+        messages.append(user_message)
+        yield ChatOpenAIMessageResponse(message=user_message)
 
         while messages[-1]['role'] != 'assistant':
             async for chunk in self.chat(messages, tools=tool_executor.tools):
@@ -90,7 +108,7 @@ class Agent(BaseStreamable):
                     messages.append(chunk.message)
                 yield chunk
             if messages[-1].get('tool_calls', []):
-                async for chunk in tool_executor.astream(messages[-1]):
+                async for chunk in tool_executor.astream(messages):
                     if isinstance(chunk, ChatOpenAIMessageResponse):
                         messages.append(chunk.message)
                     yield chunk

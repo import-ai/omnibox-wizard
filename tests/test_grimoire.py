@@ -6,11 +6,13 @@ import pytest
 
 from tests.helper.fixture import client, worker
 from wizard.entity import Task
-from wizard.grimoire.entity.api import ChatRequest
+from wizard.grimoire.entity.api import ChatRequest, AgentRequest, BaseChatRequest
+from wizard.grimoire.entity.tools import KnowledgeTool
 from wizard.wand.worker import Worker
 
 
 def assert_stream(stream: Iterator[str]):
+    messages = []
     for each in stream:
         response = json.loads(each)
         response_type = response["response_type"]
@@ -21,12 +23,18 @@ def assert_stream(stream: Iterator[str]):
             print("\n".join(["", "-" * 32, json.dumps(response["citation_list"], ensure_ascii=False)]))
         elif response_type == "done":
             pass
+        elif response_type == "openai_message":
+            message = response["message"]
+            messages.append(message)
         else:
             raise RuntimeError(f"response_type: {response['response_type']}")
 
 
-def api_stream(client: httpx.Client, request: ChatRequest) -> Iterator[str]:
-    with client.stream("POST", "/api/v1/grimoire/stream", json=request.model_dump()) as response:
+def api_stream(client: httpx.Client, request: BaseChatRequest) -> Iterator[str]:
+    url = "/api/v1/grimoire/stream"
+    if isinstance(request, AgentRequest):
+        url = "/api/v1/grimoire/ask"
+    with client.stream("POST", url, json=request.model_dump()) as response:
         if response.status_code != 200:
             raise Exception(f"{response.status_code} {response.text}")
         for line in response.iter_lines():
@@ -114,3 +122,17 @@ def test_grimoire_stream_remote(remote_client: httpx.Client, namespace_id: str, 
     request = ChatRequest(session_id="fake_id", namespace_id=namespace_id, query=query,
                           resource_ids=resource_ids, parent_ids=parent_ids)
     assert_stream(api_stream(remote_client, request))
+
+
+@pytest.mark.parametrize("query, resource_ids, parent_ids", [
+    ("下周计划", None, None),
+    # ("下周计划", ["r_id_a0", "r_id_b0"], None),
+    # ("下周计划", None, ["p_id_1"]),
+    # ("下周计划", ["r_id_b0"], ["p_id_0"])
+])
+def test_agent(client: httpx.Client, vector_db_init: bool, namespace_id: str, query: str,
+               resource_ids: List[str] | None, parent_ids: List[str] | None):
+    request = AgentRequest(session_id="fake_id", query=query, tools=[
+        KnowledgeTool(namespace_id=namespace_id, resource_ids=resource_ids, parent_ids=parent_ids)
+    ])
+    assert_stream(api_stream(client, request))

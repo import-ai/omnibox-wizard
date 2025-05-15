@@ -1,11 +1,15 @@
-from typing import List, Literal, Tuple
+from typing import List, Literal
 
 from openai.types.chat import ChatCompletionMessageParam
 from pydantic import BaseModel, Field
 
 from wizard.grimoire.entity.retrieval import Citation
+from wizard.grimoire.entity.tools import KnowledgeTool, WebSearchTool, Condition
 
-ToolType = Literal["knowledge", "web_search"]
+
+class BaseChatRequest(BaseModel):
+    session_id: str
+    query: str
 
 
 class InsertRequest(BaseModel):
@@ -13,39 +17,11 @@ class InsertRequest(BaseModel):
     content: str = Field(description="Document content")
 
 
-class Condition(BaseModel):
-    namespace_id: str
-    resource_ids: List[str] | None = Field(default=None)
-    parent_ids: List[str] | None = Field(default=None)
-    created_at: Tuple[float, float] | None = Field(default=None)
-    updated_at: Tuple[float, float] | None = Field(default=None)
+class ChatRequest(BaseChatRequest, Condition):
+    pass
 
 
-class Tool(BaseModel):
-    type: ToolType
-
-
-class KnowledgeTool(Tool):
-    type: Literal["knowledge"] = "knowledge"
-    namespace_id: str
-    resource_ids: List[str] | None = Field(default=None)
-    parent_ids: List[str] | None = Field(default=None)
-    created_at: Tuple[float, float] | None = Field(default=None)
-    updated_at: Tuple[float, float] | None = Field(default=None)
-
-
-class WebSearchTool(Tool):
-    type: Literal["web_search"] = "web_search"
-
-
-class ChatRequest(Condition):
-    session_id: str
-    query: str
-
-
-class AgentRequest(BaseModel):
-    session_id: str
-    query: str
+class AgentRequest(BaseChatRequest):
     messages: List[ChatCompletionMessageParam] | None = Field(default=None)
     tools: List[KnowledgeTool | WebSearchTool] | None = Field(default=None)
     citation_cnt: int = Field(default=0)
@@ -88,4 +64,4 @@ class ToolCall(BaseModel):
 
 class ToolCallResponse(ChatBaseResponse):
     response_type: Literal["tool_call"] = "tool_call"
-    tool_calls: List[ToolCall]
+    tool_call: ToolCall

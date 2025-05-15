@@ -2,6 +2,7 @@ from datetime import datetime
 
 import httpx
 
+from common.trace_info import TraceInfo
 from wizard.grimoire.entity.retrieval import Citation, BaseRetrieval
 
 
@@ -36,7 +37,12 @@ class SearXNG:
     def __init__(self, base_url: str):
         self.base_url: str = base_url
 
-    async def search(self, query: str, page_number: int = 1) -> list[SearXNGRetrieval]:
+    async def search(
+            self,
+            query: str,
+            page_number: int = 1,
+            trace_info: TraceInfo | None = None
+    ) -> list[SearXNGRetrieval]:
         async with httpx.AsyncClient(base_url=self.base_url) as c:
             httpx_response: httpx.Response = await c.get(
                 "/search", params={"q": query, "pageno": page_number, "format": "json"}
@@ -45,4 +51,6 @@ class SearXNG:
         search_result: dict = httpx_response.json()
         results: list[dict] = search_result['results']
         retrievals: list[SearXNGRetrieval] = [SearXNGRetrieval(result=result) for result in results]
+        if trace_info:
+            trace_info.debug({"len(retrievals)": len(retrievals)})
         return retrievals

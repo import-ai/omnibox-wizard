@@ -10,7 +10,6 @@ from wizard.wand.worker import Worker
 @pytest.mark.parametrize("task_id", ["UqZHmUr28DyZRQ4y5SxGji"])
 async def test_single_task(worker_config: WorkerConfig, task_id: str):
     worker = Worker(worker_config, worker_id=0)
-    await worker.async_init()
     with httpx.Client(base_url=worker_config.backend.base_url) as client:
         httpx_response: httpx.Response = client.get(f"/api/v1/tasks/{task_id}")
         httpx_response.raise_for_status()

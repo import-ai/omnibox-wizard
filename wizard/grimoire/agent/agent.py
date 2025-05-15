@@ -1,43 +1,50 @@
-import json as jsonlib
-from typing import AsyncIterable, TypeVar, Callable
+from functools import partial
+from typing import AsyncIterable
 
-from openai import AsyncOpenAI, AsyncStream
+from openai import AsyncOpenAI, AsyncStream, NOT_GIVEN
 from openai.types.chat import ChatCompletionChunk
 from openai.types.chat.chat_completion_chunk import ChoiceDeltaToolCall
 
-from wizard.config import OpenAIConfig
+from common.trace_info import TraceInfo
+from wizard.config import OpenAIConfig, ToolsConfig, VectorConfig
+from wizard.grimoire.agent.tools import ToolExecutor
+from wizard.grimoire.base_streamable import BaseStreamable, ChatResponse
 from wizard.grimoire.entity.api import (
-    ChatThinkDeltaResponse,
-    ChatBaseResponse,
-    ChatDeltaResponse,
-    AgentRequest, ChatOpenAIMessageResponse
+    ChatThinkDeltaResponse, ChatDeltaResponse, AgentRequest, ChatOpenAIMessageResponse
 )
+from wizard.grimoire.entity.tools import ToolExecutorConfig
+from wizard.grimoire.retriever.searxng import SearXNG
+from wizard.grimoire.retriever.vector_db import VectorDB
 
-Response = TypeVar("Response", bound=ChatBaseResponse)
 
-
-class Agent:
-    def __init__(self, openai_config: OpenAIConfig):
+class Agent(BaseStreamable):
+    def __init__(self, openai_config: OpenAIConfig, tools_config: ToolsConfig, vector_config: VectorConfig):
         self.client = AsyncOpenAI(api_key=openai_config.api_key, base_url=openai_config.base_url)
         self.model = openai_config.model
+
+        self.web_search_retriever = SearXNG(base_url=tools_config.searxng_base_url)
+        self.knowledge_database_retriever = VectorDB(config=vector_config)
+
+        self.func_mapping = {
+            "web_search": self.web_search_retriever.search,
+            "knowledge_search": partial(self.knowledge_database_retriever.query, k=10)
+        }
 
     async def chat(
             self,
             messages: list[dict[str, str]],
             enable_thinking: bool = False,
             tools: list[dict] | None = None,
-            tools_mapping: dict[str, Callable] | None = None
-    ) -> AsyncIterable[Response]:
+    ) -> AsyncIterable[ChatResponse]:
+
         openai_response: AsyncStream[ChatCompletionChunk] = await self.client.chat.completions.create(
             model=self.model,
             messages=messages,
-            tools=tools,
+            tools=tools or NOT_GIVEN,
             stream=True,
             extra_body={"enable_thinking": enable_thinking}
         )
         assistant_message: dict = {'role': 'assistant'}
-
-        messages.append(assistant_message)
 
         async for chunk in openai_response:
             delta = chunk.choices[0].delta
@@ -68,18 +75,22 @@ class Agent:
 
         yield ChatOpenAIMessageResponse(message=assistant_message)
 
-        if tool_calls := assistant_message.get('tool_calls', []):
-            for tool_call in tool_calls:
-                function = tool_call['function']
-                function_args = jsonlib.loads(function['arguments'])
-                if function['name'] in tools_mapping:
-                    result = tools_mapping[function['name']](**function_args)
-                else:
-                    raise ValueError(f"Unknown function: {function['name']}")
-                tool_message = {"role": "tool", "content": jsonlib.dumps(result), "tool_call_id": tool_call['id']}
-                messages.append(tool_message)
+    async def astream(self, trace_info: TraceInfo, agent_request: AgentRequest) -> AsyncIterable[ChatResponse]:
+        executor_config: dict[str, ToolExecutorConfig] = {
+            tool.name: tool.to_executor_config(self.func_mapping[tool.name], trace_info=trace_info.get_child(tool.name))
+            for tool in agent_request.tools or []
+        }
+        tool_executor = ToolExecutor(executor_config)
 
-                yield ChatOpenAIMessageResponse(message=tool_message)
+        messages = [*AgentRequest.messages, {"role": "user", "content": agent_request.query}]
 
-    async def astream(self, agent_request: AgentRequest) -> AsyncIterable[Response]:
-        pass
+        while messages[-1]['role'] != 'assistant':
+            async for chunk in self.chat(messages, tools=tool_executor.tools):
+                if isinstance(chunk, ChatOpenAIMessageResponse):
+                    messages.append(chunk.message)
+                yield chunk
+            if messages[-1].get('tool_calls', []):
+                async for chunk in tool_executor.astream(messages[-1]):
+                    if isinstance(chunk, ChatOpenAIMessageResponse):
+                        messages.append(chunk.message)
+                    yield chunk

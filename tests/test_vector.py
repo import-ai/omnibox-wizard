@@ -18,7 +18,6 @@ async def db(chromadb_endpoint: str) -> VectorDB:
     loader = Loader(Config, env_prefix=ENV_PREFIX)
     config: Config = loader.load()
     db: VectorDB = VectorDB(config.vector)
-    await db.async_init()
     common_params = {
         "chunk_type": ChunkType.keyword,
         "namespace_id": namespace_id,

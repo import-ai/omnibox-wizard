@@ -128,7 +128,6 @@ def client(config: Config) -> httpx.Client:
 @pytest.fixture(scope="function")
 async def worker(worker_config: WorkerConfig) -> Worker:
     worker = Worker(config=worker_config, worker_id=0)
-    await worker.async_init()
     return worker
 
 

@@ -1,3 +1,5 @@
+import asyncio
+from asyncio import Task
 from typing import List, Tuple
 
 import chromadb
@@ -14,7 +16,9 @@ AsyncCollection = chromadb.api.async_api.AsyncCollection
 class VectorDB:
     def __init__(self, config: VectorConfig):
         self.config: VectorConfig = config
-        self.client: chromadb.AsyncClientAPI = ...
+        self.client: Task[chromadb.AsyncClientAPI] = asyncio.create_task(
+            chromadb.AsyncHttpClient(host=self.config.host, port=self.config.port)
+        )
         self.embed_func: OpenAIEmbeddingFunction = OpenAIEmbeddingFunction(
             api_base=self.config.embedding.base_url,
             api_key=self.config.embedding.api_key,
@@ -22,11 +26,9 @@ class VectorDB:
         )
         self.batch_size: int = config.batch_size
 
-    async def async_init(self):
-        self.client = await chromadb.AsyncHttpClient(host=self.config.host, port=self.config.port)
-
     async def get_collection(self, name: str) -> AsyncCollection:
-        collection: AsyncCollection = await self.client.get_or_create_collection(
+        client: chromadb.AsyncClientAPI = await self.client
+        collection: AsyncCollection = await client.get_or_create_collection(
             name=name, metadata={"hnsw:space": "ip"}, embedding_function=self.embed_func)
         return collection
 

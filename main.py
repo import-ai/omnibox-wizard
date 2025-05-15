@@ -18,7 +18,6 @@ async def main():
     loader = Loader(WorkerConfig, env_prefix=ENV_PREFIX)
     config = loader.load()
     workers = [Worker(config=config, worker_id=i) for i in range(args.workers)]
-    await asyncio.gather(*(worker.async_init() for worker in workers))
     await asyncio.gather(*(worker.run() for worker in workers))
 
 

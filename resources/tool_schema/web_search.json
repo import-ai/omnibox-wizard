@@ -1,0 +1,23 @@
+{
+  "type": "function",
+  "function": {
+    "name": "web_search",
+    "description": "Search the internet for the given query.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "query": {
+          "type": "string",
+          "description": "The query to search for."
+        },
+        "page_number": {
+          "type": "integer",
+          "description": "The page number to search for."
+        }
+      },
+      "required": [
+        "query"
+      ]
+    }
+  }
+}

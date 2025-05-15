@@ -21,7 +21,6 @@ async def start_server(config: Config, worker_config: WorkerConfig):
         server_future = loop.run_in_executor(executor, run_server_in_thread, "127.0.0.1", 8001)
         await asyncio.sleep(3)
         worker = Worker(config=worker_config, worker_id=0)
-        await worker.async_init()
         task = asyncio.create_task(worker.run())
         await server_future
     await task

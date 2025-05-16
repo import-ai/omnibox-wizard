@@ -58,7 +58,7 @@ class FunctionCall(BaseModel):
 
 class ToolCall(BaseModel):
     id: str
-    type: str
+    type: Literal["function"] = "function"
     function: FunctionCall
 
 

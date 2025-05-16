@@ -43,6 +43,11 @@ def assert_stream(stream: Iterator[str]) -> list[dict]:
             messages.append(message)
         elif response_type == "think_delta":
             print_colored(response["delta"], color=Colors.MAGENTA, end="", flush=True)
+        elif response_type == "tool_call":
+            function_name: str = response["tool_call"]["function"]["name"]
+            function_args: dict = response["tool_call"]["function"]["arguments"]
+            str_function_args: str = json.dumps(function_args, separators=(',', ':'), ensure_ascii=False)
+            print_colored(f"[Call {function_name} with arguments {str_function_args}]", color=Colors.YELLOW)
         else:
             raise RuntimeError(f"response_type: {response['response_type']}")
     return messages

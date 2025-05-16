@@ -24,6 +24,7 @@ class AgentRequest(BaseChatRequest):
     messages: list[dict] | None = Field(default_factory=list)
     tools: list[KnowledgeTool | WebSearchTool] | None = Field(default=None)
     citation_cnt: int = Field(default=0)
+    enable_thinking: bool = Field(default=False)
 
 
 class ChatBaseResponse(BaseModel):

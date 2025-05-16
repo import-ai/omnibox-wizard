@@ -7,11 +7,26 @@ import pytest
 from tests.helper.fixture import client, worker
 from wizard.entity import Task
 from wizard.grimoire.entity.api import ChatRequest, AgentRequest, BaseChatRequest
-from wizard.grimoire.entity.tools import KnowledgeTool
+from wizard.grimoire.entity.tools import KnowledgeTool, WebSearchTool
 from wizard.wand.worker import Worker
 
 
-def assert_stream(stream: Iterator[str]):
+class Colors:
+    RED = '\033[91m'
+    GREEN = '\033[92m'
+    YELLOW = '\033[93m'
+    BLUE = '\033[94m'
+    MAGENTA = '\033[95m'
+    CYAN = '\033[96m'
+    WHITE = '\033[97m'
+    RESET = '\033[0m'
+
+
+def print_colored(text, /, color, *args, **kwargs):
+    print(f"{color}{text}{Colors.RESET}", *args, **kwargs)
+
+
+def assert_stream(stream: Iterator[str]) -> list[dict]:
     messages = []
     for each in stream:
         response = json.loads(each)
@@ -26,8 +41,11 @@ def assert_stream(stream: Iterator[str]):
         elif response_type == "openai_message":
             message = response["message"]
             messages.append(message)
+        elif response_type == "think_delta":
+            print_colored(response["delta"], color=Colors.MAGENTA, end="", flush=True)
         else:
             raise RuntimeError(f"response_type: {response['response_type']}")
+    return messages
 
 
 def api_stream(client: httpx.Client, request: BaseChatRequest) -> Iterator[str]:
@@ -125,14 +143,17 @@ def test_grimoire_stream_remote(remote_client: httpx.Client, namespace_id: str, 
 
 
 @pytest.mark.parametrize("query, resource_ids, parent_ids", [
-    ("在知识库中搜索我的下周计划", None, None),
+    ("今天北京的天气", None, None),
+    # ("下周计划", None, None),
     # ("下周计划", ["r_id_a0", "r_id_b0"], None),
     # ("下周计划", None, ["p_id_1"]),
     # ("下周计划", ["r_id_b0"], ["p_id_0"])
 ])
 def test_agent(client: httpx.Client, vector_db_init: bool, namespace_id: str, query: str,
                resource_ids: List[str] | None, parent_ids: List[str] | None):
-    request = AgentRequest(session_id="fake_id", query=query, tools=[
-        KnowledgeTool(namespace_id=namespace_id, resource_ids=resource_ids, parent_ids=parent_ids)
+    request = AgentRequest(session_id="fake_id", query=query, enable_thinking=True, tools=[
+        KnowledgeTool(namespace_id=namespace_id, resource_ids=resource_ids, parent_ids=parent_ids),
+        WebSearchTool()
     ])
-    assert_stream(api_stream(client, request))
+    messages = assert_stream(api_stream(client, request))
+    assert len(messages) == 5

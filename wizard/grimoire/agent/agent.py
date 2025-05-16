@@ -103,7 +103,11 @@ class Agent(BaseStreamable):
         yield ChatOpenAIMessageResponse(message=user_message)
 
         while messages[-1]['role'] != 'assistant':
-            async for chunk in self.chat(messages, tools=tool_executor.tools):
+            async for chunk in self.chat(
+                    messages,
+                    enable_thinking=agent_request.enable_thinking,
+                    tools=tool_executor.tools
+            ):
                 if isinstance(chunk, ChatOpenAIMessageResponse):
                     messages.append(chunk.message)
                 yield chunk

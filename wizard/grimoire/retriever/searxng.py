@@ -13,7 +13,8 @@ class SearXNGRetrieval(BaseRetrieval):
         citation = self.to_citation()
         return "\n".join([
             f"Title: {citation.title}",
-            f"Snippet: {citation.text}",
+            f"Snippet:",
+            citation.snippet,
             f"Updated at: {citation.updated_at}"
         ])
 

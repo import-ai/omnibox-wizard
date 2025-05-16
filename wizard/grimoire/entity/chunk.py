@@ -48,7 +48,8 @@ class TextRetrieval(BaseRetrieval):
     def to_prompt(self) -> str:
         return "\n".join([
             f"Title: {self.chunk.title}",
-            f"Chunk: {self.chunk.text}",
+            f"Chunk:",
+            self.chunk.text,
             f"Created at: {timestamp_to_datetime(self.chunk.created_at)}",
             f"Updated at: {timestamp_to_datetime(self.chunk.updated_at)}",
         ])

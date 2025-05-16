@@ -125,7 +125,7 @@ def test_grimoire_stream_remote(remote_client: httpx.Client, namespace_id: str, 
 
 
 @pytest.mark.parametrize("query, resource_ids, parent_ids", [
-    ("下周计划", None, None),
+    ("在知识库中搜索我的下周计划", None, None),
     # ("下周计划", ["r_id_a0", "r_id_b0"], None),
     # ("下周计划", None, ["p_id_1"]),
     # ("下周计划", ["r_id_b0"], ["p_id_0"])

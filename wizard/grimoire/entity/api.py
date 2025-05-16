@@ -1,6 +1,5 @@
-from typing import List, Literal
+from typing import Literal
 
-from openai.types.chat import ChatCompletionMessageParam
 from pydantic import BaseModel, Field
 
 from wizard.grimoire.entity.retrieval import Citation
@@ -22,8 +21,8 @@ class ChatRequest(BaseChatRequest, Condition):
 
 
 class AgentRequest(BaseChatRequest):
-    messages: List[ChatCompletionMessageParam] | None = Field(default_factory=list)
-    tools: List[KnowledgeTool | WebSearchTool] | None = Field(default=None)
+    messages: list[dict] | None = Field(default_factory=list)
+    tools: list[KnowledgeTool | WebSearchTool] | None = Field(default=None)
     citation_cnt: int = Field(default=0)
 
 
@@ -33,7 +32,7 @@ class ChatBaseResponse(BaseModel):
 
 class ChatOpenAIMessageResponse(ChatBaseResponse):
     response_type: Literal["openai_message"] = "openai_message"
-    message: ChatCompletionMessageParam
+    message: dict  # There would be trouble with openai.types.chat.ChatCompletionMessageParam
 
 
 class ChatDeltaResponse(ChatBaseResponse):
@@ -48,7 +47,7 @@ class ChatThinkDeltaResponse(ChatBaseResponse):
 
 class ChatCitationListResponse(ChatBaseResponse):
     response_type: Literal["citation_list"] = "citation_list"
-    citation_list: List[Citation]
+    citation_list: list[Citation]
 
 
 class FunctionCall(BaseModel):

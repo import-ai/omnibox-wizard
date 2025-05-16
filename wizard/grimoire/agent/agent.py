@@ -16,7 +16,7 @@ from wizard.grimoire.entity.api import (
 )
 from wizard.grimoire.entity.tools import ToolExecutorConfig
 from wizard.grimoire.retriever.searxng import SearXNG
-from wizard.grimoire.retriever.vector_db import VectorDB
+from wizard.grimoire.retriever.vector_db import VectorRetriever
 
 
 class Agent(BaseStreamable):
@@ -28,7 +28,7 @@ class Agent(BaseStreamable):
             self.system_prompt = f.read()
 
         self.web_search_retriever = SearXNG(base_url=tools_config.searxng_base_url)
-        self.knowledge_database_retriever = VectorDB(config=vector_config)
+        self.knowledge_database_retriever = VectorRetriever(config=vector_config)
 
         self.func_mapping = {
             "web_search": self.web_search_retriever.search,

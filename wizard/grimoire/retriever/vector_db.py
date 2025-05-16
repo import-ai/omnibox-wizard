@@ -8,7 +8,8 @@ from chromadb.utils.embedding_functions.openai_embedding_function import OpenAIE
 from common.trace_info import TraceInfo
 from wizard.config import VectorConfig
 from wizard.grimoire.entity.api import Condition
-from wizard.grimoire.entity.chunk import Chunk
+from wizard.grimoire.entity.chunk import Chunk, TextRetrieval
+from wizard.grimoire.entity.retrieval import Score
 
 AsyncCollection = chromadb.api.async_api.AsyncCollection
 
@@ -91,4 +92,24 @@ class VectorDB:
         return result_list
 
 
-__all__ = ["VectorDB"]
+class VectorRetriever(VectorDB):
+
+    async def query(
+            self,
+            query: str,
+            k: int,
+            *,
+            condition: dict | Condition = None,
+            trace_info: TraceInfo | None = None
+    ) -> list[TextRetrieval]:
+        recall_result_list: List[Tuple[Chunk, float]] = await super().query(
+            query, k, condition=condition, trace_info=trace_info
+        )
+        retrievals: List[TextRetrieval] = [
+            TextRetrieval(chunk=chunk, score=Score(recall=score, rerank=0))
+            for chunk, score in recall_result_list
+        ]
+        return retrievals
+
+
+__all__ = ["VectorDB", "VectorRetriever"]

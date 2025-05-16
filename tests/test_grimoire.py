@@ -149,10 +149,10 @@ def test_grimoire_stream_remote(remote_client: httpx.Client, namespace_id: str, 
 
 @pytest.mark.parametrize("query, resource_ids, parent_ids", [
     ("今天北京的天气", None, None),
-    # ("下周计划", None, None),
-    # ("下周计划", ["r_id_a0", "r_id_b0"], None),
-    # ("下周计划", None, ["p_id_1"]),
-    # ("下周计划", ["r_id_b0"], ["p_id_0"])
+    ("下周计划", None, None),
+    ("下周计划", ["r_id_a0", "r_id_b0"], None),
+    ("下周计划", None, ["p_id_1"]),
+    ("下周计划", ["r_id_b0"], ["p_id_0"])
 ])
 def test_agent(client: httpx.Client, vector_db_init: bool, namespace_id: str, query: str,
                resource_ids: List[str] | None, parent_ids: List[str] | None):

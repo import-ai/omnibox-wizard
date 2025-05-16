@@ -38,7 +38,12 @@ class KnowledgeTool(Tool, Condition):
         "type": "function",
         "function": {
             "name": "knowledge_search",
-            "description": "Search the user's private knowledge base for relevant information matching the given query.",
+            "description": (
+                "Search the user's private knowledge base for relevant information matching the given query. "
+                "Such as questions about their schedule, tasks, plans, meetings, files, notes, etc. "
+                "Compared to other tools, this is the one you should prioritize using. "
+                "You MUST call this tool if it's enabled."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -73,7 +78,11 @@ class WebSearchTool(Tool):
         "type": "function",
         "function": {
             "name": "web_search",
-            "description": "Search the internet for the given query.",
+            "description": (
+                "Search the internet for the given query. "
+                "If user's private knowledge base can't answer the question, "
+                "you MUST call this function to retrieve information from the public internet."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {

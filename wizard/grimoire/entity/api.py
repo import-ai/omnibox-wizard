@@ -51,7 +51,7 @@ class ChatThinkDeltaResponse(ChatBaseResponse):
     delta: str
 
 
-class ChatCitationListResponse(ChatBaseResponse):
+class ChatCitationsResponse(ChatBaseResponse):
     response_type: Literal["citations"] = "citations"
     citations: list[Citation]
 

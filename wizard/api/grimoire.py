@@ -12,7 +12,7 @@ from wizard.config import Config, ENV_PREFIX
 from wizard.grimoire.agent.agent import Agent
 from wizard.grimoire.base_streamable import BaseStreamable, ChatResponse
 from wizard.grimoire.entity.api import (
-    ChatRequest, ChatBaseResponse, ChatDeltaResponse, ChatCitationListResponse, AgentRequest, BaseChatRequest
+    ChatRequest, ChatBaseResponse, ChatDeltaResponse, ChatCitationsResponse, AgentRequest, BaseChatRequest
 )
 from wizard.grimoire.pipeline import Pipeline
 
@@ -46,7 +46,7 @@ async def sse_format(iterator: AsyncIterator[dict]) -> AsyncIterator[str]:
 
 
 @grimoire_router.post("/stream", tags=["LLM"],
-                      response_model=Union[ChatBaseResponse, ChatDeltaResponse, ChatCitationListResponse])
+                      response_model=Union[ChatBaseResponse, ChatDeltaResponse, ChatCitationsResponse])
 async def stream(request: ChatRequest, trace_info: TraceInfo = Depends(get_trace_info)):
     """
     Answer the query based on user's database.

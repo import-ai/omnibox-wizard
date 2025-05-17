@@ -3,7 +3,7 @@ from typing import List, Tuple, AsyncIterable
 from common.trace_info import TraceInfo
 from wizard.config import Config
 from wizard.grimoire.base_streamable import BaseStreamable, ChatResponse
-from wizard.grimoire.entity.api import ChatRequest, ChatDeltaResponse, ChatCitationListResponse
+from wizard.grimoire.entity.api import ChatRequest, ChatDeltaResponse, ChatCitationsResponse
 from wizard.grimoire.entity.chunk import TextRetrieval, Chunk
 from wizard.grimoire.entity.retrieval import Score
 from wizard.grimoire.rag import RAG
@@ -29,6 +29,6 @@ class Pipeline(BaseStreamable):
     async def astream(self, trace_info: TraceInfo, request: ChatRequest) -> AsyncIterable[ChatResponse]:
         retrieval_list = await self.retrieve(request, trace_info)
         trace_info.info({"retrieval_count": len(retrieval_list)})
-        yield ChatCitationListResponse(citations=[r.to_citation() for r in retrieval_list])
+        yield ChatCitationsResponse(citations=[r.to_citation() for r in retrieval_list])
         async for delta in self.rag.astream(request.query, retrieval_list):
             yield ChatDeltaResponse(delta=delta)

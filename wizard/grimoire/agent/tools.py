@@ -4,7 +4,7 @@ from typing import AsyncIterable
 from openai.types.chat import ChatCompletionAssistantMessageParam, ChatCompletionMessageParam
 
 from wizard.grimoire.entity.api import (
-    ChatOpenAIMessageResponse, ChatBaseResponse, ChatCitationListResponse, ToolCallResponse, OpenAIMessageAttrs
+    ChatOpenAIMessageResponse, ChatBaseResponse, ChatCitationsResponse, ToolCallResponse, OpenAIMessageAttrs
 )
 from wizard.grimoire.entity.retrieval import BaseRetrieval
 from wizard.grimoire.entity.tools import ToolExecutorConfig
@@ -28,7 +28,7 @@ def retrieval_wrapper(
         current_cite_cnt: int,
         retrieval_list: list[BaseRetrieval]
 ) -> ChatOpenAIMessageResponse:
-    citations_response: ChatCitationListResponse = ChatCitationListResponse(
+    citations_response: ChatCitationsResponse = ChatCitationsResponse(
         citations=[retrieval.to_citation() for retrieval in retrieval_list],
     )
     retrieval_prompt_list: list[str] = []

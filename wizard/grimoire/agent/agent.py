@@ -102,6 +102,8 @@ class Agent(BaseStreamable):
         messages.append(user_message)
         yield ChatOpenAIMessageResponse(message=user_message)
 
+        current_cite_cnt = agent_request.current_cite_cnt
+
         while messages[-1]['role'] != 'assistant':
             async for chunk in self.chat(
                     messages,
@@ -112,7 +114,9 @@ class Agent(BaseStreamable):
                     messages.append(chunk.message)
                 yield chunk
             if messages[-1].get('tool_calls', []):
-                async for chunk in tool_executor.astream(messages):
+                async for chunk in tool_executor.astream(messages, current_cite_cnt):
                     if isinstance(chunk, ChatOpenAIMessageResponse):
                         messages.append(chunk.message)
+                        if (attrs := chunk.attrs) and attrs.citations:
+                            current_cite_cnt += len(attrs.citations)
                     yield chunk

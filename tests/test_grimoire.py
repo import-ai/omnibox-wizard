@@ -7,7 +7,6 @@ import pytest
 from tests.helper.fixture import client, worker
 from wizard.entity import Task
 from wizard.grimoire.entity.api import ChatRequest, AgentRequest, BaseChatRequest
-from wizard.grimoire.entity.tools import KnowledgeTool, WebSearchTool
 from wizard.wand.worker import Worker
 
 
@@ -34,8 +33,8 @@ def assert_stream(stream: Iterator[str]) -> list[dict]:
         assert response_type != "error"
         if response_type == "delta":
             print(response["delta"], end="", flush=True)
-        elif response_type == "citation_list":
-            print("\n".join(["", "-" * 32, json.dumps(response["citation_list"], ensure_ascii=False)]))
+        elif response_type == "citations":
+            print("\n".join(["", "-" * 32, json.dumps(response["citations"], ensure_ascii=False)]))
         elif response_type == "done":
             pass
         elif response_type == "openai_message":
@@ -156,9 +155,21 @@ def test_grimoire_stream_remote(remote_client: httpx.Client, namespace_id: str, 
 ])
 def test_agent(client: httpx.Client, vector_db_init: bool, namespace_id: str, query: str,
                resource_ids: List[str] | None, parent_ids: List[str] | None):
-    request = AgentRequest(session_id="fake_id", query=query, enable_thinking=True, tools=[
-        KnowledgeTool(namespace_id=namespace_id, resource_ids=resource_ids, parent_ids=parent_ids),
-        WebSearchTool()
-    ])
+    request = AgentRequest.model_validate({
+        "conversation_id": "fake_id",
+        "query": query,
+        "enable_thinking": True,
+        "tools": [
+            {
+                "name": "knowledge_search",
+                "namespace_id": namespace_id,
+                "resource_ids": resource_ids,
+                "parent_ids": parent_ids
+            },
+            {
+                "name": "web_search"
+            }
+        ]
+    })
     messages = assert_stream(api_stream(client, request))
     assert len(messages) == 5

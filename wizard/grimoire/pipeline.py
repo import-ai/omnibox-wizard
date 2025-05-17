@@ -29,6 +29,6 @@ class Pipeline(BaseStreamable):
     async def astream(self, trace_info: TraceInfo, request: ChatRequest) -> AsyncIterable[ChatResponse]:
         retrieval_list = await self.retrieve(request, trace_info)
         trace_info.info({"retrieval_count": len(retrieval_list)})
-        yield ChatCitationListResponse(citation_list=[r.to_citation() for r in retrieval_list])
+        yield ChatCitationListResponse(citations=[r.to_citation() for r in retrieval_list])
         async for delta in self.rag.astream(request.query, retrieval_list):
             yield ChatDeltaResponse(delta=delta)

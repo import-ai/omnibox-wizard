@@ -7,7 +7,6 @@ from wizard.grimoire.entity.tools import KnowledgeTool, WebSearchTool, Condition
 
 
 class BaseChatRequest(BaseModel):
-    session_id: str
     query: str
 
 
@@ -17,23 +16,29 @@ class InsertRequest(BaseModel):
 
 
 class ChatRequest(BaseChatRequest, Condition):
-    pass
+    session_id: str
 
 
 class AgentRequest(BaseChatRequest):
+    conversation_id: str
     messages: list[dict] | None = Field(default_factory=list)
-    tools: list[KnowledgeTool | WebSearchTool] | None = Field(default=None)
-    citation_cnt: int = Field(default=0)
+    tools: list[KnowledgeTool | WebSearchTool] | None = Field(default_factory=list)
     enable_thinking: bool = Field(default=False)
+    current_cite_cnt: int = Field(default=0)
 
 
 class ChatBaseResponse(BaseModel):
-    response_type: Literal["delta", "openai_message", "think_delta", "citation", "citation_list", "tool_call"]
+    response_type: Literal["delta", "openai_message", "think_delta", "citations", "tool_call"]
+
+
+class OpenAIMessageAttrs(BaseModel):
+    citations: list[Citation] = Field(default_factory=list)
 
 
 class ChatOpenAIMessageResponse(ChatBaseResponse):
     response_type: Literal["openai_message"] = "openai_message"
-    message: dict  # There would be trouble with openai.types.chat.ChatCompletionMessageParam
+    message: dict
+    attrs: OpenAIMessageAttrs | None = Field(default=None, description="Attributes of the message.")
 
 
 class ChatDeltaResponse(ChatBaseResponse):
@@ -47,8 +52,8 @@ class ChatThinkDeltaResponse(ChatBaseResponse):
 
 
 class ChatCitationListResponse(ChatBaseResponse):
-    response_type: Literal["citation_list"] = "citation_list"
-    citation_list: list[Citation]
+    response_type: Literal["citations"] = "citations"
+    citations: list[Citation]
 
 
 class FunctionCall(BaseModel):

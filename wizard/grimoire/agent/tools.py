@@ -2,18 +2,12 @@ import json as jsonlib
 from typing import AsyncIterable
 
 from openai.types.chat import ChatCompletionAssistantMessageParam, ChatCompletionMessageParam
-from pydantic import BaseModel
 
 from wizard.grimoire.entity.api import (
-    ChatOpenAIMessageResponse, ChatBaseResponse, ChatCitationListResponse, ToolCallResponse
+    ChatOpenAIMessageResponse, ChatBaseResponse, ChatCitationListResponse, ToolCallResponse, OpenAIMessageAttrs
 )
 from wizard.grimoire.entity.retrieval import BaseRetrieval
 from wizard.grimoire.entity.tools import ToolExecutorConfig
-
-
-class ToolExecuteResult(BaseModel):
-    openai_message_response: ChatOpenAIMessageResponse
-    response: ChatBaseResponse
 
 
 def get_current_cite_cnt(messages: list[ChatCompletionMessageParam]) -> int:
@@ -33,9 +27,9 @@ def retrieval_wrapper(
         tool_call_id: str,
         current_cite_cnt: int,
         retrieval_list: list[BaseRetrieval]
-) -> ToolExecuteResult:
-    citation_list_response: ChatCitationListResponse = ChatCitationListResponse(
-        citation_list=[retrieval.to_citation() for retrieval in retrieval_list],
+) -> ChatOpenAIMessageResponse:
+    citations_response: ChatCitationListResponse = ChatCitationListResponse(
+        citations=[retrieval.to_citation() for retrieval in retrieval_list],
     )
     retrieval_prompt_list: list[str] = []
     for i, retrieval in enumerate(retrieval_list):
@@ -44,12 +38,10 @@ def retrieval_wrapper(
             retrieval.to_prompt()
         ]
         retrieval_prompt_list.append("\n".join(prompt_list))
-    prompt = "\n\n".join(retrieval_prompt_list)
-    return ToolExecuteResult(
-        openai_message_response=ChatOpenAIMessageResponse(
-            message={"role": "tool", "tool_call_id": tool_call_id, "content": prompt}
-        ),
-        response=citation_list_response
+    prompt = "\n\n".join(retrieval_prompt_list) or "Not found"
+    return ChatOpenAIMessageResponse(
+        message={"role": "tool", "tool_call_id": tool_call_id, "content": prompt},
+        attrs=OpenAIMessageAttrs(citations=citations_response.citations)
     )
 
 
@@ -58,7 +50,11 @@ class ToolExecutor:
         self.config: dict[str, ToolExecutorConfig] = config
         self.tools: list[dict] = [config['schema'] for config in config.values()]
 
-    async def astream(self, messages: list[ChatCompletionMessageParam]) -> AsyncIterable[ChatBaseResponse]:
+    async def astream(
+            self,
+            messages: list[ChatCompletionMessageParam],
+            current_cite_cnt: int
+    ) -> AsyncIterable[ChatBaseResponse]:
         message: ChatCompletionAssistantMessageParam = messages[-1]
         if tool_calls := message.get('tool_calls', []):
             for tool_call in tool_calls:
@@ -78,14 +74,14 @@ class ToolExecutor:
                     raise ValueError(f"Unknown function: {function_name}")
 
                 if function_name.endswith("_search"):
-                    current_cite_cnt: int = get_current_cite_cnt(messages)
-                    tool_execute_result: ToolExecuteResult = retrieval_wrapper(
+                    openai_message_response: ChatOpenAIMessageResponse = retrieval_wrapper(
                         tool_call_id=tool_call_id,
                         current_cite_cnt=current_cite_cnt,
                         retrieval_list=result
                     )
+                    if (attrs := openai_message_response.attrs) and attrs.citations:
+                        current_cite_cnt += len(attrs.citations)
                 else:
                     raise ValueError(f"Unknown function: {function_name}")
 
-                yield tool_execute_result.openai_message_response
-                yield tool_execute_result.response
+                yield openai_message_response

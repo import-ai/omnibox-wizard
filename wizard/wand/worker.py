@@ -31,10 +31,6 @@ class Worker:
 
         self.logger = get_logger(f"worker_{self.worker_id}")
 
-    async def async_init(self):
-        for worker in self.worker_dict.values():
-            await worker.async_init()
-
     def get_trace_info(self, task: Task) -> TraceInfo:
         return TraceInfo(task.id, self.logger, payload={
             "task_id": task.id,

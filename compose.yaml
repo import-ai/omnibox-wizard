@@ -1,29 +1,64 @@
-name: omnibox-wizard-dev
+name: omnibox-local
 
 services:
+  wizard:
+    build: .
+    restart: always
+    volumes:
+      - "/etc/localtime:/etc/localtime:ro"
+    environment:
+      ENV: "prod"
+      OBW_VECTOR_HOST: chromadb
+      OBW_VECTOR_PORT: 8000
+      OBW_BACKEND_BASE_URL: "http://backend:8000"
+    ports:
+      - "8001:8000"
+    env_file:
+      - .env
+    healthcheck:
+      test: [ "CMD", "wget", "-q", "-O-", "http://127.0.0.1:8000/api/v1/health" ]
+      interval: 30s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    depends_on:
+      chromadb:
+        condition: service_healthy
+
+  wizard-worker:
+    build: .
+    restart: always
+    environment:
+      ENV: "prod"
+      OBW_VECTOR_HOST: chromadb
+      OBW_VECTOR_PORT: 8000
+      OBW_BACKEND_BASE_URL: "http://backend:8000"
+    volumes:
+      - "/etc/localtime:/etc/localtime:ro"
+    entrypoint: [ "python", "main.py" ]
+    command: [ "--workers", "1" ]
+    env_file:
+      - .env
+    healthcheck:
+      test: [ "CMD-SHELL", "pgrep python" ]
+      interval: 30s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    depends_on:
+      chromadb:
+        condition: service_healthy
+
   chromadb:
     image: chromadb/chroma:1.0.7
     restart: always
     ports:
-      - "8000:8000"
-    #    volumes:
-    #      - '${PWD}/.tmp/data/minio:/data'
+      - "8002:8000"
+    volumes:
+      - "/etc/localtime:/etc/localtime:ro"
     healthcheck:
       test: [ "CMD", "/bin/bash", "-c", "cat < /dev/null > /dev/tcp/localhost/8000" ]
       interval: 30s
       timeout: 3s
       retries: 5
       start_period: 5s
-
-  minio:
-    command: 'server /data --console-address ":9001"'
-    image: quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z
-    restart: always
-    environment:
-      MINIO_ROOT_USER: username
-      MINIO_ROOT_PASSWORD: password
-    #    volumes:
-    #      - '${PWD}/.tmp/data/minio:/data'
-    ports:
-      - '9001:9001'
-      - '9000:9000'

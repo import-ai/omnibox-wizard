@@ -44,7 +44,6 @@ async def test_tasks(client: httpx.Client, worker_config: WorkerConfig, trace_in
         logger.info({"task_created": json_task, "round": i})
 
     worker = Worker(config=worker_config, worker_id=0)
-    await worker.async_init()
 
     for i in range(3):
         task_id = task_ids[i]

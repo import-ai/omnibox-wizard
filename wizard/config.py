@@ -46,10 +46,15 @@ class TaskConfig(BaseModel):
     spliter: SpliterConfig = Field(default_factory=SpliterConfig)
 
 
+class ToolsConfig(BaseModel):
+    searxng_base_url: str
+
+
 class Config(BaseModel):
     vector: VectorConfig
     grimoire: GrimoireConfig
     backend: BackendConfig
+    tools: ToolsConfig
 
 
 class WorkerConfig(BaseModel):

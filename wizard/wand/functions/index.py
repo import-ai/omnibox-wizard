@@ -14,9 +14,6 @@ class DeleteIndex(BaseFunction):
     def __init__(self, config: WorkerConfig):
         self.vector_db: VectorDB = VectorDB(config.vector)
 
-    async def async_init(self):
-        await self.vector_db.async_init()
-
     async def run(self, task: Task, trace_info: TraceInfo) -> dict:
         input_data = task.input
         namespace_id: str = task.namespace_id

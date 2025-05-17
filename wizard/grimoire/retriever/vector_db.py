@@ -1,3 +1,5 @@
+import asyncio
+from asyncio import Task
 from typing import List, Tuple
 
 import chromadb
@@ -6,7 +8,8 @@ from chromadb.utils.embedding_functions.openai_embedding_function import OpenAIE
 from common.trace_info import TraceInfo
 from wizard.config import VectorConfig
 from wizard.grimoire.entity.api import Condition
-from wizard.grimoire.entity.chunk import Chunk
+from wizard.grimoire.entity.chunk import Chunk, TextRetrieval
+from wizard.grimoire.entity.retrieval import Score
 
 AsyncCollection = chromadb.api.async_api.AsyncCollection
 
@@ -14,7 +17,9 @@ AsyncCollection = chromadb.api.async_api.AsyncCollection
 class VectorDB:
     def __init__(self, config: VectorConfig):
         self.config: VectorConfig = config
-        self.client: chromadb.AsyncClientAPI = ...
+        self.client: Task[chromadb.AsyncClientAPI] = asyncio.create_task(
+            chromadb.AsyncHttpClient(host=self.config.host, port=self.config.port)
+        )
         self.embed_func: OpenAIEmbeddingFunction = OpenAIEmbeddingFunction(
             api_base=self.config.embedding.base_url,
             api_key=self.config.embedding.api_key,
@@ -22,11 +27,9 @@ class VectorDB:
         )
         self.batch_size: int = config.batch_size
 
-    async def async_init(self):
-        self.client = await chromadb.AsyncHttpClient(host=self.config.host, port=self.config.port)
-
     async def get_collection(self, name: str) -> AsyncCollection:
-        collection: AsyncCollection = await self.client.get_or_create_collection(
+        client: chromadb.AsyncClientAPI = await self.client
+        collection: AsyncCollection = await client.get_or_create_collection(
             name=name, metadata={"hnsw:space": "ip"}, embedding_function=self.embed_func)
         return collection
 
@@ -89,4 +92,24 @@ class VectorDB:
         return result_list
 
 
-__all__ = ["VectorDB"]
+class VectorRetriever(VectorDB):
+
+    async def query(
+            self,
+            query: str,
+            k: int,
+            *,
+            condition: dict | Condition = None,
+            trace_info: TraceInfo | None = None
+    ) -> list[TextRetrieval]:
+        recall_result_list: List[Tuple[Chunk, float]] = await super().query(
+            query, k, condition=condition, trace_info=trace_info
+        )
+        retrievals: List[TextRetrieval] = [
+            TextRetrieval(chunk=chunk, score=Score(recall=score, rerank=0))
+            for chunk, score in recall_result_list
+        ]
+        return retrievals
+
+
+__all__ = ["VectorDB", "VectorRetriever"]

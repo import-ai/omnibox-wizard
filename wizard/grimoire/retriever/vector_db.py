@@ -45,7 +45,7 @@ class VectorDB:
 
     async def remove(self, namespace_id: str, resource_id: str):
         collection: AsyncCollection = await self.get_collection(name=namespace_id)
-        return await collection.delete(where={"$and": [{"namespace_id": namespace_id}, {"resource_id": resource_id}]})
+        return await collection.delete(where={"resource_id": resource_id})
 
     async def query(
             self,

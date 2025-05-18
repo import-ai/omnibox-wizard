@@ -4,9 +4,11 @@ import tempfile
 
 import pytest
 
+from common import project_root
 from tests.helper.backend_client import BackendClient
 from tests.helper.fixture import backend_client
 from wizard.entity import Task
+from wizard.wand.functions.file_reader import Convertor
 from wizard.wand.worker import Worker
 
 
@@ -66,3 +68,17 @@ async def test_file_reader(worker: Worker, uploaded_file: str):
     )
     processed_task: Task = await worker.process_task(task, worker.get_trace_info(task))
     print(processed_task.output["markdown"])
+
+
+@pytest.fixture(scope="function")
+def convertor() -> Convertor:
+    return Convertor()
+
+
+@pytest.mark.parametrize("filename", [
+    "example.doc"
+])
+async def test_convertor(convertor: Convertor, filename):
+    filepath: str = project_root.path(os.path.join("tests/resources/files", filename))
+    markdown: str = await convertor.convert(filepath, '.doc')
+    print(markdown)

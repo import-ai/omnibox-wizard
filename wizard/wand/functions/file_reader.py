@@ -11,14 +11,30 @@ from wizard.entity import Task
 from wizard.wand.functions.base_function import BaseFunction
 
 
+class Convertor:
+    def __init__(self):
+        self.markitdown: MarkItDown = MarkItDown()
+
+    async def convert(self, filepath: str, ext: str) -> str:
+        if ext in [".pptx", ".docx", ".pdf"]:
+            result = self.markitdown.convert(filepath)
+            markdown: str = result.text_content
+        elif ext in [".md", ".txt"]:
+            with open(filepath, 'r') as f:
+                markdown: str = f.read()
+        else:
+            raise ValueError(f"unsupported_type: {ext}")
+        return markdown
+
+
 class FileReader(BaseFunction):
     def __init__(self, config: BackendConfig):
-        self.markitdown: MarkItDown = MarkItDown()
         self.base_url: str = config.base_url
 
         self.mimetype_mapping: dict[str, str] = {
             "text/x-markdown": ".md"
         }
+        self.convertor: Convertor = Convertor()
 
     async def download(self, resource_id: str, target: str):
         async with httpx.AsyncClient(base_url=self.base_url) as client:
@@ -51,16 +67,12 @@ class FileReader(BaseFunction):
 
             mime_ext: str | None = self.guess_extension(mimetype)
 
-            if mime_ext in [".pptx", ".docx", ".pdf"]:
-                result = self.markitdown.convert(local_path)
-                markdown: str = result.text_content
-            elif mime_ext in [".md", ".txt"]:
-                with open(local_path, 'r') as f:
-                    markdown: str = f.read()
-            else:
+            try:
+                markdown: str = await self.convertor.convert(local_path, mime_ext)
+            except ValueError:
                 return {
                     "message": "unsupported_type",
-                    "mime_ext": mime_ext
+                    "mime_ext": mime_ext,
                 }
 
         result_dict: dict = {

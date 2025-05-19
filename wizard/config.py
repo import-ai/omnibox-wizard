@@ -44,7 +44,7 @@ class SpliterConfig(BaseModel):
 class TaskConfig(BaseModel):
     reader: ReaderConfig
     spliter: SpliterConfig = Field(default_factory=SpliterConfig)
-    office_operator_base_url: str | None = Field(default=None)
+    office_operator_base_url: str = Field(default=None)
 
 
 class ToolsConfig(BaseModel):

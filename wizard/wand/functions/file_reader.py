@@ -1,7 +1,9 @@
+import io
 import mimetypes
 import os
 import tempfile
 
+import httpcore
 import httpx
 from markitdown import MarkItDown
 
@@ -15,16 +17,23 @@ class OfficeOperatorClient(httpx.AsyncClient):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-    async def migrate(self, src_path: str, src_ext: str, dest_path: str):
+    async def migrate(self, src_path: str, src_ext: str, dest_path: str, retry_cnt: int = 3):
         with open(src_path, "rb") as f:
-            mimetype: str = mimetypes.guess_type(f"a{src_ext}")[0] or ""
-            response: httpx.Response = await self.post(
-                f"/api/v1/migrate/{src_ext.lstrip('.')}",
-                files={"file": (src_path, f, mimetype)},
-            )
-        assert response.is_success, response.text
-        with open(dest_path, "wb") as f:
-            f.write(response.content)
+            bytes_content: bytes = f.read()
+
+        mimetype: str = mimetypes.guess_type(f"a{src_ext}")[0] or ""
+        for i in range(retry_cnt):
+            try:
+                response: httpx.Response = await self.post(
+                    f"/api/v1/migrate/{src_ext.lstrip('.')}",
+                    files={"file": (src_path, io.BytesIO(bytes_content), mimetype)},
+                )
+                assert response.is_success, response.text
+                with open(dest_path, "wb") as f:
+                    f.write(response.content)
+            except (TimeoutError, httpcore.ReadTimeout, httpx.ReadTimeout):
+                continue
+            break
 
 
 class Convertor:

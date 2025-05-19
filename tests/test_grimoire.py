@@ -78,7 +78,7 @@ async def add_index(
         "id": resource_id,  # Use resource id as fake task id
         "priority": 5,
 
-        "function": "create_or_update_index",
+        "function": "upsert_index",
         "input": {
             "title": title,
             "content": content,

@@ -6,18 +6,40 @@ import httpx
 from markitdown import MarkItDown
 
 from common.trace_info import TraceInfo
-from wizard.config import BackendConfig
+from wizard.config import WorkerConfig
 from wizard.entity import Task
 from wizard.wand.functions.base_function import BaseFunction
 
 
+class OfficeOperatorClient(httpx.AsyncClient):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    async def migrate(self, src_path: str, src_ext: str, dest_path: str):
+        with open(src_path, "rb") as f:
+            mimetype: str = mimetypes.guess_type(f"a{src_ext}")[0] or ""
+            response: httpx.Response = await self.post(
+                f"/api/v1/migrate/{src_ext.lstrip('.')}",
+                files={"file": (src_path, f, mimetype)},
+            )
+        assert response.is_success, response.text
+        with open(dest_path, "wb") as f:
+            f.write(response.content)
+
+
 class Convertor:
-    def __init__(self):
+    def __init__(self, office_operator_base_url: str):
         self.markitdown: MarkItDown = MarkItDown()
+        self.office_operator_base_url: str = office_operator_base_url
 
     async def convert(self, filepath: str, ext: str) -> str:
-        if ext in [".pptx", ".docx", ".pdf"]:
-            result = self.markitdown.convert(filepath)
+        if ext in [".pptx", ".docx", ".pdf", ".ppt", ".doc"]:
+            path = filepath
+            if ext in [".ppt", ".doc"]:
+                path: str = filepath + "x"
+                async with OfficeOperatorClient(base_url=self.office_operator_base_url) as client:
+                    await client.migrate(filepath, ext, path)
+            result = self.markitdown.convert(path)
             markdown: str = result.text_content
         elif ext in [".md", ".txt"]:
             with open(filepath, 'r') as f:
@@ -28,13 +50,13 @@ class Convertor:
 
 
 class FileReader(BaseFunction):
-    def __init__(self, config: BackendConfig):
-        self.base_url: str = config.base_url
+    def __init__(self, config: WorkerConfig):
+        self.base_url: str = config.backend.base_url
 
         self.mimetype_mapping: dict[str, str] = {
             "text/x-markdown": ".md"
         }
-        self.convertor: Convertor = Convertor()
+        self.convertor: Convertor = Convertor(config.task.office_operator_base_url)
 
     async def download(self, resource_id: str, target: str):
         async with httpx.AsyncClient(base_url=self.base_url) as client:

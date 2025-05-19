@@ -10,7 +10,9 @@ from tests.helper.fixture import backend_client
 from wizard.entity import Task
 from wizard.wand.functions.file_reader import Convertor
 from wizard.wand.worker import Worker
+from dotenv import load_dotenv
 
+load_dotenv()
 
 @pytest.fixture(scope="function")
 def uploaded_file(backend_client: BackendClient) -> dict:
@@ -72,7 +74,7 @@ async def test_file_reader(worker: Worker, uploaded_file: str):
 
 @pytest.fixture(scope="function")
 def convertor() -> Convertor:
-    return Convertor()
+    return Convertor(office_operator_base_url=os.environ["OBW_TASK_OFFICE_OPERATOR_BASE_URL"])
 
 
 @pytest.mark.parametrize("filename", [

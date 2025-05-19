@@ -3,6 +3,7 @@ import os
 import tempfile
 
 import pytest
+from dotenv import load_dotenv
 
 from common import project_root
 from tests.helper.backend_client import BackendClient
@@ -10,9 +11,9 @@ from tests.helper.fixture import backend_client
 from wizard.entity import Task
 from wizard.wand.functions.file_reader import Convertor
 from wizard.wand.worker import Worker
-from dotenv import load_dotenv
 
 load_dotenv()
+
 
 @pytest.fixture(scope="function")
 def uploaded_file(backend_client: BackendClient) -> dict:

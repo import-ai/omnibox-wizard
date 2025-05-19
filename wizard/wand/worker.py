@@ -24,9 +24,9 @@ class Worker:
 
         self.worker_dict: dict[str, BaseFunction] = {
             "collect": HTMLReader(config.task.reader),
-            "create_or_update_index": UpsertIndex(config),
+            "upsert_index": UpsertIndex(config),
             "delete_index": DeleteIndex(config),
-            "file_reader": FileReader(config.backend)
+            "file_reader": FileReader(config)
         }
 
         self.logger = get_logger(f"worker_{self.worker_id}")

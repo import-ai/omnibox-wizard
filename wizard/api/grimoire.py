@@ -55,5 +55,5 @@ async def stream(request: ChatRequest, trace_info: TraceInfo = Depends(get_trace
 
 
 @grimoire_router.post("/ask", tags=["LLM"], response_model=ChatResponse)
-async def stream(request: AgentRequest, trace_info: TraceInfo = Depends(get_trace_info)):
+async def ask(request: AgentRequest, trace_info: TraceInfo = Depends(get_trace_info)):
     return StreamingResponse(sse_format(call_stream(agent, request, trace_info)), media_type="text/event-stream")

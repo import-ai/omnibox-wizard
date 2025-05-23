@@ -146,14 +146,14 @@ def test_grimoire_stream_remote(remote_client: httpx.Client, namespace_id: str, 
     assert_stream(api_stream(remote_client, request))
 
 
-@pytest.mark.parametrize("query, resource_ids, parent_ids", [
-    ("今天北京的天气", None, None),
-    ("下周计划", None, None),
-    ("下周计划", ["r_id_a0", "r_id_b0"], None),
-    ("下周计划", None, ["p_id_1"]),
-    ("下周计划", ["r_id_b0"], ["p_id_0"])
+@pytest.mark.parametrize("query, resource_ids, parent_ids, expected_messages_length", [
+    ("今天北京的天气", None, None, 7),
+    ("下周计划", None, None, 5),
+    ("下周计划", ["r_id_a0", "r_id_b0"], None, 5),
+    ("下周计划", None, ["p_id_1"], 5),
+    ("下周计划", ["r_id_b0"], ["p_id_0"], 5)
 ])
-def test_agent(client: httpx.Client, vector_db_init: bool, namespace_id: str, query: str,
+def test_agent(client: httpx.Client, vector_db_init: bool, namespace_id: str, query: str, expected_messages_length: int,
                resource_ids: List[str] | None, parent_ids: List[str] | None):
     request = AgentRequest.model_validate({
         "conversation_id": "fake_id",
@@ -172,4 +172,4 @@ def test_agent(client: httpx.Client, vector_db_init: bool, namespace_id: str, qu
         ]
     })
     messages = assert_stream(api_stream(client, request))
-    assert len(messages) == 5
+    assert len(messages) == expected_messages_length

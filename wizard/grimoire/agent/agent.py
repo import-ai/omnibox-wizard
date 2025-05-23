@@ -1,6 +1,8 @@
+import json as jsonlib
 from datetime import datetime
 from functools import partial
 from typing import AsyncIterable
+from uuid import uuid4
 
 from openai import AsyncOpenAI, AsyncStream, NOT_GIVEN
 from openai.types.chat import ChatCompletionChunk
@@ -35,12 +37,35 @@ class Agent(BaseStreamable):
             "knowledge_search": partial(self.knowledge_database_retriever.query, k=10)
         }
 
+    @classmethod
+    def has_function(cls, tools: list[dict] | None, function_name: str) -> bool:
+        for tool in tools:
+            if tool.get("function", {}).get("name", {}) == function_name:
+                return True
+        return False
+
     async def chat(
             self,
             messages: list[dict[str, str]],
             enable_thinking: bool = False,
             tools: list[dict] | None = None,
     ) -> AsyncIterable[ChatResponse]:
+        assistant_message: dict = {'role': 'assistant'}
+
+        if len(messages) == 2 and self.has_function(tools, "knowledge_search"):
+            assert messages[0]['role'] == 'system' and messages[1]['role'] == 'user'
+            assistant_message.setdefault('tool_calls', []).append({
+                "id": str(uuid4()).replace('-', ''),
+                "type": "function",
+                "function": {
+                    "name": "knowledge_search",
+                    "arguments": jsonlib.dumps(
+                        {"query": messages[1]['content']}, ensure_ascii=False, separators=(",", ":")
+                    )
+                }
+            })
+            yield ChatOpenAIMessageResponse(message=assistant_message)
+            return
 
         openai_response: AsyncStream[ChatCompletionChunk] = await self.client.chat.completions.create(
             model=self.model,
@@ -49,7 +74,6 @@ class Agent(BaseStreamable):
             stream=True,
             extra_body={"enable_thinking": enable_thinking}
         )
-        assistant_message: dict = {'role': 'assistant'}
 
         async for chunk in openai_response:
             delta = chunk.choices[0].delta

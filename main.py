@@ -1,9 +1,15 @@
 import asyncio
+import tomllib
 from argparse import Namespace, ArgumentParser
 
+from common import project_root
 from common.config_loader import Loader
+from common.logger import get_logger
 from wizard.config import WorkerConfig, ENV_PREFIX
 from wizard.wand.worker import Worker
+
+with project_root.open("pyproject.toml", "rb") as f:
+    version = tomllib.load(f)["project"]["version"]
 
 
 def get_args() -> Namespace:
@@ -15,6 +21,7 @@ def get_args() -> Namespace:
 
 async def main():
     args = get_args()
+    get_logger("main").info(f"Starting Wizard {version} with {args.workers} workers")
     loader = Loader(WorkerConfig, env_prefix=ENV_PREFIX)
     config = loader.load()
     workers = [Worker(config=config, worker_id=i) for i in range(args.workers)]

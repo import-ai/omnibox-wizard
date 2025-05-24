@@ -9,7 +9,7 @@ from common.trace_info import TraceInfo
 from tests.helper.fixture import trace_info
 from wizard.config import OpenAIConfig, ReaderConfig
 from wizard.entity import Task
-from wizard.wand.functions.html_reader import HTMLReader
+from wizard.wand.functions.html_reader import HTMLReader, HTMLReaderV2
 
 
 @pytest.fixture(scope="function")
@@ -24,24 +24,46 @@ def reader_config() -> ReaderConfig:
     )
 
 
-@pytest.fixture(scope="function")
-def task() -> Task:
-    with project_root.open("tests/resources/files/input.json") as f:
-        yield Task(
-            id='test',
+html_reader_base_dir = "tests/resources/files/html_reader_input"
+
+
+@pytest.mark.parametrize("filename", os.listdir(project_root.path(html_reader_base_dir)))
+async def test_html_reader(filename: str, reader_config: ReaderConfig, trace_info: TraceInfo):
+    with project_root.open(os.path.join(html_reader_base_dir, filename)) as f:
+        task = Task(
+            id=filename,
             priority=5,
             namespace_id='test',
             user_id='test',
             function="collect",
             input=jsonlib.load(f)
         )
-
-
-async def test_html_reader(reader_config: ReaderConfig, task: Task, trace_info: TraceInfo):
     c = HTMLReader(reader_config)
     print(task.input['url'])
     result = await c.run(task, trace_info)
     print(jsonlib.dumps(result, ensure_ascii=False, separators=(",", ":")))
+
+
+@pytest.mark.parametrize("filename", filter(
+    lambda x: x.endswith('.json'),
+    os.listdir(project_root.path(html_reader_base_dir))
+))
+async def test_html_reader_v2(filename: str, reader_config: ReaderConfig, trace_info: TraceInfo):
+    with project_root.open(os.path.join(html_reader_base_dir, filename)) as f:
+        task = Task(
+            id=filename,
+            priority=5,
+            namespace_id='test',
+            user_id='test',
+            function="collect",
+            input=jsonlib.load(f)
+        )
+    c = HTMLReaderV2(reader_config)
+    print(task.input['url'])
+    result = await c.run(task, trace_info)
+    print(jsonlib.dumps(result, ensure_ascii=False, separators=(",", ":")))
+    with project_root.open(os.path.join(html_reader_base_dir, filename.replace(".json", ".md")), "w") as f:
+        f.write(result["markdown"])
 
 
 async def test_html_clean(reader_config: ReaderConfig, task: Task):

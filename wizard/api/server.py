@@ -1,15 +1,20 @@
+import tomllib
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 
+from common import project_root
 from common.exception import CommonException
 from common.logger import get_logger
 from wizard.api.grimoire import init as grimoire_init
 from wizard.api.v1 import v1_router
 
 logger = get_logger("app")
+
+with project_root.open("pyproject.toml", "rb") as f:
+    version = tomllib.load(f)["project"]["version"]
 
 
 async def init():
@@ -22,7 +27,7 @@ async def lifespan(_: FastAPI):
     yield
 
 
-app = FastAPI(lifespan=lifespan)
+app = FastAPI(lifespan=lifespan, version=version)
 
 app.add_middleware(
     CORSMiddleware,  # noqa

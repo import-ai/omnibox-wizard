@@ -12,7 +12,7 @@ from wizard.config import WorkerConfig
 from wizard.entity import Task
 from wizard.wand.functions.base_function import BaseFunction
 from wizard.wand.functions.file_reader import FileReader
-from wizard.wand.functions.html_reader import HTMLReader
+from wizard.wand.functions.html_reader import HTMLReaderV2
 from wizard.wand.functions.index import UpsertIndex, DeleteIndex
 
 
@@ -23,7 +23,7 @@ class Worker:
         self.worker_id = worker_id
 
         self.worker_dict: dict[str, BaseFunction] = {
-            "collect": HTMLReader(config.task.reader),
+            "collect": HTMLReaderV2(config.task.reader),
             "upsert_index": UpsertIndex(config),
             "delete_index": DeleteIndex(config),
             "file_reader": FileReader(config)

@@ -4,7 +4,9 @@ import re
 from urllib.parse import urlparse
 
 from bs4 import BeautifulSoup, Comment, Tag
+from html2text import html2text
 from openai import AsyncOpenAI
+from readability import Document
 
 from common import project_root
 from common.trace_info import TraceInfo
@@ -227,5 +229,38 @@ class HTMLReader(BaseFunction):
         content = "\n".join([row for row in content.split("\n") if row != f"# {title}"]).strip()
 
         result_dict: dict = {"title": title, "markdown": content} | filtered_metadata
+        trace_info.info({k: v for k, v in result_dict.items() if k != "markdown"})
+        return result_dict
+
+
+class HTMLReaderV2(BaseFunction):
+    def __init__(self, reader_config: ReaderConfig):
+        openai_config: OpenAIConfig = reader_config.openai
+        self.client = AsyncOpenAI(api_key=openai_config.api_key, base_url=openai_config.base_url)
+        self.model: str = openai_config.model
+        self.timeout: float = reader_config.timeout
+
+    async def run(self, task: Task, trace_info: TraceInfo, stream: bool = False) -> dict:
+        input_dict = task.input
+        html = input_dict["html"]
+        url = input_dict["url"]
+
+        domain: str = urlparse(url).netloc
+        trace_info = trace_info.bind(domain=domain)
+
+        html_doc = Document(html)
+
+        title = html_doc.title()
+        html_summary = html_doc.summary().strip()
+        markdown: str = html2text(html_summary).strip()
+
+        trace_info.info({
+            "len(html)": len(html),
+            "len(html_summary)": len(html_summary),
+            "compress_rate": f"{len(html_summary) * 100 / len(html): .2f}%",
+            "len(markdown)": len(markdown),
+        })
+
+        result_dict: dict = {"title": title, "markdown": markdown}
         trace_info.info({k: v for k, v in result_dict.items() if k != "markdown"})
         return result_dict

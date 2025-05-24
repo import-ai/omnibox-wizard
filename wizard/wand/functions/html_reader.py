@@ -4,8 +4,11 @@ import re
 from urllib.parse import urlparse
 
 from bs4 import BeautifulSoup, Comment, Tag
+from html2text import html2text
 from openai import AsyncOpenAI
+from readability import Document
 
+from common import project_root
 from common.trace_info import TraceInfo
 from wizard.config import OpenAIConfig, ReaderConfig
 from wizard.entity import Task
@@ -62,6 +65,12 @@ class HTMLReader(BaseFunction):
         self.client = AsyncOpenAI(api_key=openai_config.api_key, base_url=openai_config.base_url)
         self.model: str = openai_config.model
         self.timeout: float = reader_config.timeout
+
+        with project_root.open("resources/prompts/html_reader.md") as f:
+            self.html_reader_system_prompt: str = f.read()
+
+        with project_root.open("resources/prompts/html_extractor.md") as f:
+            self.html_extractor_system_prompt: str = f.read()
 
     @classmethod
     def content_selector(cls, url: str, soup: BeautifulSoup) -> Tag:
@@ -128,22 +137,15 @@ class HTMLReader(BaseFunction):
 
         return cleaned_html
 
-    @classmethod
-    def create_prompt(cls, text: str, instruction: str = None, schema: str = None) -> str:
+    def create_prompt(self, instruction: str = None, schema: str = None) -> str:
         """
         Create a prompt for the model with optional instruction and JSON schema.
         """
         if not instruction:
-            instruction = "Extract the main content from the given HTML and convert it to Markdown format."
+            instruction = self.html_reader_system_prompt
         if schema:
-            instruction = ("Extract the specified information from the given HTML and present it in a structured JSON "
-                           "format. If any of the fields are not found in the HTML document, set their values to "
-                           "`Unknown` in the JSON output.")
-            prompt = f"{instruction}\n```html\n{text}\n```\nThe JSON schema is as follows:```json\n{schema}\n```"
-        else:
-            prompt = f"{instruction}\n```html\n{text}\n```"
-
-        return prompt
+            return self.html_extractor_system_prompt.format_map({"schema": schema})
+        return instruction
 
     @classmethod
     async def get_response(cls, openai_response, stream: bool) -> str:
@@ -167,20 +169,27 @@ class HTMLReader(BaseFunction):
         content: str = tail_sep.join(partial_content.split(tail_sep)[:-1]).strip()
         return content
 
-    async def extract_content(self, html: str, instruction: str = None, schema: str = None,
-                              stream: bool = False) -> str | dict:
-        prompt = self.create_prompt(html, instruction, schema)
-        messages = [{"role": "user", "content": prompt}]
+    async def _call(self, html: str, system_prompt: str, stream: bool = False) -> str:
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": f"```html\n{html}\n```"}
+        ]
         openai_response = await self.client.chat.completions.create(
-            model=self.model, messages=messages, temperature=0, frequency_penalty=0.1, stream=stream)
-        response = await self.get_response(openai_response, stream)
-        if schema:
-            str_json_response: str = self.get_code_block(response, "json")
-            json_response: dict = jsonlib.loads(str_json_response)
-            return json_response
-        else:
-            markdown_response: str = self.get_code_block(response, "markdown")
-            return markdown_response
+            model=self.model, messages=messages, temperature=0.1, presence_penalty=1.5,
+            stream=stream, extra_body={"chat_template_kwargs": {"enable_thinking": False}}
+        )
+        return await self.get_response(openai_response, stream)
+
+    async def extract_meta(self, html: str, schema: str = None, stream: bool = False) -> dict:
+        response = await self._call(html, self.html_extractor_system_prompt.format_map({"schema": schema}), stream)
+        str_json_response: str = self.get_code_block(response, "json")
+        json_response: dict = jsonlib.loads(str_json_response)
+        return json_response
+
+    async def extract_markdown(self, html: str, stream: bool = False) -> str:
+        response = await self._call(html, self.html_reader_system_prompt, stream)
+        markdown_response: str = self.get_code_block(response, "markdown")
+        return markdown_response
 
     async def run(self, task: Task, trace_info: TraceInfo, stream: bool = False) -> dict:
         input_dict = task.input
@@ -191,15 +200,16 @@ class HTMLReader(BaseFunction):
         trace_info = trace_info.bind(domain=domain)
 
         cleaned_html = self.clean_html(url, html, clean_svg=True, clean_base64=True, remove_atts=True,
-                                       compress=True, remove_empty_tag=True, enable_content_selector=True)
+                                       compress=True, remove_empty_tag=True, enable_content_selector=True,
+                                       allowed_attrs={"src", "alt", "hidden", "style"})
         trace_info.info({
             "len(html)": len(html),
             "len(cleaned_html)": len(cleaned_html),
             "compress_rate": f"{len(cleaned_html) * 100 / len(html): .2f}%"
         })
 
-        metadata_task = asyncio.create_task(self.extract_content(cleaned_html, schema=self.SCHEMA))
-        content_task = asyncio.create_task(self.extract_content(cleaned_html, stream=stream))
+        metadata_task = asyncio.create_task(self.extract_meta(cleaned_html, schema=self.SCHEMA, stream=stream))
+        content_task = asyncio.create_task(self.extract_markdown(cleaned_html, stream=stream))
 
         try:
             metadata = await asyncio.wait_for(metadata_task, timeout=self.timeout)
@@ -219,5 +229,38 @@ class HTMLReader(BaseFunction):
         content = "\n".join([row for row in content.split("\n") if row != f"# {title}"]).strip()
 
         result_dict: dict = {"title": title, "markdown": content} | filtered_metadata
+        trace_info.info({k: v for k, v in result_dict.items() if k != "markdown"})
+        return result_dict
+
+
+class HTMLReaderV2(BaseFunction):
+    def __init__(self, reader_config: ReaderConfig):
+        openai_config: OpenAIConfig = reader_config.openai
+        self.client = AsyncOpenAI(api_key=openai_config.api_key, base_url=openai_config.base_url)
+        self.model: str = openai_config.model
+        self.timeout: float = reader_config.timeout
+
+    async def run(self, task: Task, trace_info: TraceInfo, stream: bool = False) -> dict:
+        input_dict = task.input
+        html = input_dict["html"]
+        url = input_dict["url"]
+
+        domain: str = urlparse(url).netloc
+        trace_info = trace_info.bind(domain=domain)
+
+        html_doc = Document(html)
+
+        title = html_doc.title()
+        html_summary = html_doc.summary().strip()
+        markdown: str = html2text(html_summary).strip()
+
+        trace_info.info({
+            "len(html)": len(html),
+            "len(html_summary)": len(html_summary),
+            "compress_rate": f"{len(html_summary) * 100 / len(html): .2f}%",
+            "len(markdown)": len(markdown),
+        })
+
+        result_dict: dict = {"title": title, "markdown": markdown}
         trace_info.info({k: v for k, v in result_dict.items() if k != "markdown"})
         return result_dict

@@ -23,7 +23,7 @@ class Worker:
         self.worker_id = worker_id
 
         self.worker_dict: dict[str, BaseFunction] = {
-            "collect": HTMLReaderV2(config.task.reader),
+            "collect": HTMLReaderV2(),
             "upsert_index": UpsertIndex(config),
             "delete_index": DeleteIndex(config),
             "file_reader": FileReader(config)

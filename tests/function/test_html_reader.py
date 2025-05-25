@@ -48,7 +48,7 @@ async def test_html_reader(filename: str, reader_config: ReaderConfig, trace_inf
     lambda x: x.endswith('.json'),
     os.listdir(project_root.path(html_reader_base_dir))
 ))
-async def test_html_reader_v2(filename: str, reader_config: ReaderConfig, trace_info: TraceInfo):
+async def test_html_reader_v2(filename: str, trace_info: TraceInfo):
     with project_root.open(os.path.join(html_reader_base_dir, filename)) as f:
         task = Task(
             id=filename,
@@ -58,7 +58,7 @@ async def test_html_reader_v2(filename: str, reader_config: ReaderConfig, trace_
             function="collect",
             input=jsonlib.load(f)
         )
-    c = HTMLReaderV2(reader_config)
+    c = HTMLReaderV2()
     print(task.input['url'])
     result = await c.run(task, trace_info)
     print(jsonlib.dumps(result, ensure_ascii=False, separators=(",", ":")))

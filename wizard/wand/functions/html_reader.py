@@ -234,12 +234,6 @@ class HTMLReader(BaseFunction):
 
 
 class HTMLReaderV2(BaseFunction):
-    def __init__(self, reader_config: ReaderConfig):
-        openai_config: OpenAIConfig = reader_config.openai
-        self.client = AsyncOpenAI(api_key=openai_config.api_key, base_url=openai_config.base_url)
-        self.model: str = openai_config.model
-        self.timeout: float = reader_config.timeout
-
     async def run(self, task: Task, trace_info: TraceInfo, stream: bool = False) -> dict:
         input_dict = task.input
         html = input_dict["html"]

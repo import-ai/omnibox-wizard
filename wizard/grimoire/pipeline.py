@@ -15,7 +15,7 @@ class Pipeline(BaseStreamable):
     def __init__(self, config: Config):
         self.vector_db: VectorDB = VectorDB(config.vector)
         self.max_recall_results: int = config.vector.max_results
-        self.rag: RAG = RAG(config.grimoire.openai)
+        self.rag: RAG = RAG(config.grimoire.openai["large"])
 
     async def retrieve(self, request: ChatRequest, trace_info: TraceInfo) -> List[TextRetrieval]:
         recall_result_list: List[Tuple[Chunk, float]] = await self.vector_db.query(

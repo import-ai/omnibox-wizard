@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse, Response
 from common import project_root
 from common.exception import CommonException
 from common.logger import get_logger
-from wizard.api.grimoire import init as grimoire_init
+from wizard.api.wizard import init as grimoire_init
 from wizard.api.v1 import v1_router
 
 logger = get_logger("app")

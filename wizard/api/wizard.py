@@ -2,12 +2,13 @@ from functools import partial
 from json import dumps as lib_dumps
 from typing import AsyncIterator, Union
 
-from fastapi import APIRouter, Depends, Body
+from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
 from common.config_loader import Loader
 from common.trace_info import TraceInfo
 from wizard.api.depends import get_trace_info
+from wizard.api.entity import TitleResponse, TitleRequest
 from wizard.config import Config, ENV_PREFIX
 from wizard.grimoire.agent.agent import Agent
 from wizard.grimoire.base_streamable import BaseStreamable, ChatResponse
@@ -18,7 +19,7 @@ from wizard.grimoire.entity.api import (
 from wizard.grimoire.pipeline import Pipeline
 
 dumps = partial(lib_dumps, ensure_ascii=False, separators=(",", ":"))
-grimoire_router = APIRouter(prefix="/grimoire")
+wizard_router = APIRouter(prefix="/wizard")
 pipeline: Pipeline = ...
 agent: Agent = ...
 common_ai: CommonAI = ...
@@ -49,8 +50,8 @@ async def sse_format(iterator: AsyncIterator[dict]) -> AsyncIterator[str]:
         yield f"data: {dumps(item)}\n\n"
 
 
-@grimoire_router.post("/stream", tags=["LLM"],
-                      response_model=Union[ChatBaseResponse, ChatDeltaResponse, ChatCitationsResponse])
+@wizard_router.post("/stream", tags=["LLM"],
+                    response_model=Union[ChatBaseResponse, ChatDeltaResponse, ChatCitationsResponse])
 async def stream(request: ChatRequest, trace_info: TraceInfo = Depends(get_trace_info)):
     """
     Answer the query based on user's database.
@@ -58,11 +59,11 @@ async def stream(request: ChatRequest, trace_info: TraceInfo = Depends(get_trace
     return StreamingResponse(sse_format(call_stream(pipeline, request, trace_info)), media_type="text/event-stream")
 
 
-@grimoire_router.post("/ask", tags=["LLM"], response_model=ChatResponse)
+@wizard_router.post("/ask", tags=["LLM"], response_model=ChatResponse)
 async def ask(request: AgentRequest, trace_info: TraceInfo = Depends(get_trace_info)):
     return StreamingResponse(sse_format(call_stream(agent, request, trace_info)), media_type="text/event-stream")
 
 
-@grimoire_router.post("/title", tags=["LLM"], response_model=str)
-async def title(text: str = Body(), trace_info: TraceInfo = Depends(get_trace_info)):
-    return await common_ai.title(text, trace_info=trace_info)
+@wizard_router.post("/title", tags=["LLM"], response_model=TitleResponse)
+async def title(request: TitleRequest, trace_info: TraceInfo = Depends(get_trace_info)):
+    return TitleResponse(title=await common_ai.title(request.text, trace_info=trace_info))

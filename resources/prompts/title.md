@@ -8,9 +8,9 @@ You will receive a user's text and are expected to create a concise, 3-5 word ti
 
 # Guidelines
 
-- The title should be short and concise.
-- Your title should be in user's preference language.
-- Your response must be in JSON format, with key "title".
+- The title should be short and concise
+- Your title should be in user's preference language
+- Your response must be in JSON format, with key "title"
 
 # Examples
 

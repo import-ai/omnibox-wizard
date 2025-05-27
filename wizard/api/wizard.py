@@ -8,7 +8,7 @@ from fastapi.responses import StreamingResponse
 from common.config_loader import Loader
 from common.trace_info import TraceInfo
 from wizard.api.depends import get_trace_info
-from wizard.api.entity import TitleResponse, TitleRequest
+from wizard.api.entity import TitleResponse, CommonAITextRequest, TagsResponse
 from wizard.config import Config, ENV_PREFIX
 from wizard.grimoire.agent.agent import Agent
 from wizard.grimoire.base_streamable import BaseStreamable, ChatResponse
@@ -65,5 +65,10 @@ async def ask(request: AgentRequest, trace_info: TraceInfo = Depends(get_trace_i
 
 
 @wizard_router.post("/title", tags=["LLM"], response_model=TitleResponse)
-async def title(request: TitleRequest, trace_info: TraceInfo = Depends(get_trace_info)):
+async def title(request: CommonAITextRequest, trace_info: TraceInfo = Depends(get_trace_info)):
     return TitleResponse(title=await common_ai.title(request.text, trace_info=trace_info))
+
+
+@wizard_router.get("/tags", tags=["LLM"], response_model=TagsResponse)
+async def tags(request: CommonAITextRequest, trace_info: TraceInfo = Depends(get_trace_info)):
+    return TagsResponse(tags=await common_ai.tags(request.text, trace_info=trace_info))

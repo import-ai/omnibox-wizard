@@ -13,6 +13,27 @@ class Condition(BaseModel):
     created_at: tuple[float, float] | None = Field(default=None)
     updated_at: tuple[float, float] | None = Field(default=None)
 
+    def to_chromadb_where(self) -> dict | None:
+        and_clause = []
+        or_clause = []
+        if self.resource_ids:
+            or_clause.append({"resource_id": {"$in": self.resource_ids}})
+        if self.parent_ids:
+            or_clause.append({"parent_id": {"$in": self.parent_ids}})
+        if or_clause:
+            and_clause.append({"$or": or_clause} if len(or_clause) > 1 else or_clause[0])
+
+        if self.created_at is not None:
+            and_clause.append({"created_at": {"$gte": self.created_at[0], "$lte": self.created_at[1]}})
+        if self.updated_at is not None:
+            and_clause.append({"updated_at": {"$gte": self.updated_at[0], "$lte": self.updated_at[1]}})
+
+        if and_clause:
+            where = {"$and": and_clause} if len(and_clause) > 1 else and_clause[0]
+        else:
+            where = None
+        return where
+
 
 class ToolExecutorConfig(TypedDict):
     name: ToolName
@@ -24,7 +45,7 @@ class Tool(BaseModel):
     name: ToolName
     schema: dict
 
-    def to_executor_config(self, func: Callable, /, **kwargs) -> ToolExecutorConfig:
+    def to_executor_config(self, func: Callable, **kwargs) -> ToolExecutorConfig:
         return ToolExecutorConfig(
             name=self.name,
             schema=self.schema,

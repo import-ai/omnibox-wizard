@@ -7,7 +7,7 @@ services:
     volumes:
       - "/etc/localtime:/etc/localtime:ro"
     environment:
-      ENV: "prod"
+      ENV: "dev"
       OBW_VECTOR_HOST: chromadb
       OBW_VECTOR_PORT: 8000
       OBW_BACKEND_BASE_URL: "http://backend:8000"
@@ -29,7 +29,7 @@ services:
     build: .
     restart: always
     environment:
-      ENV: "prod"
+      ENV: "dev"
       OBW_VECTOR_HOST: chromadb
       OBW_VECTOR_PORT: 8000
       OBW_BACKEND_BASE_URL: "http://backend:8000"

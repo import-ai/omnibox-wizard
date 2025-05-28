@@ -7,6 +7,7 @@ import pytest
 from tests.helper.fixture import client, worker
 from wizard.entity import Task
 from wizard.grimoire.entity.api import ChatRequest, AgentRequest, BaseChatRequest
+from wizard.grimoire.entity.tools import Condition
 from wizard.wand.worker import Worker
 
 
@@ -21,8 +22,8 @@ class Colors:
     RESET = '\033[0m'
 
 
-def print_colored(text, /, color, *args, **kwargs):
-    print(f"{color}{text}{Colors.RESET}", *args, **kwargs)
+def print_colored(text, *, color, **kwargs):
+    print(f"{color}{text}{Colors.RESET}", **kwargs)
 
 
 def assert_stream(stream: Iterator[str]) -> list[dict]:
@@ -173,3 +174,15 @@ def test_agent(client: httpx.Client, vector_db_init: bool, namespace_id: str, qu
     })
     messages = assert_stream(api_stream(client, request))
     assert len(messages) == expected_messages_length
+
+
+@pytest.mark.parametrize("condition", [
+    {"namespace_id": "asdf", "resource_ids": ["asdf"]},
+    {"namespace_id": "asdf", "parent_ids": ["asdf"]},
+    {"namespace_id": "asdf"},
+    {"namespace_id": "asdf", "resource_ids": []},
+    {"namespace_id": "asdf", "parent_ids": []},
+])
+def test_condition(condition: dict):
+    condition = Condition.model_validate(condition)
+    print(condition.to_chromadb_where())

@@ -47,13 +47,13 @@ class CommonAI:
         json_response: dict = parse_json(str_response)
         return json_response
 
-    async def title(self, text: str, /, trace_info: TraceInfo | None = None) -> str:
+    async def title(self, text: str, *, trace_info: TraceInfo | None = None) -> str:
         """
         Create title according to the given text
         """
         return (await self._invoke(text, self.title_system_prompt_template, "mini", trace_info))["title"]
 
-    async def tags(self, text: str, /, trace_info: TraceInfo | None = None) -> list[str]:
+    async def tags(self, text: str, *, trace_info: TraceInfo | None = None) -> list[str]:
         """
         Create tags according to the given text
         """

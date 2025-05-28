@@ -51,34 +51,10 @@ class VectorDB:
             self,
             query: str,
             k: int,
-            *,
-            condition: dict | Condition = None,
-            trace_info: TraceInfo | None = None
+            namespace_id: str,
+            where: dict
     ) -> List[Tuple[Chunk, float]]:
-        if isinstance(condition, dict):
-            condition = Condition(**condition)
-        and_clause = []
-
-        or_clause = []
-        if condition.resource_ids is not None:
-            or_clause.append({"resource_id": {"$in": condition.resource_ids}})
-        if condition.parent_ids is not None:
-            or_clause.append({"parent_id": {"$in": condition.parent_ids}})
-        if or_clause:
-            and_clause.append({"$or": or_clause} if len(or_clause) > 1 else or_clause[0])
-
-        if condition.created_at is not None:
-            and_clause.append({"created_at": {"$gte": condition.created_at[0], "$lte": condition.created_at[1]}})
-        if condition.updated_at is not None:
-            and_clause.append({"updated_at": {"$gte": condition.updated_at[0], "$lte": condition.updated_at[1]}})
-        if and_clause:
-            where = {"$and": and_clause} if len(and_clause) > 1 else and_clause[0]
-        else:
-            where = None
-        if trace_info:
-            trace_info.debug({"where": where, "condition": condition.model_dump()})
-
-        collection = await self.get_collection(name=condition.namespace_id)
+        collection = await self.get_collection(name=namespace_id)
         batch_result_list: chromadb.QueryResult = await collection.query(
             query_texts=[query], n_results=k, where=where)
         result_list: List[Tuple[Chunk, float]] = []
@@ -92,18 +68,29 @@ class VectorDB:
         return result_list
 
 
-class VectorRetriever(VectorDB):
+class VectorRetriever:
+
+    def __init__(self, config: VectorConfig):
+        self.vector_db: VectorDB = VectorDB(config)
 
     async def query(
             self,
             query: str,
             k: int,
             *,
-            condition: dict | Condition = None,
+            condition: dict | Condition,
             trace_info: TraceInfo | None = None
     ) -> list[TextRetrieval]:
-        recall_result_list: List[Tuple[Chunk, float]] = await super().query(
-            query, k, condition=condition, trace_info=trace_info
+        if isinstance(condition, dict):
+            condition = Condition(**condition)
+        where = condition.to_chromadb_where()
+        if trace_info:
+            trace_info.debug({"where": where, "condition": condition.model_dump() if condition else condition})
+        if not where:
+            return []
+
+        recall_result_list: List[Tuple[Chunk, float]] = await self.vector_db.query(
+            query, k, condition.namespace_id, where
         )
         retrievals: List[TextRetrieval] = [
             TextRetrieval(chunk=chunk, score=Score(recall=score, rerank=0))

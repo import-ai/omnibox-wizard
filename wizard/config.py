@@ -10,7 +10,7 @@ class OpenAIConfig(BaseModel):
     model: str = Field(default=None)
     base_url: str = Field(default=None)
 
-    async def chat(self, /, model: str = None, **kwargs) -> ChatCompletion | AsyncStream[ChatCompletionChunk]:
+    async def chat(self, *, model: str = None, **kwargs) -> ChatCompletion | AsyncStream[ChatCompletionChunk]:
         client = AsyncOpenAI(api_key=self.api_key, base_url=self.base_url)
         return await client.chat.completions.create(**(kwargs | {"model": model or self.model}))
 

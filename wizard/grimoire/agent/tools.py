@@ -4,7 +4,7 @@ from typing import AsyncIterable
 from openai.types.chat import ChatCompletionAssistantMessageParam, ChatCompletionMessageParam
 
 from wizard.grimoire.entity.api import (
-    ChatOpenAIMessageResponse, ChatBaseResponse, ChatCitationsResponse, ToolCallResponse, OpenAIMessageAttrs
+    ChatOpenAIMessageResponse, ChatBaseResponse, ChatCitationsResponse, OpenAIMessageAttrs, ChatBosResponse
 )
 from wizard.grimoire.entity.retrieval import BaseRetrieval
 from wizard.grimoire.entity.tools import ToolExecutorConfig
@@ -38,9 +38,9 @@ def retrieval_wrapper(
             retrieval.to_prompt()
         ]
         retrieval_prompt_list.append("\n".join(prompt_list))
-    prompt = "\n\n".join(retrieval_prompt_list) or "Not found"
+    response = "\n\n".join(retrieval_prompt_list) or "Not found"
     return ChatOpenAIMessageResponse(
-        message={"role": "tool", "tool_call_id": tool_call_id, "content": prompt},
+        message={"role": "tool", "tool_call_id": tool_call_id, "content": response},
         attrs=OpenAIMessageAttrs(citations=citations_response.citations)
     )
 
@@ -63,10 +63,7 @@ class ToolExecutor:
                 function_args = jsonlib.loads(function['arguments'])
                 function_name = function['name']
 
-                yield ToolCallResponse.model_validate({
-                    "tool_call": {"id": tool_call_id, "function": {"name": function_name, "arguments": function_args}}
-                })
-
+                yield ChatBosResponse(role="tool")
                 if function_name in self.config:
                     func = self.config[function_name]['func']
                     result = await func(**function_args)

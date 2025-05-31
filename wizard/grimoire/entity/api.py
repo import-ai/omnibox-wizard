@@ -31,12 +31,12 @@ class ChatBaseResponse(BaseModel):
     response_type: Literal["bos", "delta", "eos"]
 
 
-class ChatBosResponse(ChatBaseResponse):
+class ChatBOSResponse(ChatBaseResponse):
     response_type: Literal["bos"] = "bos"
     role: Literal["system", "user", "assistant", "tool"]
 
 
-class ChatEosResponse(ChatBaseResponse):
+class ChatEOSResponse(ChatBaseResponse):
     response_type: Literal["eos"] = "eos"
 
 
@@ -44,6 +44,7 @@ class DeltaOpenAIMessage(BaseModel):
     content: str | None = Field(default=None)
     reasoning_content: str | None = Field(default=None)
     tool_calls: list[dict] | None = Field(default=None)
+    tool_call_id: str | None = Field(default=None)
 
 
 class OpenAIMessageAttrs(BaseModel):

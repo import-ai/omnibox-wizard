@@ -14,7 +14,7 @@ from wizard.config import OpenAIConfig, ToolsConfig, VectorConfig
 from wizard.grimoire.agent.tools import ToolExecutor
 from wizard.grimoire.base_streamable import BaseStreamable, ChatResponse
 from wizard.grimoire.entity.api import (
-    ChatDeltaResponse, AgentRequest, ChatBosResponse, ChatEosResponse
+    ChatDeltaResponse, AgentRequest, ChatBOSResponse, ChatEOSResponse
 )
 from wizard.grimoire.entity.tools import ToolExecutorConfig
 from wizard.grimoire.retriever.searxng import SearXNG
@@ -46,16 +46,16 @@ class Agent(BaseStreamable):
 
     @classmethod
     def yieldCompleteMesasge(cls, message: dict):
-        yield ChatBosResponse.model_validate({"role": message["role"]})
+        yield ChatBOSResponse.model_validate({"role": message["role"]})
         yield ChatDeltaResponse.model_validate({"message": message})
-        yield ChatEosResponse()
+        yield ChatEOSResponse()
 
     async def chat(
             self,
             messages: list[dict[str, str]],
             enable_thinking: bool = False,
             tools: list[dict] | None = None,
-    ) -> AsyncIterable[ChatResponse]:
+    ) -> AsyncIterable[ChatResponse | dict]:
         assistant_message: dict = {'role': 'assistant'}
 
         if len(messages) == 2 and self.has_function(tools, "knowledge_search"):
@@ -81,7 +81,7 @@ class Agent(BaseStreamable):
                 extra_body={"enable_thinking": enable_thinking}
             )
 
-            yield ChatBosResponse(role="assistant")
+            yield ChatBOSResponse(role="assistant")
 
             async for chunk in openai_response:
                 delta = chunk.choices[0].delta
@@ -109,7 +109,8 @@ class Agent(BaseStreamable):
                 if tool_calls := assistant_message.get('tool_calls'):
                     yield ChatDeltaResponse.model_validate({"message": {"tool_calls": tool_calls}})
 
-            yield ChatEosResponse()
+            yield ChatEOSResponse()
+            yield assistant_message
 
     async def astream(self, trace_info: TraceInfo, agent_request: AgentRequest) -> AsyncIterable[ChatResponse]:
         executor_config: dict[str, ToolExecutorConfig] = {
@@ -143,12 +144,13 @@ class Agent(BaseStreamable):
                     enable_thinking=agent_request.enable_thinking,
                     tools=tool_executor.tools
             ):
-                if isinstance(chunk, ChatOpenAIMessageResponse):
-                    messages.append(chunk.message)
-                yield chunk
+                if isinstance(chunk, dict):
+                    messages.append(chunk)
+                else:
+                    yield chunk
             if messages[-1].get('tool_calls', []):
                 async for chunk in tool_executor.astream(messages, current_cite_cnt):
-                    if isinstance(chunk, ChatOpenAIMessageResponse):
+                    if isinstance(chunk, ChatDeltaResponse):
                         messages.append(chunk.message)
                         if (attrs := chunk.attrs) and attrs.citations:
                             current_cite_cnt += len(attrs.citations)

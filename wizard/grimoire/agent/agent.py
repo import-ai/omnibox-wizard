@@ -110,7 +110,7 @@ class Agent(BaseStreamable):
                     yield ChatDeltaResponse.model_validate({"message": {"tool_calls": tool_calls}})
 
             yield ChatEOSResponse()
-            yield assistant_message
+        yield assistant_message
 
     async def astream(self, trace_info: TraceInfo, agent_request: AgentRequest) -> AsyncIterable[ChatResponse]:
         executor_config: dict[str, ToolExecutorConfig] = {
@@ -151,7 +151,8 @@ class Agent(BaseStreamable):
             if messages[-1].get('tool_calls', []):
                 async for chunk in tool_executor.astream(messages, current_cite_cnt):
                     if isinstance(chunk, ChatDeltaResponse):
-                        messages.append(chunk.message)
+                        tool_message: dict = chunk.message.model_dump(exclude_none=True)
+                        messages.append({"role": "tool", **tool_message})
                         if (attrs := chunk.attrs) and attrs.citations:
                             current_cite_cnt += len(attrs.citations)
                     yield chunk

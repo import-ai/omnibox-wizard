@@ -106,8 +106,8 @@ class Agent(BaseStreamable):
                     if hasattr(delta, key) and (v := getattr(delta, key)):
                         assistant_message[key] = assistant_message.get(key, '') + v
                         yield ChatDeltaResponse.model_validate({"message": {key: v}})
-                if tool_calls := assistant_message.get('tool_calls'):
-                    yield ChatDeltaResponse.model_validate({"message": {"tool_calls": tool_calls}})
+            if tool_calls := assistant_message.get('tool_calls'):
+                yield ChatDeltaResponse.model_validate({"message": {"tool_calls": tool_calls}})
 
             yield ChatEOSResponse()
         yield assistant_message

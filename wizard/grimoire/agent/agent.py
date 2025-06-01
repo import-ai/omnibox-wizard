@@ -14,7 +14,7 @@ from wizard.config import OpenAIConfig, ToolsConfig, VectorConfig
 from wizard.grimoire.agent.tools import ToolExecutor
 from wizard.grimoire.base_streamable import BaseStreamable, ChatResponse
 from wizard.grimoire.entity.api import (
-    ChatThinkDeltaResponse, ChatDeltaResponse, AgentRequest, ChatOpenAIMessageResponse
+    ChatDeltaResponse, AgentRequest, ChatBOSResponse, ChatEOSResponse
 )
 from wizard.grimoire.entity.tools import ToolExecutorConfig
 from wizard.grimoire.retriever.searxng import SearXNG
@@ -44,12 +44,18 @@ class Agent(BaseStreamable):
                 return True
         return False
 
+    @classmethod
+    def yieldCompleteMesasge(cls, message: dict):
+        yield ChatBOSResponse.model_validate({"role": message["role"]})
+        yield ChatDeltaResponse.model_validate({"message": message})
+        yield ChatEOSResponse()
+
     async def chat(
             self,
             messages: list[dict[str, str]],
             enable_thinking: bool = False,
             tools: list[dict] | None = None,
-    ) -> AsyncIterable[ChatResponse]:
+    ) -> AsyncIterable[ChatResponse | dict]:
         assistant_message: dict = {'role': 'assistant'}
 
         if len(messages) == 2 and self.has_function(tools, "knowledge_search"):
@@ -64,45 +70,47 @@ class Agent(BaseStreamable):
                     )
                 }
             })
-            yield ChatOpenAIMessageResponse(message=assistant_message)
-            return
+            for r in self.yieldCompleteMesasge(assistant_message):
+                yield r
+        else:
+            openai_response: AsyncStream[ChatCompletionChunk] = await self.client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                tools=tools or NOT_GIVEN,
+                stream=True,
+                extra_body={"enable_thinking": enable_thinking}
+            )
 
-        openai_response: AsyncStream[ChatCompletionChunk] = await self.client.chat.completions.create(
-            model=self.model,
-            messages=messages,
-            tools=tools or NOT_GIVEN,
-            stream=True,
-            extra_body={"enable_thinking": enable_thinking}
-        )
+            yield ChatBOSResponse(role="assistant")
 
-        async for chunk in openai_response:
-            delta = chunk.choices[0].delta
+            async for chunk in openai_response:
+                delta = chunk.choices[0].delta
 
-            if delta.tool_calls:
-                tool_call: ChoiceDeltaToolCall = delta.tool_calls[0]
-                if tool_call.index + 1 > len(assistant_message.get('tool_calls', [])):
-                    assistant_message.setdefault('tool_calls', []).append({})
-                if tool_call.id:
-                    assistant_message['tool_calls'][tool_call.index]['id'] = tool_call.id
-                if tool_call.type:
-                    assistant_message['tool_calls'][tool_call.index]['type'] = tool_call.type
-                if tool_call.function:
-                    function = tool_call.function
-                    function_dict: dict = assistant_message['tool_calls'][tool_call.index].setdefault('function', {})
-                    if function.name:
-                        function_dict['name'] = function_dict.get('name', '') + function.name
-                    if function.arguments:
-                        function_dict['arguments'] = function_dict.get('arguments', '') + function.arguments
+                if delta.tool_calls:
+                    tool_call: ChoiceDeltaToolCall = delta.tool_calls[0]
+                    if tool_call.index + 1 > len(assistant_message.get('tool_calls', [])):
+                        assistant_message.setdefault('tool_calls', []).append({})
+                    if tool_call.id:
+                        assistant_message['tool_calls'][tool_call.index]['id'] = tool_call.id
+                    if tool_call.type:
+                        assistant_message['tool_calls'][tool_call.index]['type'] = tool_call.type
+                    if tool_call.function:
+                        function = tool_call.function
+                        function_dict: dict = assistant_message['tool_calls'][tool_call.index].setdefault('function', {})
+                        if function.name:
+                            function_dict['name'] = function_dict.get('name', '') + function.name
+                        if function.arguments:
+                            function_dict['arguments'] = function_dict.get('arguments', '') + function.arguments
 
-            for key in ['content', 'reasoning_content']:
-                if hasattr(delta, key) and (v := getattr(delta, key)):
-                    assistant_message[key] = assistant_message.get(key, '') + v
-                    if key == 'reasoning_content':
-                        yield ChatThinkDeltaResponse(delta=v)
-                    if key == 'content':
-                        yield ChatDeltaResponse(delta=v)
+                for key in ['content', 'reasoning_content']:
+                    if hasattr(delta, key) and (v := getattr(delta, key)):
+                        assistant_message[key] = assistant_message.get(key, '') + v
+                        yield ChatDeltaResponse.model_validate({"message": {key: v}})
+            if tool_calls := assistant_message.get('tool_calls'):
+                yield ChatDeltaResponse.model_validate({"message": {"tool_calls": tool_calls}})
 
-        yield ChatOpenAIMessageResponse(message=assistant_message)
+            yield ChatEOSResponse()
+        yield assistant_message
 
     async def astream(self, trace_info: TraceInfo, agent_request: AgentRequest) -> AsyncIterable[ChatResponse]:
         executor_config: dict[str, ToolExecutorConfig] = {
@@ -120,11 +128,13 @@ class Agent(BaseStreamable):
             })
             system_message: dict = {"role": "system", "content": prompt}
             messages.append(system_message)
-            yield ChatOpenAIMessageResponse(message=system_message)
+            for r in self.yieldCompleteMesasge(system_message):
+                yield r
 
         user_message: dict = {"role": "user", "content": agent_request.query}
         messages.append(user_message)
-        yield ChatOpenAIMessageResponse(message=user_message)
+        for r in self.yieldCompleteMesasge(user_message):
+            yield r
 
         current_cite_cnt = agent_request.current_cite_cnt
 
@@ -134,13 +144,15 @@ class Agent(BaseStreamable):
                     enable_thinking=agent_request.enable_thinking,
                     tools=tool_executor.tools
             ):
-                if isinstance(chunk, ChatOpenAIMessageResponse):
-                    messages.append(chunk.message)
-                yield chunk
+                if isinstance(chunk, dict):
+                    messages.append(chunk)
+                else:
+                    yield chunk
             if messages[-1].get('tool_calls', []):
                 async for chunk in tool_executor.astream(messages, current_cite_cnt):
-                    if isinstance(chunk, ChatOpenAIMessageResponse):
-                        messages.append(chunk.message)
+                    if isinstance(chunk, ChatDeltaResponse):
+                        tool_message: dict = chunk.message.model_dump(exclude_none=True)
+                        messages.append({"role": "tool", **tool_message})
                         if (attrs := chunk.attrs) and attrs.citations:
                             current_cite_cnt += len(attrs.citations)
                     yield chunk

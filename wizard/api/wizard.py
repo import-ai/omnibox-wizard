@@ -14,7 +14,7 @@ from wizard.grimoire.agent.agent import Agent
 from wizard.grimoire.base_streamable import BaseStreamable, ChatResponse
 from wizard.grimoire.common_ai import CommonAI
 from wizard.grimoire.entity.api import (
-    ChatRequest, ChatBaseResponse, ChatDeltaResponse, ChatCitationsResponse, AgentRequest, BaseChatRequest
+    ChatRequest, ChatBaseResponse, ChatDeltaResponse, AgentRequest, BaseChatRequest
 )
 from wizard.grimoire.pipeline import Pipeline
 
@@ -38,7 +38,7 @@ async def init():
 async def call_stream(s: BaseStreamable, request: BaseChatRequest, trace_info: TraceInfo) -> AsyncIterator[dict]:
     try:
         async for delta in s.astream(trace_info, request):  # noqa
-            yield delta.model_dump()
+            yield delta.model_dump(exclude_none=True)
     except Exception as e:
         yield {"response_type": "error", "message": "Unknown error"}
         trace_info.logger.exception({"exception_class": e.__class__.__name__, "exception_message": str(e)})
@@ -51,7 +51,7 @@ async def sse_format(iterator: AsyncIterator[dict]) -> AsyncIterator[str]:
 
 
 @wizard_router.post("/stream", tags=["LLM"],
-                    response_model=Union[ChatBaseResponse, ChatDeltaResponse, ChatCitationsResponse])
+                    response_model=Union[ChatBaseResponse, ChatDeltaResponse])
 async def stream(request: ChatRequest, trace_info: TraceInfo = Depends(get_trace_info)):
     """
     Answer the query based on user's database.

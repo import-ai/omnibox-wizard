@@ -28,45 +28,35 @@ class AgentRequest(BaseChatRequest):
 
 
 class ChatBaseResponse(BaseModel):
-    response_type: Literal["delta", "openai_message", "think_delta", "citations", "tool_call"]
+    response_type: Literal["bos", "delta", "eos"]
+
+
+class ChatBOSResponse(ChatBaseResponse):
+    response_type: Literal["bos"] = "bos"
+    role: Literal["system", "user", "assistant", "tool"]
+
+
+class ChatEOSResponse(ChatBaseResponse):
+    response_type: Literal["eos"] = "eos"
+
+
+class DeltaOpenAIMessage(BaseModel):
+    content: str | None = Field(default=None)
+    reasoning_content: str | None = Field(default=None)
+    tool_calls: list[dict] | None = Field(default=None)
+    tool_call_id: str | None = Field(default=None)
 
 
 class OpenAIMessageAttrs(BaseModel):
     citations: list[Citation] = Field(default_factory=list)
 
 
-class ChatOpenAIMessageResponse(ChatBaseResponse):
-    response_type: Literal["openai_message"] = "openai_message"
-    message: dict
-    attrs: OpenAIMessageAttrs | None = Field(default=None, description="Attributes of the message.")
-
-
 class ChatDeltaResponse(ChatBaseResponse):
     response_type: Literal["delta"] = "delta"
-    delta: str
-
-
-class ChatThinkDeltaResponse(ChatBaseResponse):
-    response_type: Literal["think_delta"] = "think_delta"
-    delta: str
+    message: DeltaOpenAIMessage
+    attrs: OpenAIMessageAttrs | None = Field(default=None, description="Attributes of the message.")
 
 
 class ChatCitationsResponse(ChatBaseResponse):
     response_type: Literal["citations"] = "citations"
     citations: list[Citation]
-
-
-class FunctionCall(BaseModel):
-    name: str
-    arguments: dict
-
-
-class ToolCall(BaseModel):
-    id: str
-    type: Literal["function"] = "function"
-    function: FunctionCall
-
-
-class ToolCallResponse(ChatBaseResponse):
-    response_type: Literal["tool_call"] = "tool_call"
-    tool_call: ToolCall

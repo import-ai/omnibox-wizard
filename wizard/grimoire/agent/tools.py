@@ -10,19 +10,6 @@ from wizard.grimoire.entity.retrieval import BaseRetrieval
 from wizard.grimoire.entity.tools import ToolExecutorConfig
 
 
-def get_current_cite_cnt(messages: list[ChatCompletionMessageParam]) -> int:
-    current_cite_cnt: int = 0
-    for message in messages:
-        if message['role'] == 'tool':
-            content = message['content']
-            for line in content.split("\n"):
-                if line.startswith("<cite:") and line.endswith(">"):
-                    cite_index: int = int(line.lstrip("<cite:").rstrip(">"))
-                    current_cite_cnt += 1
-                    assert cite_index == current_cite_cnt
-    return current_cite_cnt
-
-
 def retrieval_wrapper(
         tool_call_id: str,
         current_cite_cnt: int,
@@ -32,8 +19,9 @@ def retrieval_wrapper(
     retrieval_prompt_list: list[str] = []
     for i, retrieval in enumerate(retrieval_list):
         prompt_list: list[str] = [
-            f"<cite:{current_cite_cnt + i + 1}>",
-            retrieval.to_prompt()
+            f'<cite id="{current_cite_cnt + i + 1}">',
+            retrieval.to_prompt(),
+            '</cite>'
         ]
         retrieval_prompt_list.append("\n".join(prompt_list))
     response = "\n\n".join(retrieval_prompt_list) or "Not found"

@@ -45,7 +45,7 @@ class Agent(BaseStreamable):
         return False
 
     @classmethod
-    def yieldCompleteMesasge(cls, message: dict):
+    def yield_complete_message(cls, message: dict):
         yield ChatBOSResponse.model_validate({"role": message["role"]})
         yield ChatDeltaResponse.model_validate({"message": message})
         yield ChatEOSResponse()
@@ -70,7 +70,7 @@ class Agent(BaseStreamable):
                     )
                 }
             })
-            for r in self.yieldCompleteMesasge(assistant_message):
+            for r in self.yield_complete_message(assistant_message):
                 yield r
         else:
             openai_response: AsyncStream[ChatCompletionChunk] = await self.client.chat.completions.create(
@@ -96,7 +96,8 @@ class Agent(BaseStreamable):
                         assistant_message['tool_calls'][tool_call.index]['type'] = tool_call.type
                     if tool_call.function:
                         function = tool_call.function
-                        function_dict: dict = assistant_message['tool_calls'][tool_call.index].setdefault('function', {})
+                        function_dict: dict = assistant_message['tool_calls'][tool_call.index].setdefault('function',
+                                                                                                          {})
                         if function.name:
                             function_dict['name'] = function_dict.get('name', '') + function.name
                         if function.arguments:
@@ -128,12 +129,12 @@ class Agent(BaseStreamable):
             })
             system_message: dict = {"role": "system", "content": prompt}
             messages.append(system_message)
-            for r in self.yieldCompleteMesasge(system_message):
+            for r in self.yield_complete_message(system_message):
                 yield r
 
         user_message: dict = {"role": "user", "content": agent_request.query}
         messages.append(user_message)
-        for r in self.yieldCompleteMesasge(user_message):
+        for r in self.yield_complete_message(user_message):
             yield r
 
         current_cite_cnt = agent_request.current_cite_cnt

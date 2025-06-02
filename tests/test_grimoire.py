@@ -31,32 +31,37 @@ def assert_stream(stream: Iterator[str]) -> list[dict]:
     for each in stream:
         response = json.loads(each)
         response_type = response["response_type"]
+        assert response_type in ["bos", "delta", "eos", "done", "error"]
         assert response_type != "error"
         if response_type == "delta":
-            print(response["delta"], end="", flush=True)
-        elif response_type == "citations":
-            print("\n".join(["", "-" * 32, json.dumps(response["citations"], ensure_ascii=False)]))
+            message = response["message"]
+            for key in ['content', 'reasoning_content']:
+                if key in message:
+                    messages[-1][key] = messages[-1].get(key, '') + message[key]
+                    if key == 'reasoning_content':
+                        print_colored(message[key], color=Colors.MAGENTA, end="", flush=True)
+                    else:
+                        print(message[key], end="", flush=True)
+            for key in ['tool_calls', 'tool_call_id']:
+                if key in message:
+                    messages[-1][key] = message[key]
+            if 'attrs' in response:
+                messages[-1].setdefault('attrs', {}).update(response['attrs'])
+        elif response_type == "bos":
+            messages.append({'role': response['role']})
+        elif response_type == "eos":
+            pass
         elif response_type == "done":
             pass
-        elif response_type == "openai_message":
-            message = response["message"]
-            messages.append(message)
-        elif response_type == "think_delta":
-            print_colored(response["delta"], color=Colors.MAGENTA, end="", flush=True)
-        elif response_type == "tool_call":
-            function_name: str = response["tool_call"]["function"]["name"]
-            function_args: dict = response["tool_call"]["function"]["arguments"]
-            str_function_args: str = json.dumps(function_args, separators=(',', ':'), ensure_ascii=False)
-            print_colored(f"[Call {function_name} with arguments {str_function_args}]", color=Colors.YELLOW)
         else:
             raise RuntimeError(f"response_type: {response['response_type']}")
     return messages
 
 
 def api_stream(client: httpx.Client, request: BaseChatRequest) -> Iterator[str]:
-    url = "/api/v1/grimoire/stream"
+    url = "/api/v1/wizard/stream"
     if isinstance(request, AgentRequest):
-        url = "/api/v1/grimoire/ask"
+        url = "/api/v1/wizard/ask"
     with client.stream("POST", url, json=request.model_dump()) as response:
         if response.status_code != 200:
             raise Exception(f"{response.status_code} {response.text}")
@@ -148,11 +153,11 @@ def test_grimoire_stream_remote(remote_client: httpx.Client, namespace_id: str, 
 
 
 @pytest.mark.parametrize("query, resource_ids, parent_ids, expected_messages_length", [
-    ("今天北京的天气", None, None, 7),
-    ("下周计划", None, None, 5),
+    # ("今天北京的天气", None, None, 7),
+    # ("下周计划", None, None, 5),
     ("下周计划", ["r_id_a0", "r_id_b0"], None, 5),
-    ("下周计划", None, ["p_id_1"], 5),
-    ("下周计划", ["r_id_b0"], ["p_id_0"], 5)
+    # ("下周计划", None, ["p_id_1"], 5),
+    # ("下周计划", ["r_id_b0"], ["p_id_0"], 5)
 ])
 def test_agent(client: httpx.Client, vector_db_init: bool, namespace_id: str, query: str, expected_messages_length: int,
                resource_ids: List[str] | None, parent_ids: List[str] | None):

@@ -32,8 +32,9 @@ def retrieval_wrapper(
     retrieval_prompt_list: list[str] = []
     for i, retrieval in enumerate(retrieval_list):
         prompt_list: list[str] = [
-            f"<cite:{current_cite_cnt + i + 1}>",
-            retrieval.to_prompt()
+            f'<cite id="{current_cite_cnt + i + 1}">',
+            retrieval.to_prompt(),
+            '</cite>'
         ]
         retrieval_prompt_list.append("\n".join(prompt_list))
     response = "\n\n".join(retrieval_prompt_list) or "Not found"

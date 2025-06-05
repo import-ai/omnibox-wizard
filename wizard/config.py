@@ -65,6 +65,7 @@ class TaskConfig(BaseModel):
 
 class ToolsConfig(BaseModel):
     searxng_base_url: str
+    reranker: OpenAIConfig = Field(default=None)
 
 
 class Config(BaseModel):

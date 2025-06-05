@@ -1,5 +1,6 @@
-from pydantic import BaseModel, Field
 from abc import abstractmethod
+
+from pydantic import BaseModel, Field
 
 
 class Citation(BaseModel):
@@ -10,12 +11,15 @@ class Citation(BaseModel):
 
 
 class Score(BaseModel):
-    recall: float
-    rerank: float
+    recall: float | None = Field(default=None)
+    rerank: float | None = Field(default=None)
 
 
 class BaseRetrieval(BaseModel):
-    score: Score = Field(default=None)
+    score: Score = Field(default_factory=Score)
+
+    def source(self) -> str:
+        return self.__class__.__name__
 
     @abstractmethod
     def to_prompt(self) -> str:

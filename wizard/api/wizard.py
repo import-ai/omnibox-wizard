@@ -31,7 +31,7 @@ async def init():
     config: Config = loader.load()
 
     pipeline = Pipeline(config)
-    agent = Agent(config.grimoire.openai["large"], config.tools, config.vector)
+    agent = Agent(config.grimoire.openai["large"], config.tools, config.vector, config.tools.reranker)
     common_ai = CommonAI(config.grimoire.openai)
 
 

@@ -153,9 +153,10 @@ def test_grimoire_stream_remote(remote_client: httpx.Client, namespace_id: str, 
 
 
 @pytest.mark.parametrize("query, resource_ids, parent_ids, expected_messages_length", [
-    # ("今天北京的天气", None, None, 7),
+    ("今天北京的天气", None, None, 5),
     # ("下周计划", None, None, 5),
-    ("下周计划", ["r_id_a0", "r_id_b0"], None, 5),
+    ("我下周的计划", ["r_id_a0", "r_id_b0"], None, 5),
+    ("地球到火星的距离", ["r_id_a0", "r_id_b0"], None, 5),
     # ("下周计划", None, ["p_id_1"], 5),
     # ("下周计划", ["r_id_b0"], ["p_id_0"], 5)
 ])

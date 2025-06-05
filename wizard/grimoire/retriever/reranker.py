@@ -46,7 +46,7 @@ class Reranker:
     async def search(self, query: str) -> list[BaseRetrieval]:
         results = await asyncio.gather(*[func(query) for func in self.funcs])
         flattened_results: list[BaseRetrieval] = sum(results, [])
-        if not self.config:
+        if not self.config or not flattened_results:
             return flattened_results
         async with httpx.AsyncClient(base_url=self.config.base_url) as client:
             response = await client.post(

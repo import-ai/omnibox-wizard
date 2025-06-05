@@ -8,8 +8,9 @@ from fastapi.responses import JSONResponse, Response
 from common import project_root
 from common.exception import CommonException
 from common.logger import get_logger
-from wizard.api.wizard import init as grimoire_init
+from wizard.api.internal import internal_router, init as internal_init
 from wizard.api.v1 import v1_router
+from wizard.api.wizard import init as grimoire_init
 
 logger = get_logger("app")
 
@@ -19,6 +20,7 @@ with project_root.open("pyproject.toml", "rb") as f:
 
 async def init():
     await grimoire_init()
+    await internal_init()
 
 
 @asynccontextmanager
@@ -45,4 +47,5 @@ async def exception_handler(_: Request, e: Exception) -> Response:
     return JSONResponse(status_code=500, content={"code": 500, "error": CommonException.parse_exception(e)})
 
 
-app.include_router(v1_router)
+app.include_router(v1_router, tags=["Wizard API"])
+app.include_router(internal_router, tags=["Internal API"])

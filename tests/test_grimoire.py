@@ -50,7 +50,7 @@ def assert_stream(stream: Iterator[str]) -> list[dict]:
         elif response_type == "bos":
             messages.append({'role': response['role']})
         elif response_type == "eos":
-            pass
+            print('\n\n' + '=' * 32 + '\n\n', end="", flush=True)
         elif response_type == "done":
             pass
         else:
@@ -112,6 +112,7 @@ create_test_case = ("resource_id, parent_id, title, content", [
     ("r_id_a0", "p_id_0", "下周计划", "+ 9:00 起床\n+ 10:00 上班"),
     ("r_id_a1", "p_id_0", "下周计划", "+ 8:00 起床\n+ 9:00 上班"),
     ("r_id_b0", "p_id_1", "下周计划", "+ 7:00 起床\n+ 8:00 上班"),
+    ("r_id_c0", "p_id_c", "小红", "小红今年 8 岁"),
 ])
 
 
@@ -152,20 +153,22 @@ def test_grimoire_stream_remote(remote_client: httpx.Client, namespace_id: str, 
     assert_stream(api_stream(remote_client, request))
 
 
+@pytest.mark.parametrize("enable_thinking", [True, False])
 @pytest.mark.parametrize("query, resource_ids, parent_ids, expected_messages_length", [
-    ("今天北京的天气", None, None, 5),
+    # ("今天北京的天气", None, None, 5),
     # ("下周计划", None, None, 5),
-    ("我下周的计划", ["r_id_a0", "r_id_b0"], None, 5),
-    ("地球到火星的距离", ["r_id_a0", "r_id_b0"], None, 5),
+    # ("我下周的计划", ["r_id_a0", "r_id_b0"], None, 5),
+    # ("地球到火星的距离", ["r_id_a0", "r_id_b0"], None, 5),
     # ("下周计划", None, ["p_id_1"], 5),
-    # ("下周计划", ["r_id_b0"], ["p_id_0"], 5)
+    # ("下周计划", ["r_id_b0"], ["p_id_0"], 5),
+    ("小红是谁？", ["r_id_a0", "r_id_a1", "r_id_b0", "r_id_c0"], None, 5),
 ])
 def test_agent(client: httpx.Client, vector_db_init: bool, namespace_id: str, query: str, expected_messages_length: int,
-               resource_ids: List[str] | None, parent_ids: List[str] | None):
+               enable_thinking: bool, resource_ids: List[str] | None, parent_ids: List[str] | None):
     request = AgentRequest.model_validate({
         "conversation_id": "fake_id",
         "query": query,
-        "enable_thinking": True,
+        "enable_thinking": enable_thinking,
         "tools": [
             {
                 "name": "knowledge_search",

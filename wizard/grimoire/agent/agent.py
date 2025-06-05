@@ -50,7 +50,7 @@ class Agent(BaseStreamable):
             ),
             "knowledge_search": FunctionMeta(
                 name="knowledge_search",
-                description="Search user's personal, private knowledge database.",
+                description="Search for user's private personal information.",
                 func=partial(self.knowledge_database_retriever.query, k=20)
             )
         }
@@ -76,7 +76,7 @@ class Agent(BaseStreamable):
     ) -> AsyncIterable[ChatResponse | dict]:
         assistant_message: dict = {'role': 'assistant'}
 
-        if len(messages) == 2 and self.has_function(tools, DEFAULT_TOOL_NAME):
+        if not enable_thinking and len(messages) == 2 and self.has_function(tools, DEFAULT_TOOL_NAME):
             assert messages[0]['role'] == 'system' and messages[1]['role'] == 'user'
             assistant_message.setdefault('tool_calls', []).append({
                 "id": str(uuid4()).replace('-', ''),

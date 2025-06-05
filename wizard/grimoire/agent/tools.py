@@ -63,8 +63,8 @@ class ToolExecutor:
         )
         name: str = "search"
         description: str = '\n'.join([
-            "This tool can search for various types of information, they include but are not limited to:"
-            "\n".join([m['description'] for m in func_metas]),
+            "This tool can search for various types of information, they include but are not limited to:",
+            *[f"- {m['description']}" for m in func_metas]
         ])
 
         return ToolExecutorConfig(

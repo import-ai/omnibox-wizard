@@ -17,11 +17,8 @@ concurrency:
 jobs:
   runtime:
     runs-on: ubuntu-latest
-    if: |
-      contains(github.event.head_commit.modified, 'pyproject.toml') ||
-      contains(github.event.head_commit.modified, 'poetry.lock') ||
-      contains(github.event.head_commit.added, 'pyproject.toml') ||
-      contains(github.event.head_commit.added, 'poetry.lock')
+    outputs:
+      runtime_built: ${{ steps.set_output.outputs.runtime_built }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -49,7 +46,17 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Check if dependencies changed
+        id: depcheck
+        run: |
+          if git diff --name-only ${{ github.event.before }} ${{ github.sha }} | grep -E 'pyproject.toml|poetry.lock'; then
+            echo "changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "changed=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Build and push runtime image
+        if: steps.depcheck.outputs.changed == 'true'
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -60,6 +67,10 @@ jobs:
           platforms: |
             linux/amd64
             linux/arm64
+
+      - name: Set output
+        id: set_output
+        run: echo "runtime_built=${{ steps.depcheck.outputs.changed }}" >> $GITHUB_OUTPUT
 
   app:
     runs-on: ubuntu-latest

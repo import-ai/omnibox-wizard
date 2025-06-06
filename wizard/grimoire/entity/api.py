@@ -3,20 +3,11 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from wizard.grimoire.entity.retrieval import Citation
-from wizard.grimoire.entity.tools import KnowledgeTool, WebSearchTool, Condition
+from wizard.grimoire.entity.tools import KnowledgeTool, WebSearchTool
 
 
 class BaseChatRequest(BaseModel):
     query: str
-
-
-class InsertRequest(BaseModel):
-    title: str = Field(description="Document title")
-    content: str = Field(description="Document content")
-
-
-class ChatRequest(BaseChatRequest, Condition):
-    session_id: str
 
 
 class AgentRequest(BaseChatRequest):
@@ -28,7 +19,7 @@ class AgentRequest(BaseChatRequest):
 
 
 class ChatBaseResponse(BaseModel):
-    response_type: Literal["bos", "delta", "eos"]
+    response_type: Literal["bos", "delta", "eos", "error", "done"]
 
 
 class ChatBOSResponse(ChatBaseResponse):
@@ -60,3 +51,8 @@ class ChatDeltaResponse(ChatBaseResponse):
 class ChatCitationsResponse(ChatBaseResponse):
     response_type: Literal["citations"] = "citations"
     citations: list[Citation]
+
+
+class ChatErrorResponse(ChatBaseResponse):
+    response_type: Literal["error"] = "error"
+    message: str

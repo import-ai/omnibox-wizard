@@ -6,7 +6,7 @@ import pytest
 
 from tests.helper.fixture import client, worker
 from wizard.entity import Task
-from wizard.grimoire.entity.api import ChatRequest, AgentRequest, BaseChatRequest
+from wizard.grimoire.entity.api import AgentRequest, BaseChatRequest
 from wizard.grimoire.entity.tools import Condition
 from wizard.wand.worker import Worker
 
@@ -128,29 +128,6 @@ async def vector_db_init(client: httpx.Client, worker: Worker, namespace_id: str
             client, worker, title=title, content=content, namespace_id=namespace_id,
             resource_id=resource_id, parent_id=parent_id, user_id="test"
         )
-
-
-@pytest.mark.parametrize("query, resource_ids, parent_ids", [
-    ("下周计划", None, None),
-    ("下周计划", ["r_id_a0", "r_id_b0"], None),
-    ("下周计划", None, ["p_id_1"]),
-    ("下周计划", ["r_id_b0"], ["p_id_0"])
-])
-def test_grimoire_stream(client: httpx.Client, vector_db_init: bool, namespace_id: str, query: str,
-                         resource_ids: List[str] | None, parent_ids: List[str] | None):
-    request = ChatRequest(session_id="fake_id", namespace_id=namespace_id, query=query,
-                          resource_ids=resource_ids, parent_ids=parent_ids)
-    assert_stream(api_stream(client, request))
-
-
-@pytest.mark.parametrize("query, resource_ids, parent_ids", [
-    ("下周计划", None, None),
-])
-def test_grimoire_stream_remote(remote_client: httpx.Client, namespace_id: str, query: str,
-                                resource_ids: List[str] | None, parent_ids: List[str] | None):
-    request = ChatRequest(session_id="fake_id", namespace_id=namespace_id, query=query,
-                          resource_ids=resource_ids, parent_ids=parent_ids)
-    assert_stream(api_stream(remote_client, request))
 
 
 @pytest.mark.parametrize("enable_thinking", [True, False])

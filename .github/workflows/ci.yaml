@@ -17,11 +17,11 @@ concurrency:
 jobs:
   runtime:
     runs-on: ubuntu-latest
-#    if: |
-#      contains(github.event.head_commit.modified, 'pyproject.toml') ||
-#      contains(github.event.head_commit.modified, 'poetry.lock') ||
-#      contains(github.event.head_commit.added, 'pyproject.toml') ||
-#      contains(github.event.head_commit.added, 'poetry.lock')
+    if: |
+      contains(github.event.head_commit.modified, 'pyproject.toml') ||
+      contains(github.event.head_commit.modified, 'poetry.lock') ||
+      contains(github.event.head_commit.added, 'pyproject.toml') ||
+      contains(github.event.head_commit.added, 'poetry.lock')
     steps:
       - name: Checkout
         uses: actions/checkout@v4

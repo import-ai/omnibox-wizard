@@ -7,7 +7,7 @@ from chromadb.utils.embedding_functions.openai_embedding_function import OpenAIE
 
 from common.trace_info import TraceInfo
 from wizard.config import VectorConfig
-from wizard.grimoire.entity.api import Condition
+from wizard.grimoire.entity.tools import Condition
 from wizard.grimoire.entity.chunk import Chunk, TextRetrieval
 from wizard.grimoire.entity.retrieval import Score
 

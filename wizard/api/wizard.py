@@ -1,6 +1,6 @@
 from functools import partial
 from json import dumps as lib_dumps
-from typing import AsyncIterator, Union
+from typing import AsyncIterator
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
@@ -12,22 +12,19 @@ from wizard.config import Config, ENV_PREFIX
 from wizard.grimoire.agent.agent import Agent
 from wizard.grimoire.base_streamable import BaseStreamable, ChatResponse
 from wizard.grimoire.entity.api import (
-    ChatRequest, ChatBaseResponse, ChatDeltaResponse, AgentRequest, BaseChatRequest
+    AgentRequest, BaseChatRequest
 )
-from wizard.grimoire.pipeline import Pipeline
 
 dumps = partial(lib_dumps, ensure_ascii=False, separators=(",", ":"))
 wizard_router = APIRouter(prefix="/wizard")
-pipeline: Pipeline = ...
 agent: Agent = ...
 
 
 async def init():
-    global agent, pipeline
+    global agent
     loader = Loader(Config, env_prefix=ENV_PREFIX)
     config: Config = loader.load()
 
-    pipeline = Pipeline(config)
     agent = Agent(config.grimoire.openai["large"], config.tools, config.vector, config.tools.reranker)
 
 
@@ -44,15 +41,6 @@ async def call_stream(s: BaseStreamable, request: BaseChatRequest, trace_info: T
 async def sse_format(iterator: AsyncIterator[dict]) -> AsyncIterator[str]:
     async for item in iterator:
         yield f"data: {dumps(item)}\n\n"
-
-
-@wizard_router.post("/stream", tags=["LLM"],
-                    response_model=Union[ChatBaseResponse, ChatDeltaResponse])
-async def stream(request: ChatRequest, trace_info: TraceInfo = Depends(get_trace_info)):
-    """
-    Answer the query based on user's database.
-    """
-    return StreamingResponse(sse_format(call_stream(pipeline, request, trace_info)), media_type="text/event-stream")
 
 
 @wizard_router.post("/ask", tags=["LLM"], response_model=ChatResponse)

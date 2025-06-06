@@ -9,7 +9,8 @@ from common.config_loader import Loader
 from common.trace_info import TraceInfo
 from wizard.api.depends import get_trace_info
 from wizard.config import Config, ENV_PREFIX
-from wizard.grimoire.agent.agent import Agent
+from wizard.grimoire.agent.ask import Ask
+from wizard.grimoire.agent.write import Write
 from wizard.grimoire.base_streamable import BaseStreamable, ChatResponse
 from wizard.grimoire.entity.api import (
     AgentRequest, BaseChatRequest
@@ -17,15 +18,17 @@ from wizard.grimoire.entity.api import (
 
 dumps = partial(lib_dumps, ensure_ascii=False, separators=(",", ":"))
 wizard_router = APIRouter(prefix="/wizard")
-agent: Agent = ...
+ask: Ask = ...
+write: Write = ...
 
 
 async def init():
-    global agent
+    global ask, write
     loader = Loader(Config, env_prefix=ENV_PREFIX)
     config: Config = loader.load()
 
-    agent = Agent(config.grimoire.openai["large"], config.tools, config.vector, config.tools.reranker)
+    ask = Ask(config.grimoire.openai["large"], config.tools, config.vector, config.tools.reranker)
+    write = Write(config.grimoire.openai["large"], config.tools, config.vector, config.tools.reranker)
 
 
 async def call_stream(s: BaseStreamable, request: BaseChatRequest, trace_info: TraceInfo) -> AsyncIterator[dict]:
@@ -44,5 +47,10 @@ async def sse_format(iterator: AsyncIterator[dict]) -> AsyncIterator[str]:
 
 
 @wizard_router.post("/ask", tags=["LLM"], response_model=ChatResponse)
-async def ask(request: AgentRequest, trace_info: TraceInfo = Depends(get_trace_info)):
-    return StreamingResponse(sse_format(call_stream(agent, request, trace_info)), media_type="text/event-stream")
+async def api_ask(request: AgentRequest, trace_info: TraceInfo = Depends(get_trace_info)):
+    return StreamingResponse(sse_format(call_stream(ask, request, trace_info)), media_type="text/event-stream")
+
+
+@wizard_router.post("/write", tags=["LLM"], response_model=ChatResponse)
+async def api_write(request: AgentRequest, trace_info: TraceInfo = Depends(get_trace_info)):
+    return StreamingResponse(sse_format(call_stream(ask, request, trace_info)), media_type="text/event-stream")

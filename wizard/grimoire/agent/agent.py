@@ -29,14 +29,15 @@ class Agent(BaseStreamable):
             openai_config: OpenAIConfig,
             tools_config: ToolsConfig,
             vector_config: VectorConfig,
-            reranker_config: OpenAIConfig | None = None
+            system_prompt_template_path: str,
+            reranker_config: OpenAIConfig | None = None,
     ):
         self.client = AsyncOpenAI(api_key=openai_config.api_key, base_url=openai_config.base_url)
         self.model = openai_config.model
 
         self.reranker_config: OpenAIConfig | None = reranker_config
 
-        with project_root.open("resources/prompts/system.md") as f:
+        with project_root.open(system_prompt_template_path) as f:
             self.system_prompt = f.read()
 
         self.web_search_retriever = SearXNG(base_url=tools_config.searxng_base_url)

@@ -58,10 +58,7 @@ def assert_stream(stream: Iterator[str]) -> list[dict]:
     return messages
 
 
-def api_stream(client: httpx.Client, request: BaseChatRequest) -> Iterator[str]:
-    url = "/api/v1/wizard/stream"
-    if isinstance(request, AgentRequest):
-        url = "/api/v1/wizard/ask"
+def api_stream(client: httpx.Client, url: str, request: BaseChatRequest) -> Iterator[str]:
     with client.stream("POST", url, json=request.model_dump()) as response:
         if response.status_code != 200:
             raise Exception(f"{response.status_code} {response.text}")
@@ -140,8 +137,8 @@ async def vector_db_init(client: httpx.Client, worker: Worker, namespace_id: str
     # ("下周计划", ["r_id_b0"], ["p_id_0"], 5),
     ("小红是谁？", ["r_id_a0", "r_id_a1", "r_id_b0", "r_id_c0"], None, 5),
 ])
-def test_agent(client: httpx.Client, vector_db_init: bool, namespace_id: str, query: str, expected_messages_length: int,
-               enable_thinking: bool, resource_ids: List[str] | None, parent_ids: List[str] | None):
+def test_ask(client: httpx.Client, vector_db_init: bool, namespace_id: str, query: str, expected_messages_length: int,
+             enable_thinking: bool, resource_ids: List[str] | None, parent_ids: List[str] | None):
     request = AgentRequest.model_validate({
         "conversation_id": "fake_id",
         "query": query,
@@ -158,7 +155,7 @@ def test_agent(client: httpx.Client, vector_db_init: bool, namespace_id: str, qu
             }
         ]
     })
-    messages = assert_stream(api_stream(client, request))
+    messages = assert_stream(api_stream(client, "/api/v1/wizard/ask", request))
     assert len(messages) == expected_messages_length
 
 

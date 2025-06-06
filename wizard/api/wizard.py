@@ -8,11 +8,9 @@ from fastapi.responses import StreamingResponse
 from common.config_loader import Loader
 from common.trace_info import TraceInfo
 from wizard.api.depends import get_trace_info
-from wizard.api.entity import TitleResponse, CommonAITextRequest, TagsResponse
 from wizard.config import Config, ENV_PREFIX
 from wizard.grimoire.agent.agent import Agent
 from wizard.grimoire.base_streamable import BaseStreamable, ChatResponse
-from wizard.grimoire.common_ai import CommonAI
 from wizard.grimoire.entity.api import (
     ChatRequest, ChatBaseResponse, ChatDeltaResponse, AgentRequest, BaseChatRequest
 )
@@ -22,17 +20,15 @@ dumps = partial(lib_dumps, ensure_ascii=False, separators=(",", ":"))
 wizard_router = APIRouter(prefix="/wizard")
 pipeline: Pipeline = ...
 agent: Agent = ...
-common_ai: CommonAI = ...
 
 
 async def init():
-    global agent, pipeline, common_ai
+    global agent, pipeline
     loader = Loader(Config, env_prefix=ENV_PREFIX)
     config: Config = loader.load()
 
     pipeline = Pipeline(config)
-    agent = Agent(config.grimoire.openai["large"], config.tools, config.vector)
-    common_ai = CommonAI(config.grimoire.openai)
+    agent = Agent(config.grimoire.openai["large"], config.tools, config.vector, config.tools.reranker)
 
 
 async def call_stream(s: BaseStreamable, request: BaseChatRequest, trace_info: TraceInfo) -> AsyncIterator[dict]:
@@ -62,13 +58,3 @@ async def stream(request: ChatRequest, trace_info: TraceInfo = Depends(get_trace
 @wizard_router.post("/ask", tags=["LLM"], response_model=ChatResponse)
 async def ask(request: AgentRequest, trace_info: TraceInfo = Depends(get_trace_info)):
     return StreamingResponse(sse_format(call_stream(agent, request, trace_info)), media_type="text/event-stream")
-
-
-@wizard_router.post("/title", tags=["LLM"], response_model=TitleResponse)
-async def title(request: CommonAITextRequest, trace_info: TraceInfo = Depends(get_trace_info)):
-    return TitleResponse(title=await common_ai.title(request.text, trace_info=trace_info))
-
-
-@wizard_router.get("/tags", tags=["LLM"], response_model=TagsResponse)
-async def tags(request: CommonAITextRequest, trace_info: TraceInfo = Depends(get_trace_info)):
-    return TagsResponse(tags=await common_ai.tags(request.text, trace_info=trace_info))

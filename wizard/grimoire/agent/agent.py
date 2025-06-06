@@ -16,15 +16,25 @@ from wizard.grimoire.base_streamable import BaseStreamable, ChatResponse
 from wizard.grimoire.entity.api import (
     ChatDeltaResponse, AgentRequest, ChatBOSResponse, ChatEOSResponse
 )
-from wizard.grimoire.entity.tools import ToolExecutorConfig
+from wizard.grimoire.entity.tools import FunctionMeta, ToolName
 from wizard.grimoire.retriever.searxng import SearXNG
 from wizard.grimoire.retriever.vector_db import VectorRetriever
 
+DEFAULT_TOOL_NAME: str = "search"
+
 
 class Agent(BaseStreamable):
-    def __init__(self, openai_config: OpenAIConfig, tools_config: ToolsConfig, vector_config: VectorConfig):
+    def __init__(
+            self,
+            openai_config: OpenAIConfig,
+            tools_config: ToolsConfig,
+            vector_config: VectorConfig,
+            reranker_config: OpenAIConfig | None = None
+    ):
         self.client = AsyncOpenAI(api_key=openai_config.api_key, base_url=openai_config.base_url)
         self.model = openai_config.model
+
+        self.reranker_config: OpenAIConfig | None = reranker_config
 
         with project_root.open("resources/prompts/system.md") as f:
             self.system_prompt = f.read()
@@ -32,9 +42,17 @@ class Agent(BaseStreamable):
         self.web_search_retriever = SearXNG(base_url=tools_config.searxng_base_url)
         self.knowledge_database_retriever = VectorRetriever(config=vector_config)
 
-        self.func_mapping = {
-            "web_search": self.web_search_retriever.search,
-            "knowledge_search": partial(self.knowledge_database_retriever.query, k=10)
+        self.func_mapping: dict[ToolName, FunctionMeta] = {
+            "web_search": FunctionMeta(
+                name="web_search",
+                description="Search the web for public information.",
+                func=self.web_search_retriever.search
+            ),
+            "knowledge_search": FunctionMeta(
+                name="knowledge_search",
+                description="Search for user's private personal information.",
+                func=partial(self.knowledge_database_retriever.query, k=20)
+            )
         }
 
     @classmethod
@@ -58,13 +76,13 @@ class Agent(BaseStreamable):
     ) -> AsyncIterable[ChatResponse | dict]:
         assistant_message: dict = {'role': 'assistant'}
 
-        if len(messages) == 2 and self.has_function(tools, "knowledge_search"):
+        if not enable_thinking and len(messages) == 2 and self.has_function(tools, DEFAULT_TOOL_NAME):
             assert messages[0]['role'] == 'system' and messages[1]['role'] == 'user'
             assistant_message.setdefault('tool_calls', []).append({
                 "id": str(uuid4()).replace('-', ''),
                 "type": "function",
                 "function": {
-                    "name": "knowledge_search",
+                    "name": DEFAULT_TOOL_NAME,
                     "arguments": jsonlib.dumps(
                         {"query": messages[1]['content']}, ensure_ascii=False, separators=(",", ":")
                     )
@@ -114,11 +132,20 @@ class Agent(BaseStreamable):
         yield assistant_message
 
     async def astream(self, trace_info: TraceInfo, agent_request: AgentRequest) -> AsyncIterable[ChatResponse]:
-        executor_config: dict[str, ToolExecutorConfig] = {
-            tool.name: tool.to_executor_config(self.func_mapping[tool.name], trace_info=trace_info.get_child(tool.name))
-            for tool in agent_request.tools or []
-        }
-        tool_executor = ToolExecutor(executor_config)
+        """
+        Process the agent request and yield responses as they are generated.
+
+        1. Initialize the tool executor with the tools specified in the agent request.
+        2. Prepare the initial messages, including the system prompt if no messages are provided.
+        3. Append the user query to the messages.
+        4. Continuously chat with the OpenAI API until the assistant's response is complete.
+        5. If tool calls are present in the assistant's response, execute them using the tool executor.
+
+        :param trace_info: Trace information for logging and debugging.
+        :param agent_request: The request containing the user's query and tools to be used.
+        :return: An async iterable of ChatResponse objects.
+        """
+        tool_executor = ToolExecutor.from_tools(agent_request.tools, self.func_mapping, self.reranker_config)
 
         messages = agent_request.messages or []
 

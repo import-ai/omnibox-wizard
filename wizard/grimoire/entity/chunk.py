@@ -45,6 +45,9 @@ class TextRetrieval(BaseRetrieval):
     retrieval_type: Literal["text"] = "text"
     chunk: Chunk
 
+    def source(self) -> str:
+        return "private_db"
+
     def to_prompt(self) -> str:
         return "\n".join([
             f"Title: {self.chunk.title}",

@@ -53,4 +53,4 @@ async def api_ask(request: AgentRequest, trace_info: TraceInfo = Depends(get_tra
 
 @wizard_router.post("/write", tags=["LLM"], response_model=ChatResponse)
 async def api_write(request: AgentRequest, trace_info: TraceInfo = Depends(get_trace_info)):
-    return StreamingResponse(sse_format(call_stream(ask, request, trace_info)), media_type="text/event-stream")
+    return StreamingResponse(sse_format(call_stream(write, request, trace_info)), media_type="text/event-stream")

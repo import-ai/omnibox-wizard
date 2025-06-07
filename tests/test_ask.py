@@ -105,11 +105,16 @@ async def add_index(
     assert output["success"] is True
 
 
+dir_name: dict[str, str] = {
+    "p_id_a": "下周计划",
+    "p_id_b": "人物",
+}
+
 create_test_case = ("resource_id, parent_id, title, content", [
-    ("r_id_a0", "p_id_0", "下周计划", "+ 9:00 起床\n+ 10:00 上班"),
-    ("r_id_a1", "p_id_0", "下周计划", "+ 8:00 起床\n+ 9:00 上班"),
-    ("r_id_b0", "p_id_1", "下周计划", "+ 7:00 起床\n+ 8:00 上班"),
-    ("r_id_c0", "p_id_c", "小红", "小红今年 8 岁"),
+    ("r_id_a0", "p_id_a", "周一计划", "+ 9:00 起床\n+ 10:00 上班"),
+    ("r_id_a1", "p_id_a", "周二计划", "+ 8:00 起床\n+ 9:00 上班"),
+    ("r_id_b0", "p_id_a", "周三计划", "+ 7:00 起床\n+ 8:00 上班"),
+    ("r_id_c0", "p_id_b", "小红", "小红今年 8 岁"),
 ])
 
 
@@ -127,6 +132,57 @@ async def vector_db_init(client: httpx.Client, worker: Worker, namespace_id: str
         )
 
 
+def get_resource(resource_id: str) -> dict:
+    for rid, pid, title, content in create_test_case[1]:
+        if resource_id == rid:
+            return {
+                "name": title,
+                "resource_id": rid,
+                "resource_type": "doc",
+            }
+
+
+def get_folder(parent_id: str) -> dict:
+    return {
+        "name": dir_name[parent_id],
+        "resource_id": parent_id,
+        "resource_type": "folder",
+        "sub_resource_ids": [rid for rid, pid, _, _ in create_test_case[1] if pid == parent_id]
+    }
+
+
+def get_resource_ids(parent_id: str) -> List[str]:
+    return [rid for rid, pid, _, _ in create_test_case[1] if pid == parent_id]
+
+
+def get_agent_request(
+        namespace_id: str,
+        query: str,
+        resource_ids: List[str] | None = None,
+        parent_ids: List[str] | None = None,
+        enable_thinking: bool = False
+) -> AgentRequest:
+    return AgentRequest.model_validate({
+        "conversation_id": "fake_id",
+        "query": query,
+        "enable_thinking": enable_thinking,
+        "tools": [
+            {
+                "name": "private_search",
+                "namespace_id": namespace_id,
+                "visible_resource_ids": (resource_ids or []) + sum(map(get_resource_ids, parent_ids or []), []),
+                "resources": [
+                    *[get_resource(r) for r in resource_ids or []],
+                    *[get_folder(p) for p in parent_ids or []],
+                ]
+            },
+            {
+                "name": "web_search"
+            }
+        ]
+    })
+
+
 @pytest.mark.parametrize("enable_thinking", [True, False])
 @pytest.mark.parametrize("query, resource_ids, parent_ids, expected_messages_length", [
     # ("今天北京的天气", None, None, 5),
@@ -139,22 +195,13 @@ async def vector_db_init(client: httpx.Client, worker: Worker, namespace_id: str
 ])
 def test_ask(client: httpx.Client, vector_db_init: bool, namespace_id: str, query: str, expected_messages_length: int,
              enable_thinking: bool, resource_ids: List[str] | None, parent_ids: List[str] | None):
-    request = AgentRequest.model_validate({
-        "conversation_id": "fake_id",
-        "query": query,
-        "enable_thinking": enable_thinking,
-        "tools": [
-            {
-                "name": "knowledge_search",
-                "namespace_id": namespace_id,
-                "resource_ids": resource_ids,
-                "parent_ids": parent_ids
-            },
-            {
-                "name": "web_search"
-            }
-        ]
-    })
+    request = get_agent_request(
+        namespace_id=namespace_id,
+        query=query,
+        resource_ids=resource_ids,
+        parent_ids=parent_ids,
+        enable_thinking=enable_thinking
+    )
     messages = assert_stream(api_stream(client, "/api/v1/wizard/ask", request))
     assert len(messages) == expected_messages_length
 

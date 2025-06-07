@@ -3,13 +3,9 @@ from typing import AsyncIterable
 
 from openai.types.chat import ChatCompletionAssistantMessageParam, ChatCompletionMessageParam
 
-from wizard.config import OpenAIConfig
-from wizard.grimoire.entity.api import (
-    ChatBaseResponse, ChatEOSResponse, ChatBOSResponse, ChatDeltaResponse
-)
+from wizard.grimoire.entity.api import ChatBaseResponse, ChatEOSResponse, ChatBOSResponse, ChatDeltaResponse
 from wizard.grimoire.entity.retrieval import BaseRetrieval
-from wizard.grimoire.entity.tools import ToolExecutorConfig, BaseTool, FunctionMeta, ToolName
-from wizard.grimoire.retriever.reranker import Reranker
+from wizard.grimoire.entity.tools import ToolExecutorConfig
 
 
 def retrieval_wrapper(
@@ -39,83 +35,6 @@ class ToolExecutor:
         self.config: dict[str, ToolExecutorConfig] = config
         self.tools: list[dict] = [config['schema'] for config in config.values()]
 
-    @classmethod
-    def build_search_tool(
-            cls,
-            tools: list[BaseTool],
-            func_metas: list[FunctionMeta],
-            reranker_config: OpenAIConfig | None = None
-    ) -> ToolExecutorConfig:
-        """
-        Build a search tool that:
-
-            1. Call all the search functions in parallel.
-            2. Return the results in a single response.
-
-        :param tools: List of Tool objects.
-        :param func_metas: List of functions that return search results.
-        :param reranker_config: Configuration for the reranker, if any (used to rank the search results).
-        :return: ToolExecutorConfig for the search tool.
-        """
-        reranker: Reranker = Reranker(
-            funcs=[t.to_func(m['func']) for t, m in zip(tools, func_metas)],
-            config=reranker_config
-        )
-        name: str = "search"
-        description: str = '\n'.join([
-            "This tool can search for various types of information, they include but are not limited to:",
-            *[f"- {m['description']}" for m in func_metas]
-        ])
-
-        return ToolExecutorConfig(
-            schema={
-                "type": "function",
-                "function": {
-                    "name": name,
-                    "description": description,
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "query": {
-                                "type": "string",
-                                "description": "The query to search for."
-                            }
-                        },
-                        "required": [
-                            "query"
-                        ]
-                    }
-                }
-            },
-            func=reranker.search
-        )
-
-    @classmethod
-    def from_tools(
-            cls,
-            tools: list[BaseTool],
-            func_mapping: dict[ToolName, FunctionMeta],
-            reranker_config: OpenAIConfig | None = None
-    ) -> 'ToolExecutor':
-        """
-        Create a ToolExecutor from a list of Tool objects and a mapping of function names to FunctionMeta.
-
-        :param tools: List of Tool objects.
-        :param func_mapping: Mapping of function names to FunctionMeta.
-        :param reranker_config: Configuration for OpenAI, if any (used to configure the reranker).
-        :return: ToolExecutor instance.
-        """
-        func_metas: list[FunctionMeta] = [func_mapping[tool.name] for tool in tools]
-        tool_executor_config: ToolExecutorConfig = cls.build_search_tool(
-            tools=tools,
-            func_metas=func_metas,
-            reranker_config=reranker_config
-        )
-        return cls(config={
-            tool['schema']['function']['name']: tool
-            for tool in [tool_executor_config]
-        })
-
     async def astream(
             self,
             messages: list[ChatCompletionMessageParam],
@@ -136,7 +55,7 @@ class ToolExecutor:
                 else:
                     raise ValueError(f"Unknown function: {function_name}")
 
-                if function_name == "search":
+                if function_name.endswith("search"):
                     chat_delta_response: ChatDeltaResponse = retrieval_wrapper(
                         tool_call_id=tool_call_id,
                         current_cite_cnt=current_cite_cnt,

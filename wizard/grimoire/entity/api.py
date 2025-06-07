@@ -3,7 +3,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from wizard.grimoire.entity.retrieval import Citation
-from wizard.grimoire.entity.tools import KnowledgeTool, WebSearchTool
+from wizard.grimoire.entity.tools import PrivateSearchTool, WebSearchTool
 
 
 class BaseChatRequest(BaseModel):
@@ -13,9 +13,10 @@ class BaseChatRequest(BaseModel):
 class AgentRequest(BaseChatRequest):
     conversation_id: str
     messages: list[dict] | None = Field(default_factory=list)
-    tools: list[KnowledgeTool | WebSearchTool] | None = Field(default_factory=list)
+    tools: list[PrivateSearchTool | WebSearchTool] | None = Field(default_factory=list)
     enable_thinking: bool = Field(default=False)
     current_cite_cnt: int = Field(default=0)
+    merge_search: bool = Field(default=False, description="Whether to merge search results from multiple tools.")
 
 
 class ChatBaseResponse(BaseModel):

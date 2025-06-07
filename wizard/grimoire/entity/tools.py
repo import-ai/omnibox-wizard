@@ -1,9 +1,10 @@
+from enum import Enum
 from functools import partial
 from typing import Literal, Callable, TypedDict, Awaitable
 
 from pydantic import BaseModel, Field
 
-ToolName = Literal["knowledge_search", "web_search"]
+ToolName = Literal["private_search", "web_search"]
 
 
 class Condition(BaseModel):
@@ -35,13 +36,8 @@ class Condition(BaseModel):
         return where
 
 
-class FunctionMeta(TypedDict):
-    name: ToolName
-    description: str
-    func: Callable[..., Awaitable]
-
-
 class ToolExecutorConfig(TypedDict):
+    name: str
     schema: dict
     func: Callable
 
@@ -53,16 +49,28 @@ class BaseTool(BaseModel):
         return partial(func, **kwargs) if kwargs else func
 
 
-class KnowledgeTool(BaseTool, Condition):
-    name: Literal["knowledge_search"] = "knowledge_search"
+class ResourceType(str, Enum):
+    DOC = "doc"
+    FOLDER = "folder"
+
+
+class Resource(BaseModel):
+    name: str
+    resource_id: str
+    resource_type: ResourceType
+    sub_resource_ids: list[str] | None = Field(default=None)
+
+
+class PrivateSearchTool(BaseTool):
+    name: Literal["private_search"] = "private_search"
+    namespace_id: str
+    visible_resource_ids: list[str]
+    resources: list[Resource] | None = Field(default=None)
 
     def to_condition(self) -> Condition:
         return Condition(
             namespace_id=self.namespace_id,
-            resource_ids=self.resource_ids,
-            parent_ids=self.parent_ids,
-            created_at=self.created_at,
-            updated_at=self.updated_at
+            resource_ids=self.visible_resource_ids,
         )
 
     def to_func(self, func: Callable, /, **kwargs) -> Callable[..., Awaitable]:

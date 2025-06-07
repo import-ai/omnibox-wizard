@@ -4,13 +4,15 @@ import httpx
 
 from common.trace_info import TraceInfo
 from wizard.grimoire.entity.retrieval import Citation, BaseRetrieval
+from wizard.grimoire.entity.tools import BaseTool
+from wizard.grimoire.retriever.base import BaseRetriever, SearchFunction
 
 
 class SearXNGRetrieval(BaseRetrieval):
     result: dict
 
     def source(self) -> str:
-        return "internet"
+        return "web"
 
     def to_prompt(self) -> str:
         citation = self.to_citation()
@@ -37,7 +39,7 @@ def format_date(date: str | None) -> str | None:
     return None
 
 
-class SearXNG:
+class SearXNG(BaseRetriever):
     def __init__(self, base_url: str):
         self.base_url: str = base_url
 
@@ -58,3 +60,9 @@ class SearXNG:
         if trace_info:
             trace_info.debug({"len(retrievals)": len(retrievals)})
         return retrievals
+
+    def get_function(self, tool: BaseTool, **kwargs) -> SearchFunction:
+        return self.search
+
+    def get_schema(self) -> dict:
+        return self.generate_schema("web_search", "Search the web for public information.")

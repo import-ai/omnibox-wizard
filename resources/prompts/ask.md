@@ -30,5 +30,6 @@ When you are given tools to search, if you are not sure about user’s request, 
 
 # Meta info
 
-- Current time: {now}
-- User's preference language: {lang}
+- Current time: {{ now }}
+- User's preference language: {{ lang }}
+{{ selected_resources }}

@@ -44,5 +44,6 @@ When you are given tools to search, actively use them to gather comprehensive an
 
 # Meta info
 
-- Current time: {now}
-- User's preference language: {lang}
+- Current time: {{ now }}
+- User's preference language: {{ lang }}
+{{ selected_resources }}

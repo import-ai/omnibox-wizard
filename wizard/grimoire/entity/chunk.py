@@ -41,21 +41,22 @@ class Chunk(BaseModel):
         return self.model_dump(exclude_none=True, exclude={"chunk_id", "text"})
 
 
-class TextRetrieval(BaseRetrieval):
-    retrieval_type: Literal["text"] = "text"
+class ResourceChunkRetrieval(BaseRetrieval):
+    folder: str | None = Field(default=None, description="The folder of the chunk, if any")
     chunk: Chunk
 
     def source(self) -> str:
-        return "private_db"
+        return "private"
 
     def to_prompt(self) -> str:
         return "\n".join([
+            f"Folder: {self.folder}" if self.folder else "",
             f"Title: {self.chunk.title}",
             f"Chunk:",
             self.chunk.text,
             f"Created at: {timestamp_to_datetime(self.chunk.created_at)}",
             f"Updated at: {timestamp_to_datetime(self.chunk.updated_at)}",
-        ])
+        ]).strip()
 
     def to_citation(self) -> Citation:
         return Citation(

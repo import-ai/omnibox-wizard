@@ -1,5 +1,6 @@
 import asyncio
 from asyncio import Task
+from functools import partial
 from typing import List, Tuple
 
 import chromadb
@@ -7,9 +8,10 @@ from chromadb.utils.embedding_functions.openai_embedding_function import OpenAIE
 
 from common.trace_info import TraceInfo
 from wizard.config import VectorConfig
-from wizard.grimoire.entity.tools import Condition
-from wizard.grimoire.entity.chunk import Chunk, TextRetrieval
+from wizard.grimoire.entity.chunk import Chunk, ResourceChunkRetrieval
 from wizard.grimoire.entity.retrieval import Score
+from wizard.grimoire.entity.tools import Condition, PrivateSearchTool, Resource, PrivateSearchResourceType
+from wizard.grimoire.retriever.base import BaseRetriever, SearchFunction
 
 AsyncCollection = chromadb.api.async_api.AsyncCollection
 
@@ -68,21 +70,33 @@ class VectorDB:
         return result_list
 
 
-class VectorRetriever:
+class VectorRetriever(BaseRetriever):
 
     def __init__(self, config: VectorConfig):
         self.vector_db: VectorDB = VectorDB(config)
+
+    @classmethod
+    def get_folder(cls, resource_id: str, resources: list[Resource]) -> str | None:
+        for resource in resources:
+            if resource.type == PrivateSearchResourceType.FOLDER and resource_id in resource.child_ids:
+                return resource.name
+        return None
+
+    def get_function(self, private_search_tool: PrivateSearchTool, **kwargs) -> SearchFunction:
+        return partial(self.query, private_search_tool=private_search_tool, k=20, **kwargs)
+
+    def get_schema(self) -> dict:
+        return self.generate_schema("private_search", "Search for user's private & personal resources.")
 
     async def query(
             self,
             query: str,
             k: int,
             *,
-            condition: dict | Condition,
+            private_search_tool: PrivateSearchTool,
             trace_info: TraceInfo | None = None
-    ) -> list[TextRetrieval]:
-        if isinstance(condition, dict):
-            condition = Condition(**condition)
+    ) -> list[ResourceChunkRetrieval]:
+        condition: Condition = private_search_tool.to_condition()
         where = condition.to_chromadb_where()
         if trace_info:
             trace_info.debug({"where": where, "condition": condition.model_dump() if condition else condition})
@@ -92,9 +106,12 @@ class VectorRetriever:
         recall_result_list: List[Tuple[Chunk, float]] = await self.vector_db.query(
             query, k, condition.namespace_id, where
         )
-        retrievals: List[TextRetrieval] = [
-            TextRetrieval(chunk=chunk, score=Score(recall=score, rerank=0))
-            for chunk, score in recall_result_list
+        retrievals: List[ResourceChunkRetrieval] = [
+            ResourceChunkRetrieval(
+                chunk=chunk,
+                folder=self.get_folder(chunk.resource_id, private_search_tool.resources or []),
+                score=Score(recall=score, rerank=0)
+            ) for chunk, score in recall_result_list
         ]
         return retrievals
 

@@ -1,7 +1,6 @@
 import json as jsonlib
 from datetime import datetime
-from functools import partial
-from typing import AsyncIterable
+from typing import AsyncIterable, Literal, Iterable
 from uuid import uuid4
 
 from openai import AsyncOpenAI, AsyncStream, NOT_GIVEN
@@ -9,18 +8,22 @@ from openai.types.chat import ChatCompletionChunk
 from openai.types.chat.chat_completion_chunk import ChoiceDeltaToolCall
 
 from common import project_root
+from common.template_render import render_template
 from common.trace_info import TraceInfo
+from common.utils import remove_continuous_break_lines
 from wizard.config import OpenAIConfig, ToolsConfig, VectorConfig
-from wizard.grimoire.agent.tools import ToolExecutor
+from wizard.grimoire.agent.tool_executor import ToolExecutor
 from wizard.grimoire.base_streamable import BaseStreamable, ChatResponse
 from wizard.grimoire.entity.api import (
-    ChatDeltaResponse, AgentRequest, ChatBOSResponse, ChatEOSResponse
+    ChatDeltaResponse, AgentRequest, ChatBOSResponse, ChatEOSResponse, MessageDto, ChatOptions, ChatBaseResponse
 )
-from wizard.grimoire.entity.tools import FunctionMeta, ToolName
+from wizard.grimoire.entity.tools import ToolExecutorConfig
+from wizard.grimoire.retriever.base import BaseRetriever
+from wizard.grimoire.retriever.reranker import get_tool_executor_config
 from wizard.grimoire.retriever.searxng import SearXNG
 from wizard.grimoire.retriever.vector_db import VectorRetriever
 
-DEFAULT_TOOL_NAME: str = "search"
+DEFAULT_TOOL_NAME: str = "private_search"
 
 
 class Agent(BaseStreamable):
@@ -43,41 +46,40 @@ class Agent(BaseStreamable):
         self.web_search_retriever = SearXNG(base_url=tools_config.searxng_base_url)
         self.knowledge_database_retriever = VectorRetriever(config=vector_config)
 
-        self.func_mapping: dict[ToolName, FunctionMeta] = {
-            "web_search": FunctionMeta(
-                name="web_search",
-                description="Search the web for public information.",
-                func=self.web_search_retriever.search
-            ),
-            "knowledge_search": FunctionMeta(
-                name="knowledge_search",
-                description="Search for user's private personal information.",
-                func=partial(self.knowledge_database_retriever.query, k=20)
-            )
+        self.retriever_mapping: dict[str, BaseRetriever] = {
+            each.name: each
+            for each in [self.web_search_retriever, self.knowledge_database_retriever]
         }
 
     @classmethod
     def has_function(cls, tools: list[dict] | None, function_name: str) -> bool:
-        for tool in tools:
+        for tool in tools or []:
             if tool.get("function", {}).get("name", {}) == function_name:
                 return True
         return False
 
     @classmethod
-    def yield_complete_message(cls, message: dict):
+    def yield_complete_message(cls, message: dict, attrs: dict | None = None) -> Iterable[ChatResponse]:
         yield ChatBOSResponse.model_validate({"role": message["role"]})
-        yield ChatDeltaResponse.model_validate({"message": message})
+        yield ChatDeltaResponse.model_validate({"message": message} | ({"attrs": attrs} if attrs else {}))
         yield ChatEOSResponse()
 
     async def chat(
             self,
-            messages: list[dict[str, str]],
+            message_dtos: list[MessageDto],
             enable_thinking: bool = False,
             tools: list[dict] | None = None,
+            custom_tool_call: bool = False,
+            force_private_search_option: Literal["disable", "enable", "auto"] = "auto"
     ) -> AsyncIterable[ChatResponse | dict]:
+        messages = list(map(self.parse_message, message_dtos))
+
         assistant_message: dict = {'role': 'assistant'}
 
-        if not enable_thinking and len(messages) == 2 and self.has_function(tools, DEFAULT_TOOL_NAME):
+        force_private_search: bool = (force_private_search_option == "enable" or (
+                force_private_search_option == "auto" and not enable_thinking)) and len(
+            messages) == 2 and self.has_function(tools, DEFAULT_TOOL_NAME)
+        if force_private_search:
             assert messages[0]['role'] == 'system' and messages[1]['role'] == 'user'
             assistant_message.setdefault('tool_calls', []).append({
                 "id": str(uuid4()).replace('-', ''),
@@ -92,15 +94,34 @@ class Agent(BaseStreamable):
             for r in self.yield_complete_message(assistant_message):
                 yield r
         else:
+            if custom_tool_call and len(messages) == 2:
+                messages[0]['content'] += """\n\n# Tools
+
+You may call one or more functions to assist with the user query.
+
+You are provided with function signatures within <tools></tools> XML tags:
+<tools>
+{{tools}}
+</tools>
+
+For each function call, return a json object with function name and arguments within <tool_call></tool_call> XML tags:
+<tool_call>
+{"name": <function-name>, "arguments": <args-json-object>}
+</tool_call>""".replace("{{tools}}", "\n".join([jsonlib.dumps(tool, ensure_ascii=False) for tool in tools or []]))
             openai_response: AsyncStream[ChatCompletionChunk] = await self.client.chat.completions.create(
                 model=self.model,
                 messages=messages,
-                tools=tools or NOT_GIVEN,
+                tools=tools if tools and not custom_tool_call else NOT_GIVEN,
                 stream=True,
                 extra_body={"enable_thinking": enable_thinking}
             )
 
             yield ChatBOSResponse(role="assistant")
+
+            tool_calls_buffer: str = ''
+            bot: str = '<tool_call>'
+            eot: str = '</tool_call>'
+            during_tool_call: bool = False
 
             async for chunk in openai_response:
                 delta = chunk.choices[0].delta
@@ -124,13 +145,85 @@ class Agent(BaseStreamable):
 
                 for key in ['content', 'reasoning_content']:
                     if hasattr(delta, key) and (v := getattr(delta, key)):
-                        assistant_message[key] = assistant_message.get(key, '') + v
-                        yield ChatDeltaResponse.model_validate({"message": {key: v}})
+                        if key == 'content':
+                            normal_content: str = v
+                            if bot in normal_content:
+                                during_tool_call = True
+                                normal_content, tool_call_delta = v.split(bot, 1)
+                                tool_calls_buffer += tool_call_delta
+                            elif during_tool_call:
+                                if eot in normal_content:
+                                    during_tool_call = False
+                                    tool_call_delta, normal_content = v.split(eot, 1)
+                                    tool_calls_buffer += tool_call_delta
+                                else:
+                                    tool_calls_buffer += normal_content
+                                    normal_content = ''
+                            if normal_content:
+                                assistant_message[key] = assistant_message.get(key, '') + normal_content
+                                yield ChatDeltaResponse.model_validate({"message": {key: normal_content}})
+                        else:
+                            assistant_message[key] = assistant_message.get(key, '') + v
+                            yield ChatDeltaResponse.model_validate({"message": {key: v}})
+            if tool_calls_buffer:
+                for line in tool_calls_buffer.splitlines():
+                    if json_str := line.strip():
+                        try:
+                            tool_call_json: dict = jsonlib.loads(json_str)
+                            tool_call_json['arguments'] = jsonlib.dumps(
+                                tool_call_json['arguments'], ensure_ascii=False, separators=(",", ":")
+                            )
+                            assistant_message.setdefault('tool_calls', []).append({
+                                "id": str(uuid4()).replace('-', ''),
+                                "type": "function",
+                                "function": tool_call_json
+                            })
+                        except jsonlib.JSONDecodeError:
+                            continue
             if tool_calls := assistant_message.get('tool_calls'):
                 yield ChatDeltaResponse.model_validate({"message": {"tool_calls": tool_calls}})
 
             yield ChatEOSResponse()
-        yield assistant_message
+        yield MessageDto.model_validate({"message": assistant_message})
+
+    @classmethod
+    def parse_selected_resources(cls, options: ChatOptions) -> str:
+        for tool in options.tools or []:
+            if tool.name == "private_search":
+                if tool.resources:
+                    resources = [
+                        resource.model_dump(include={"name", "type"}, exclude_none=True)
+                        for resource in tool.resources
+                    ]
+                    return "# Selected private resources\n\n```json\n" + jsonlib.dumps(
+                        resources, ensure_ascii=False, separators=(",", ":")
+                    ) + "\n```"
+        return ""
+
+    @classmethod
+    def parse_selected_tools(cls, options: ChatOptions) -> str:
+        if not options.tools:
+            return ""
+        tools = [tool.name for tool in options.tools]
+        return "# Selected tools\n\n```json\n" + jsonlib.dumps(
+            tools, ensure_ascii=False, separators=(",", ":")
+        ) + "\n```"
+
+    @classmethod
+    def parse_user_query(cls, query: str, options: ChatOptions) -> str:
+        return remove_continuous_break_lines("\n\n".join([
+            "# Query",
+            query,
+            cls.parse_selected_resources(options),
+            cls.parse_selected_tools(options),
+        ]))
+
+    @classmethod
+    def parse_message(cls, message: MessageDto) -> dict:
+        openai_message: dict = message.message
+        if openai_message['role'] == 'user' and message.attrs:
+            return openai_message | {"content": cls.parse_user_query(message.message["content"], message.attrs)}
+        return openai_message
 
     async def astream(self, trace_info: TraceInfo, agent_request: AgentRequest) -> AsyncIterable[ChatResponse]:
         """
@@ -146,42 +239,58 @@ class Agent(BaseStreamable):
         :param agent_request: The request containing the user's query and tools to be used.
         :return: An async iterable of ChatResponse objects.
         """
-        tool_executor = ToolExecutor.from_tools(agent_request.tools, self.func_mapping, self.reranker_config)
+        tool_executor_config_list: list[ToolExecutorConfig] = [
+            self.retriever_mapping[tool.name].get_tool_executor_config(tool)
+            for tool in agent_request.tools or []
+        ]
 
-        messages = agent_request.messages or []
+        if agent_request.merge_search:
+            tool_executor_config_list = [get_tool_executor_config(tool_executor_config_list, self.reranker_config)]
+
+        tool_executor = ToolExecutor({c["name"]: c for c in tool_executor_config_list})
+
+        messages: list[MessageDto] = agent_request.messages or []
 
         if not messages:
-            prompt: str = self.system_prompt.format_map({
+            prompt: str = render_template(self.system_prompt, {
                 "now": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "lang": "简体中文"
-            })
+                "lang": "简体中文",
+            }).strip()
             system_message: dict = {"role": "system", "content": prompt}
-            messages.append(system_message)
             for r in self.yield_complete_message(system_message):
                 yield r
+            messages.append(MessageDto.model_validate({"message": system_message}))
 
-        user_message: dict = {"role": "user", "content": agent_request.query}
+        user_message: MessageDto = MessageDto.model_validate({
+            "message": {"role": "user", "content": agent_request.query},
+            "attrs": agent_request.model_dump(
+                exclude_none=True,
+                include={"enable_thinking", "merge_search", "tools"}
+            ),
+        })
         messages.append(user_message)
-        for r in self.yield_complete_message(user_message):
+        for r in self.yield_complete_message(user_message.message, user_message.attrs):
             yield r
 
-        current_cite_cnt = agent_request.current_cite_cnt
-
-        while messages[-1]['role'] != 'assistant':
+        while messages[-1].message['role'] != 'assistant':
             async for chunk in self.chat(
                     messages,
                     enable_thinking=agent_request.enable_thinking,
-                    tools=tool_executor.tools
+                    tools=tool_executor.tools,
+                    custom_tool_call=False,
+                    force_private_search_option="disable"
             ):
-                if isinstance(chunk, dict):
+                if isinstance(chunk, MessageDto):
                     messages.append(chunk)
+                elif isinstance(chunk, ChatBaseResponse):
+                    yield chunk
                 else:
-                    yield chunk
-            if messages[-1].get('tool_calls', []):
-                async for chunk in tool_executor.astream(messages, current_cite_cnt):
-                    if isinstance(chunk, ChatDeltaResponse):
-                        tool_message: dict = chunk.message.model_dump(exclude_none=True)
-                        messages.append({"role": "tool", **tool_message})
-                        if (attrs := chunk.attrs) and attrs.citations:
-                            current_cite_cnt += len(attrs.citations)
-                    yield chunk
+                    raise ValueError(f"Unexpected chunk type: {type(chunk)}")
+            if messages[-1].message.get('tool_calls', []):
+                async for chunk in tool_executor.astream(messages):
+                    if isinstance(chunk, MessageDto):
+                        messages.append(chunk)
+                    elif isinstance(chunk, ChatBaseResponse):
+                        yield chunk
+                    else:
+                        raise ValueError(f"Unexpected chunk type: {type(chunk)}")

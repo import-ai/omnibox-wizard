@@ -3,19 +3,31 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from wizard.grimoire.entity.retrieval import Citation
-from wizard.grimoire.entity.tools import KnowledgeTool, WebSearchTool
+from wizard.grimoire.entity.tools import PrivateSearchTool, WebSearchTool
 
 
 class BaseChatRequest(BaseModel):
     query: str
 
 
-class AgentRequest(BaseChatRequest):
+class ChatOptions(BaseModel):
+    tools: list[PrivateSearchTool | WebSearchTool] | None = Field(default=None)
+    enable_thinking: bool = Field(default=None)
+    merge_search: bool = Field(default=None, description="Whether to merge search results from multiple tools.")
+
+
+class MessageAttrs(ChatOptions):
+    citations: list[Citation] = Field(default=None)
+
+
+class MessageDto(BaseModel):
+    message: dict
+    attrs: MessageAttrs | None = Field(default=None)
+
+
+class AgentRequest(BaseChatRequest, ChatOptions):
     conversation_id: str
-    messages: list[dict] | None = Field(default_factory=list)
-    tools: list[KnowledgeTool | WebSearchTool] | None = Field(default_factory=list)
-    enable_thinking: bool = Field(default=False)
-    current_cite_cnt: int = Field(default=0)
+    messages: list[MessageDto] | None = Field(default=None)
 
 
 class ChatBaseResponse(BaseModel):
@@ -38,14 +50,10 @@ class DeltaOpenAIMessage(BaseModel):
     tool_call_id: str | None = Field(default=None)
 
 
-class OpenAIMessageAttrs(BaseModel):
-    citations: list[Citation] = Field(default_factory=list)
-
-
 class ChatDeltaResponse(ChatBaseResponse):
     response_type: Literal["delta"] = "delta"
     message: DeltaOpenAIMessage
-    attrs: OpenAIMessageAttrs | None = Field(default=None, description="Attributes of the message.")
+    attrs: MessageAttrs | None = Field(default=None, description="Attributes of the message.")
 
 
 class ChatCitationsResponse(ChatBaseResponse):

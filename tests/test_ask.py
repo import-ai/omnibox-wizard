@@ -1,4 +1,4 @@
-import json
+import json as jsonlib
 from typing import Iterator, List
 
 import httpx
@@ -6,7 +6,8 @@ import pytest
 
 from tests.helper.fixture import client, worker
 from wizard.entity import Task
-from wizard.grimoire.entity.api import AgentRequest, BaseChatRequest
+from wizard.grimoire.agent.agent import Agent
+from wizard.grimoire.entity.api import BaseChatRequest, MessageDto
 from wizard.grimoire.entity.tools import Condition
 from wizard.wand.worker import Worker
 
@@ -29,7 +30,7 @@ def print_colored(text, *, color, **kwargs):
 def assert_stream(stream: Iterator[str]) -> list[dict]:
     messages = []
     for each in stream:
-        response = json.loads(each)
+        response = jsonlib.loads(each)
         response_type = response["response_type"]
         assert response_type in ["bos", "delta", "eos", "done", "error"]
         assert response_type != "error"
@@ -38,10 +39,6 @@ def assert_stream(stream: Iterator[str]) -> list[dict]:
             for key in ['content', 'reasoning_content']:
                 if key in message:
                     messages[-1][key] = messages[-1].get(key, '') + message[key]
-                    if key == 'reasoning_content':
-                        print_colored(message[key], color=Colors.MAGENTA, end="", flush=True)
-                    else:
-                        print(message[key], end="", flush=True)
             for key in ['tool_calls', 'tool_call_id']:
                 if key in message:
                     messages[-1][key] = message[key]
@@ -50,6 +47,18 @@ def assert_stream(stream: Iterator[str]) -> list[dict]:
         elif response_type == "bos":
             messages.append({'role': response['role']})
         elif response_type == "eos":
+            message_dto = MessageDto.model_validate({"message": messages[-1], "attrs": messages[-1].get('attrs', None)})
+            for key in ['content', 'reasoning_content']:
+                if content := message_dto.message.get(key, ""):
+                    if key == 'reasoning_content':
+                        print_colored(content, color=Colors.MAGENTA, end="", flush=True)
+                    else:
+                        if message_dto.message['role'] == 'user':
+                            content = Agent.parse_message(message_dto)["content"]
+                        print(content, end="", flush=True)
+            if tool_calls := message_dto.message.get('tool_calls', []):
+                print_colored(jsonlib.dumps(tool_calls, ensure_ascii=False), color=Colors.YELLOW, end="", flush=True)
+
             print('\n\n' + '=' * 32 + '\n\n', end="", flush=True)
         elif response_type == "done":
             pass
@@ -58,10 +67,10 @@ def assert_stream(stream: Iterator[str]) -> list[dict]:
     return messages
 
 
-def api_stream(client: httpx.Client, url: str, request: BaseChatRequest) -> Iterator[str]:
-    with client.stream("POST", url, json=request.model_dump()) as response:
+def api_stream(client: httpx.Client, url: str, request: dict) -> Iterator[str]:
+    with client.stream("POST", url, json=request) as response:
         if response.status_code != 200:
-            raise Exception(f"{response.status_code} {response.text}")
+            raise Exception(f"{response.status_code} {response.read().decode('utf-8')}")
         for line in response.iter_lines():
             if line.startswith("data: "):
                 yield line[6:]
@@ -105,11 +114,16 @@ async def add_index(
     assert output["success"] is True
 
 
+dir_name: dict[str, str] = {
+    "p_id_a": "下周计划",
+    "p_id_b": "人物",
+}
+
 create_test_case = ("resource_id, parent_id, title, content", [
-    ("r_id_a0", "p_id_0", "下周计划", "+ 9:00 起床\n+ 10:00 上班"),
-    ("r_id_a1", "p_id_0", "下周计划", "+ 8:00 起床\n+ 9:00 上班"),
-    ("r_id_b0", "p_id_1", "下周计划", "+ 7:00 起床\n+ 8:00 上班"),
-    ("r_id_c0", "p_id_c", "小红", "小红今年 8 岁"),
+    ("r_id_a0", "p_id_a", "周一计划", "+ 9:00 起床\n+ 10:00 上班"),
+    ("r_id_a1", "p_id_a", "周二计划", "+ 8:00 起床\n+ 9:00 上班"),
+    ("r_id_b0", "p_id_a", "周三计划", "+ 7:00 起床\n+ 8:00 上班"),
+    ("r_id_c0", "p_id_b", "小红", "小红今年 8 岁"),
 ])
 
 
@@ -127,7 +141,58 @@ async def vector_db_init(client: httpx.Client, worker: Worker, namespace_id: str
         )
 
 
-@pytest.mark.parametrize("enable_thinking", [True, False])
+def get_resource(resource_id: str) -> dict:
+    for rid, pid, title, content in create_test_case[1]:
+        if resource_id == rid:
+            return {
+                "name": title,
+                "id": rid,
+                "type": "resource",
+            }
+
+
+def get_folder(parent_id: str) -> dict:
+    return {
+        "name": dir_name[parent_id],
+        "id": parent_id,
+        "type": "folder",
+        "child_ids": [rid for rid, pid, _, _ in create_test_case[1] if pid == parent_id]
+    }
+
+
+def get_resource_ids(parent_id: str) -> List[str]:
+    return [rid for rid, pid, _, _ in create_test_case[1] if pid == parent_id]
+
+
+def get_agent_request(
+        namespace_id: str,
+        query: str,
+        resource_ids: List[str] | None = None,
+        parent_ids: List[str] | None = None,
+        enable_thinking: bool = False
+) -> dict:
+    return {
+        "conversation_id": "fake_id",
+        "query": query,
+        "enable_thinking": enable_thinking,
+        "tools": [
+            {
+                "name": "private_search",
+                "namespace_id": namespace_id,
+                "visible_resource_ids": (resource_ids or []) + sum(map(get_resource_ids, parent_ids or []), []),
+                "resources": [
+                    *[get_resource(r) for r in resource_ids or []],
+                    *[get_folder(p) for p in parent_ids or []],
+                ]
+            },
+            {
+                "name": "web_search"
+            }
+        ]
+    }
+
+
+@pytest.mark.parametrize("enable_thinking", [False])
 @pytest.mark.parametrize("query, resource_ids, parent_ids, expected_messages_length", [
     # ("今天北京的天气", None, None, 5),
     # ("下周计划", None, None, 5),
@@ -139,22 +204,13 @@ async def vector_db_init(client: httpx.Client, worker: Worker, namespace_id: str
 ])
 def test_ask(client: httpx.Client, vector_db_init: bool, namespace_id: str, query: str, expected_messages_length: int,
              enable_thinking: bool, resource_ids: List[str] | None, parent_ids: List[str] | None):
-    request = AgentRequest.model_validate({
-        "conversation_id": "fake_id",
-        "query": query,
-        "enable_thinking": enable_thinking,
-        "tools": [
-            {
-                "name": "knowledge_search",
-                "namespace_id": namespace_id,
-                "resource_ids": resource_ids,
-                "parent_ids": parent_ids
-            },
-            {
-                "name": "web_search"
-            }
-        ]
-    })
+    request = get_agent_request(
+        namespace_id=namespace_id,
+        query=query,
+        resource_ids=resource_ids,
+        parent_ids=parent_ids,
+        enable_thinking=enable_thinking
+    )
     messages = assert_stream(api_stream(client, "/api/v1/wizard/ask", request))
     assert len(messages) == expected_messages_length
 

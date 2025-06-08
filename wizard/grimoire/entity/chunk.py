@@ -6,6 +6,7 @@ from typing import Optional, Literal
 import shortuuid
 from pydantic import BaseModel, Field
 
+from common.utils import remove_continuous_break_lines
 from wizard.grimoire.entity.retrieval import BaseRetrieval, Citation
 
 
@@ -41,21 +42,21 @@ class Chunk(BaseModel):
         return self.model_dump(exclude_none=True, exclude={"chunk_id", "text"})
 
 
-class TextRetrieval(BaseRetrieval):
-    retrieval_type: Literal["text"] = "text"
+class ResourceChunkRetrieval(BaseRetrieval):
+    folder: str | None = Field(default=None, description="The folder of the chunk, if any")
     chunk: Chunk
 
     def source(self) -> str:
-        return "private_db"
+        return "private"
 
     def to_prompt(self) -> str:
-        return "\n".join([
-            f"Title: {self.chunk.title}",
-            f"Chunk:",
-            self.chunk.text,
-            f"Created at: {timestamp_to_datetime(self.chunk.created_at)}",
+        return remove_continuous_break_lines("\n".join([
+            f"Folder: {self.folder}" if self.folder else "",
+            f"Title: {self.chunk.title}" if self.chunk.title else "",
+            f"Chunk:" if self.chunk.text else "",
+            self.chunk.text if self.chunk.text else "",
             f"Updated at: {timestamp_to_datetime(self.chunk.updated_at)}",
-        ])
+        ]))
 
     def to_citation(self) -> Citation:
         return Citation(

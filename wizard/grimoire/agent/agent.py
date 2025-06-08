@@ -1,6 +1,6 @@
 import json as jsonlib
 from datetime import datetime
-from typing import AsyncIterable
+from typing import AsyncIterable, Literal
 from uuid import uuid4
 
 from openai import AsyncOpenAI, AsyncStream, NOT_GIVEN
@@ -10,6 +10,7 @@ from openai.types.chat.chat_completion_chunk import ChoiceDeltaToolCall
 from common import project_root
 from common.template_render import render_template
 from common.trace_info import TraceInfo
+from common.utils import remove_continuous_break_lines
 from wizard.config import OpenAIConfig, ToolsConfig, VectorConfig
 from wizard.grimoire.agent.tools import ToolExecutor
 from wizard.grimoire.base_streamable import BaseStreamable, ChatResponse
@@ -22,7 +23,7 @@ from wizard.grimoire.retriever.reranker import get_tool_executor_config
 from wizard.grimoire.retriever.searxng import SearXNG
 from wizard.grimoire.retriever.vector_db import VectorRetriever
 
-DEFAULT_TOOL_NAME: str = "search"
+DEFAULT_TOOL_NAME: str = "private_search"
 
 
 class Agent(BaseStreamable):
@@ -68,11 +69,15 @@ class Agent(BaseStreamable):
             messages: list[dict[str, str]],
             enable_thinking: bool = False,
             tools: list[dict] | None = None,
-            custom_tool_call: bool = False
+            custom_tool_call: bool = False,
+            force_private_search_option: Literal["disable", "enable", "auto"] = "auto"
     ) -> AsyncIterable[ChatResponse | dict]:
         assistant_message: dict = {'role': 'assistant'}
 
-        if not enable_thinking and len(messages) == 2 and self.has_function(tools, DEFAULT_TOOL_NAME):
+        force_private_search: bool = (force_private_search_option == "enable" or (
+                force_private_search_option == "auto" and not enable_thinking)) and len(
+            messages) == 2 and self.has_function(tools, DEFAULT_TOOL_NAME)
+        if force_private_search:
             assert messages[0]['role'] == 'system' and messages[1]['role'] == 'user'
             assistant_message.setdefault('tool_calls', []).append({
                 "id": str(uuid4()).replace('-', ''),
@@ -185,13 +190,30 @@ For each function call, return a json object with function name and arguments wi
             if tool.name == "private_search":
                 if tool.resources:
                     resources = [
-                        resource.model_dump(exclude={"resource_id", "sub_resource_ids"}, exclude_none=True)
+                        resource.model_dump(include={"name", "type"}, exclude_none=True)
                         for resource in tool.resources
                     ]
-                    return "- User selected private resources: " + jsonlib.dumps(
+                    return "# Selected private resources\n\n```json\n" + jsonlib.dumps(
                         resources, ensure_ascii=False, separators=(",", ":")
-                    )
+                    ) + "\n```"
         return ""
+
+    @classmethod
+    def parse_selected_tools(cls, agent_request: AgentRequest) -> str:
+        if not agent_request.tools:
+            return ""
+        tools = [tool.name for tool in agent_request.tools]
+        return "# Selected tools\n\n```json\n" + jsonlib.dumps(
+            tools, ensure_ascii=False, separators=(",", ":")
+        ) + "\n```"
+
+    def parse_user_query(self, agent_request: AgentRequest) -> str:
+        return remove_continuous_break_lines("\n\n".join([
+            "# Query",
+            agent_request.query,
+            self.parse_selected_resources(agent_request),
+            self.parse_selected_tools(agent_request),
+        ]))
 
     async def astream(self, trace_info: TraceInfo, agent_request: AgentRequest) -> AsyncIterable[ChatResponse]:
         """
@@ -223,14 +245,13 @@ For each function call, return a json object with function name and arguments wi
             prompt: str = render_template(self.system_prompt, {
                 "now": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 "lang": "简体中文",
-                "selected_resources": self.parse_selected_resources(agent_request)
             }).strip()
             system_message: dict = {"role": "system", "content": prompt}
             messages.append(system_message)
             for r in self.yield_complete_message(system_message):
                 yield r
 
-        user_message: dict = {"role": "user", "content": agent_request.query}
+        user_message: dict = {"role": "user", "content": self.parse_user_query(agent_request)}
         messages.append(user_message)
         for r in self.yield_complete_message(user_message):
             yield r
@@ -241,7 +262,9 @@ For each function call, return a json object with function name and arguments wi
             async for chunk in self.chat(
                     messages,
                     enable_thinking=agent_request.enable_thinking,
-                    tools=tool_executor.tools
+                    tools=tool_executor.tools,
+                    custom_tool_call=False,
+                    force_private_search_option="disable"
             ):
                 if isinstance(chunk, dict):
                     messages.append(chunk)

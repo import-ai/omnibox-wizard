@@ -137,17 +137,17 @@ def get_resource(resource_id: str) -> dict:
         if resource_id == rid:
             return {
                 "name": title,
-                "resource_id": rid,
-                "resource_type": "doc",
+                "id": rid,
+                "type": "resource",
             }
 
 
 def get_folder(parent_id: str) -> dict:
     return {
         "name": dir_name[parent_id],
-        "resource_id": parent_id,
-        "resource_type": "folder",
-        "sub_resource_ids": [rid for rid, pid, _, _ in create_test_case[1] if pid == parent_id]
+        "id": parent_id,
+        "type": "folder",
+        "child_ids": [rid for rid, pid, _, _ in create_test_case[1] if pid == parent_id]
     }
 
 
@@ -188,10 +188,10 @@ def get_agent_request(
     # ("今天北京的天气", None, None, 5),
     # ("下周计划", None, None, 5),
     # ("我下周的计划", ["r_id_a0", "r_id_b0"], None, 5),
-    # ("地球到火星的距离", ["r_id_a0", "r_id_b0"], None, 5),
+    ("地球到火星的距离", ["r_id_a0", "r_id_b0"], None, 5),
     # ("下周计划", None, ["p_id_1"], 5),
     # ("下周计划", ["r_id_b0"], ["p_id_0"], 5),
-    ("小红是谁？", ["r_id_a0", "r_id_a1", "r_id_b0", "r_id_c0"], None, 5),
+    # ("小红是谁？", ["r_id_a0", "r_id_a1", "r_id_b0", "r_id_c0"], None, 5),
 ])
 def test_ask(client: httpx.Client, vector_db_init: bool, namespace_id: str, query: str, expected_messages_length: int,
              enable_thinking: bool, resource_ids: List[str] | None, parent_ids: List[str] | None):

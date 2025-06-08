@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime
 
 import httpx
@@ -47,20 +48,34 @@ class SearXNG(BaseRetriever):
     async def search(
             self,
             query: str,
+            *,
             page_number: int = 1,
+            k: int = 20,
+            retry_cnt: int = 2,  # First time may fail due to cold start, retry a few times
+            retry_sleep: float = 1,
             trace_info: TraceInfo | None = None
     ) -> list[SearXNGRetrieval]:
-        async with httpx.AsyncClient(base_url=self.base_url) as c:
-            httpx_response: httpx.Response = await c.get(
-                "/search", params={"q": query, "pageno": page_number, "format": "json"}
-            )
-            httpx_response.raise_for_status()
-        search_result: dict = httpx_response.json()
-        results: list[dict] = search_result['results']
-        retrievals: list[SearXNGRetrieval] = [SearXNGRetrieval(result=result) for result in results]
-        if trace_info:
-            trace_info.debug({"len(retrievals)": len(retrievals)})
-        return retrievals
+        for i in range(retry_cnt + 1):
+            async with httpx.AsyncClient(base_url=self.base_url) as c:
+                httpx_response: httpx.Response = await c.get(
+                    "/search", params={"q": query, "pageno": page_number, "format": "json"}
+                )
+                httpx_response.raise_for_status()
+            search_result: dict = httpx_response.json()
+            results: list[dict] = search_result['results']
+            retrievals: list[SearXNGRetrieval] = [SearXNGRetrieval(result=result) for result in results]
+            if trace_info:
+                trace_info.debug({"len(retrievals)": len(retrievals)})
+            if retrievals:
+                return retrievals[:k]
+            trace_info.warning({
+                "message": f"Search failed, retrying {i + 1}/{retry_cnt + 1}",
+                "query": query,
+                "page_number": page_number,
+                "k": k
+            })
+            await asyncio.sleep(retry_sleep)
+        return []
 
     def get_function(self, tool: BaseTool, **kwargs) -> SearchFunction:
         return self.search

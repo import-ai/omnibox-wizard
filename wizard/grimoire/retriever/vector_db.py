@@ -10,7 +10,7 @@ from common.trace_info import TraceInfo
 from wizard.config import VectorConfig
 from wizard.grimoire.entity.chunk import Chunk, ResourceChunkRetrieval
 from wizard.grimoire.entity.retrieval import Score
-from wizard.grimoire.entity.tools import Condition, PrivateSearchTool, Resource, ResourceType
+from wizard.grimoire.entity.tools import Condition, PrivateSearchTool, Resource, PrivateSearchResourceType
 from wizard.grimoire.retriever.base import BaseRetriever, SearchFunction
 
 AsyncCollection = chromadb.api.async_api.AsyncCollection
@@ -78,7 +78,7 @@ class VectorRetriever(BaseRetriever):
     @classmethod
     def get_folder(cls, resource_id: str, resources: list[Resource]) -> str | None:
         for resource in resources:
-            if resource.type == ResourceType.FOLDER and resource_id in resource.child_ids:
+            if resource.type == PrivateSearchResourceType.FOLDER and resource_id in resource.child_ids:
                 return resource.name
         return None
 

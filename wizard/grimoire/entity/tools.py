@@ -49,17 +49,15 @@ class BaseTool(BaseModel):
         return partial(func, **kwargs) if kwargs else func
 
 
-class ResourceType(str, Enum):
-    DOC = "doc"
-    FILE = "file"
-    LINK = "link"
+class PrivateSearchResourceType(str, Enum):
+    RESOURCE = "resource"
     FOLDER = "folder"
 
 
 class Resource(BaseModel):
     name: str
     id: str
-    type: ResourceType
+    type: PrivateSearchResourceType
     child_ids: list[str] | None = Field(default=None)
 
 

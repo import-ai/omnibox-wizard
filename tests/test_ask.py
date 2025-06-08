@@ -7,7 +7,7 @@ import pytest
 from tests.helper.fixture import client, worker
 from wizard.entity import Task
 from wizard.grimoire.agent.agent import Agent
-from wizard.grimoire.entity.api import AgentRequest, BaseChatRequest, MessageDto
+from wizard.grimoire.entity.api import BaseChatRequest, MessageDto
 from wizard.grimoire.entity.tools import Condition
 from wizard.wand.worker import Worker
 
@@ -67,8 +67,8 @@ def assert_stream(stream: Iterator[str]) -> list[dict]:
     return messages
 
 
-def api_stream(client: httpx.Client, url: str, request: BaseChatRequest) -> Iterator[str]:
-    with client.stream("POST", url, json=request.model_dump(exclude_none=True)) as response:
+def api_stream(client: httpx.Client, url: str, request: dict) -> Iterator[str]:
+    with client.stream("POST", url, json=request) as response:
         if response.status_code != 200:
             raise Exception(f"{response.status_code} {response.read().decode('utf-8')}")
         for line in response.iter_lines():
@@ -170,8 +170,8 @@ def get_agent_request(
         resource_ids: List[str] | None = None,
         parent_ids: List[str] | None = None,
         enable_thinking: bool = False
-) -> AgentRequest:
-    return AgentRequest.model_validate({
+) -> dict:
+    return {
         "conversation_id": "fake_id",
         "query": query,
         "enable_thinking": enable_thinking,
@@ -189,7 +189,7 @@ def get_agent_request(
                 "name": "web_search"
             }
         ]
-    })
+    }
 
 
 @pytest.mark.parametrize("enable_thinking", [False])

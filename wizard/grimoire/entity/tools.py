@@ -64,10 +64,13 @@ class Resource(BaseModel):
 class PrivateSearchTool(BaseTool):
     name: Literal["private_search"] = "private_search"
     namespace_id: str
-    visible_resource_ids: list[str]
-    resources: list[Resource] = Field(default_factory=list)
+    visible_resource_ids: list[str] = Field(
+        exclude=True, default=None, description="Required in `AgentRequest`, excluded in `MessageDto`.")
+    resources: list[Resource] = Field()
 
     def to_condition(self) -> Condition:
+        if not self.visible_resource_ids:
+            raise AssertionError("`visible_resource_ids` must be provided when export to `Condition`.")
         return Condition(
             namespace_id=self.namespace_id,
             resource_ids=self.visible_resource_ids,

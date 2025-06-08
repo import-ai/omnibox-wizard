@@ -51,21 +51,23 @@ class BaseTool(BaseModel):
 
 class ResourceType(str, Enum):
     DOC = "doc"
+    FILE = "file"
+    LINK = "link"
     FOLDER = "folder"
 
 
 class Resource(BaseModel):
     name: str
-    resource_id: str
-    resource_type: ResourceType
-    sub_resource_ids: list[str] | None = Field(default=None)
+    id: str
+    type: ResourceType
+    child_ids: list[str] | None = Field(default=None)
 
 
 class PrivateSearchTool(BaseTool):
     name: Literal["private_search"] = "private_search"
     namespace_id: str
     visible_resource_ids: list[str]
-    resources: list[Resource] | None = Field(default=None)
+    resources: list[Resource] = Field(default_factory=list)
 
     def to_condition(self) -> Condition:
         return Condition(

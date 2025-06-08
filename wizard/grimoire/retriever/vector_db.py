@@ -78,7 +78,7 @@ class VectorRetriever(BaseRetriever):
     @classmethod
     def get_folder(cls, resource_id: str, resources: list[Resource]) -> str | None:
         for resource in resources:
-            if resource.resource_type == ResourceType.FOLDER and resource_id in resource.sub_resource_ids:
+            if resource.type == ResourceType.FOLDER and resource_id in resource.child_ids:
                 return resource.name
         return None
 

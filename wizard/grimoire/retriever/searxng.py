@@ -3,6 +3,7 @@ from datetime import datetime
 import httpx
 
 from common.trace_info import TraceInfo
+from common.utils import remove_continuous_break_lines
 from wizard.grimoire.entity.retrieval import Citation, BaseRetrieval
 from wizard.grimoire.entity.tools import BaseTool
 from wizard.grimoire.retriever.base import BaseRetriever, SearchFunction
@@ -16,12 +17,12 @@ class SearXNGRetrieval(BaseRetrieval):
 
     def to_prompt(self) -> str:
         citation = self.to_citation()
-        return "\n".join([
+        return remove_continuous_break_lines("\n".join([
             f"Title: {citation.title}" if citation.title else "",
             f"Snippet:" if citation.snippet else "",
             citation.snippet if citation.snippet else "",
             f"Updated at: {citation.updated_at} " if citation.updated_at else "",
-        ]).strip()
+        ]))
 
     def to_citation(self) -> Citation:
         citation: Citation = Citation(

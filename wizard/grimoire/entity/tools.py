@@ -58,7 +58,7 @@ class Resource(BaseModel):
     name: str
     id: str
     type: PrivateSearchResourceType
-    child_ids: list[str] | None = Field(default=None)
+    child_ids: list[str] | None = Field(default=None, exclude=True)
 
 
 class PrivateSearchTool(BaseTool):

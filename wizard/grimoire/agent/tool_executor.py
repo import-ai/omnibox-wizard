@@ -1,9 +1,9 @@
 import json as jsonlib
 from typing import AsyncIterable
 
-from openai.types.chat import ChatCompletionAssistantMessageParam, ChatCompletionMessageParam
+from openai.types.chat import ChatCompletionAssistantMessageParam
 
-from wizard.grimoire.entity.api import ChatBaseResponse, ChatEOSResponse, ChatBOSResponse, ChatDeltaResponse
+from wizard.grimoire.entity.api import ChatBaseResponse, ChatEOSResponse, ChatBOSResponse, ChatDeltaResponse, MessageDto
 from wizard.grimoire.entity.retrieval import BaseRetrieval
 from wizard.grimoire.entity.tools import ToolExecutorConfig
 
@@ -12,7 +12,7 @@ def retrieval_wrapper(
         tool_call_id: str,
         current_cite_cnt: int,
         retrieval_list: list[BaseRetrieval]
-) -> ChatDeltaResponse:
+) -> MessageDto:
     citations = [retrieval.to_citation() for retrieval in retrieval_list]
     retrieval_prompt_list: list[str] = []
     for i, retrieval in enumerate(retrieval_list):
@@ -24,10 +24,14 @@ def retrieval_wrapper(
         retrieval_prompt_list.append("\n".join(prompt_list))
     retrieval_prompt: str = "\n\n".join(retrieval_prompt_list) or "Not found"
     content = "\n".join(["<retrievals>", retrieval_prompt, "</retrievals>"])
-    return ChatDeltaResponse.model_validate({
+    return MessageDto.model_validate({
         "message": {"role": "tool", "tool_call_id": tool_call_id, "content": content},
         "attrs": {"citations": citations}
     })
+
+
+def get_citation_cnt(messages: list[MessageDto]) -> int:
+    return sum(len(message.attrs.citations) if message.attrs and message.attrs.citations else 0 for message in messages)
 
 
 class ToolExecutor:
@@ -37,10 +41,9 @@ class ToolExecutor:
 
     async def astream(
             self,
-            messages: list[ChatCompletionMessageParam],
-            current_cite_cnt: int
+            message_dtos: list[MessageDto],
     ) -> AsyncIterable[ChatBaseResponse]:
-        message: ChatCompletionAssistantMessageParam = messages[-1]
+        message: ChatCompletionAssistantMessageParam = message_dtos[-1].message
         if tool_calls := message.get('tool_calls', []):
             for tool_call in tool_calls:
                 function = tool_call['function']
@@ -56,15 +59,14 @@ class ToolExecutor:
                     raise ValueError(f"Unknown function: {function_name}")
 
                 if function_name.endswith("search"):
-                    chat_delta_response: ChatDeltaResponse = retrieval_wrapper(
+                    message_dto: MessageDto = retrieval_wrapper(
                         tool_call_id=tool_call_id,
-                        current_cite_cnt=current_cite_cnt,
+                        current_cite_cnt=get_citation_cnt(message_dtos),
                         retrieval_list=result
                     )
-                    if (attrs := chat_delta_response.attrs) and attrs.citations:
-                        current_cite_cnt += len(attrs.citations)
                 else:
                     raise ValueError(f"Unknown function: {function_name}")
 
-                yield chat_delta_response
+                yield ChatDeltaResponse.model_validate(message_dto.model_dump(exclude_none=True))
+                yield message_dto
                 yield ChatEOSResponse()

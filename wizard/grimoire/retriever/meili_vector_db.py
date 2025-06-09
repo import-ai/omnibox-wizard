@@ -2,6 +2,13 @@ from functools import partial
 from typing import List, Tuple
 
 from meilisearch_python_sdk import AsyncClient
+from meilisearch_python_sdk.models.settings import (
+    Embedders,
+    FilterableAttributeFeatures,
+    FilterableAttributes,
+    Filter,
+    UserProvidedEmbedder,
+)
 from openai import AsyncOpenAI
 
 from common.trace_info import TraceInfo
@@ -18,6 +25,19 @@ from wizard.grimoire.entity.tools import (
 from wizard.grimoire.retriever.base import BaseRetriever, SearchFunction
 
 
+def to_filterable_attributes(
+    filter: str, comparison: bool = False
+) -> FilterableAttributes:
+    """Convert a string filter to FilterableAttributes."""
+    return FilterableAttributes(
+        attribute_patterns=[filter],
+        features=FilterableAttributeFeatures(
+            facet_search=False,
+            filter=Filter(equality=True, comparison=comparison),
+        ),
+    )
+
+
 class MeiliVectorDB:
     def __init__(self, config: VectorConfig):
         self.config: VectorConfig = config
@@ -26,7 +46,68 @@ class MeiliVectorDB:
             api_key=config.embedding.api_key, base_url=config.embedding.base_url
         )
         self.meili = AsyncClient(config.host, config.meili_api_key)
-        self.index = self.meili.index("omnibox_index")
+        self.index_uid = "omniboxIndex"
+        self.embedder_name = "omniboxEmbed"
+        self.embedder_dimensions = 1024
+
+    async def init_index(self):
+        index = await self.meili.get_or_create_index(self.index_uid)
+
+        cur_filters: List[FilterableAttributes] = []
+        for f in await index.get_filterable_attributes() or []:
+            if isinstance(f, FilterableAttributes):
+                cur_filters.append(f)
+            elif isinstance(f, str):
+                cur_filters.append(to_filterable_attributes(f))
+            else:
+                raise ValueError(
+                    f"Unexpected filterable attribute type: {type(f)}. Expected str or FilterableAttributes."
+                )
+
+        expected_filters = [
+            "namespace_id",
+            "type",
+            "chunk.resource_id",
+            "chunk.parent_id",
+            "chunk.created_at",
+            "chunk.updated_at",
+        ]
+        comparison_filters = [
+            "chunk.created_at",
+            "chunk.updated_at",
+        ]
+        missing_filters: List[FilterableAttributes] = []
+        for expected_filter in expected_filters:
+            found = False
+            for cur_filter in cur_filters:
+                if expected_filter in cur_filter.attribute_patterns:
+                    found = True
+                    break
+            if not found:
+                missing_filters.append(
+                    to_filterable_attributes(
+                        expected_filter,
+                        comparison=expected_filter in comparison_filters,
+                    )
+                )
+
+        if missing_filters:
+            new_filters = cur_filters + missing_filters
+            await index.update_filterable_attributes(new_filters)
+
+        embedders = await index.get_embedders()
+        if not embedders or self.embedder_name not in embedders.embedders:
+            await index.update_embedders(
+                Embedders(
+                    embedders={
+                        self.embedder_name: UserProvidedEmbedder(
+                            dimensions=self.embedder_dimensions
+                        )
+                    }
+                )
+            )
+
+        self.index = index
 
     async def insert(self, namespace_id: str, chunk_list: List[Chunk]):
         for i in range(0, len(chunk_list), self.batch_size):

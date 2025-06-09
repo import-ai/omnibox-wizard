@@ -40,21 +40,21 @@ class Condition(BaseModel):
         or_clause = []
         if self.resource_ids:
             or_clause.append(
-                'resource_id IN [{}]'.format(", ".join('"{}"'.format(rid) for rid in self.resource_ids))
+                'chunk.resource_id IN [{}]'.format(", ".join('"{}"'.format(rid) for rid in self.resource_ids))
             )
         if self.parent_ids:
             or_clause.append(
-                'parent_id IN [{}]'.format(", ".join('"{}"'.format(pid) for pid in self.parent_ids))
+                'chunk.parent_id IN [{}]'.format(", ".join('"{}"'.format(pid) for pid in self.parent_ids))
             )
         if or_clause:
             and_clause.append(or_clause)
 
         if self.created_at is not None:
-            and_clause.append('created_at >= {}'.format(self.created_at[0]))
-            and_clause.append('created_at <= {}'.format(self.created_at[1]))
+            and_clause.append('chunk.created_at >= {}'.format(self.created_at[0]))
+            and_clause.append('chunk.created_at <= {}'.format(self.created_at[1]))
         if self.updated_at is not None:
-            and_clause.append('updated_at >= {}'.format(self.updated_at[0]))
-            and_clause.append('updated_at <= {}'.format(self.updated_at[1]))
+            and_clause.append('chunk.updated_at >= {}'.format(self.updated_at[0]))
+            and_clause.append('chunk.updated_at <= {}'.format(self.updated_at[1]))
 
         return and_clause
 

@@ -61,6 +61,7 @@ class SpliterConfig(BaseModel):
 class TaskConfig(BaseModel):
     spliter: SpliterConfig = Field(default_factory=SpliterConfig)
     office_operator_base_url: str = Field(default=None)
+    asr: OpenAIConfig = Field(default=None)
 
 
 class ToolsConfig(BaseModel):

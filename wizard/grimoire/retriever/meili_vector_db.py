@@ -1,12 +1,21 @@
+from functools import partial
 from typing import List, Tuple
 
 from meilisearch_python_sdk import AsyncClient
-from meilisearch_python_sdk.types import Filter
 from openai import AsyncOpenAI
 
+from common.trace_info import TraceInfo
 from wizard.config import VectorConfig
-from wizard.grimoire.entity.chunk import Chunk
+from wizard.grimoire.entity.chunk import Chunk, ResourceChunkRetrieval
 from wizard.grimoire.entity.index_record import IndexRecord, IndexRecordType
+from wizard.grimoire.entity.retrieval import Score
+from wizard.grimoire.entity.tools import (
+    Condition,
+    PrivateSearchResourceType,
+    PrivateSearchTool,
+    Resource,
+)
+from wizard.grimoire.retriever.base import BaseRetriever, SearchFunction
 
 
 class MeiliVectorDB:
@@ -67,3 +76,63 @@ class MeiliVectorDB:
                 chunk = Chunk(**chunk_data)
                 output.append((chunk, score))
         return output
+
+
+class MeiliVectorRetriever(BaseRetriever):
+    def __init__(self, config: VectorConfig):
+        self.vector_db = MeiliVectorDB(config)
+
+    @classmethod
+    def get_folder(cls, resource_id: str, resources: list[Resource]) -> str | None:
+        for resource in resources:
+            if (
+                resource.type == PrivateSearchResourceType.FOLDER
+                and resource_id in resource.child_ids
+            ):
+                return resource.name
+        return None
+
+    def get_function(
+        self, private_search_tool: PrivateSearchTool, **kwargs
+    ) -> SearchFunction:
+        return partial(
+            self.query, private_search_tool=private_search_tool, k=20, **kwargs
+        )
+
+    def get_schema(self) -> dict:
+        return self.generate_schema(
+            "private_search", "Search for user's private & personal resources."
+        )
+
+    async def query(
+        self,
+        query: str,
+        k: int,
+        *,
+        private_search_tool: PrivateSearchTool,
+        trace_info: TraceInfo | None = None,
+    ) -> list[ResourceChunkRetrieval]:
+        condition: Condition = private_search_tool.to_condition()
+        where = condition.to_meili_where()
+        if trace_info:
+            trace_info.debug(
+                {
+                    "where": where,
+                    "condition": condition.model_dump() if condition else condition,
+                }
+            )
+        if len(where) == 0:
+            return []
+
+        recall_result_list = await self.vector_db.query_chunks(query, k, where)
+        retrievals: List[ResourceChunkRetrieval] = [
+            ResourceChunkRetrieval(
+                chunk=chunk,
+                folder=self.get_folder(
+                    chunk.resource_id, private_search_tool.resources or []
+                ),
+                score=Score(recall=score, rerank=0),
+            )
+            for chunk, score in recall_result_list
+        ]
+        return retrievals

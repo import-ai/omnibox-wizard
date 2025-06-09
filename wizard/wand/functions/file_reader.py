@@ -93,7 +93,7 @@ class FileReader(BaseFunction):
         self.mimetype_mapping: dict[str, str] = {
             "text/x-markdown": ".md"
         }
-        self.convertor: Convertor = Convertor(config.task.office_operator_base_url)
+        self.convertor: Convertor = Convertor(config.task.office_operator_base_url, config.task.asr)
 
     async def download(self, resource_id: str, target: str):
         async with httpx.AsyncClient(base_url=self.base_url) as client:

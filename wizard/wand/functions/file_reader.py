@@ -8,20 +8,17 @@ import httpx
 from markitdown import MarkItDown
 
 from common.trace_info import TraceInfo
-from wizard.config import WorkerConfig
+from wizard.config import WorkerConfig, OpenAIConfig
 from wizard.entity import Task
 from wizard.wand.functions.base_function import BaseFunction
 
 
 class OfficeOperatorClient(httpx.AsyncClient):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
 
-    async def migrate(self, src_path: str, src_ext: str, dest_path: str, retry_cnt: int = 3):
+    async def migrate(self, src_path: str, src_ext: str, dest_path: str, mimetype: str, retry_cnt: int = 3):
         with open(src_path, "rb") as f:
             bytes_content: bytes = f.read()
 
-        mimetype: str = mimetypes.guess_type(f"a{src_ext}")[0] or ""
         for i in range(retry_cnt):
             try:
                 response: httpx.Response = await self.post(
@@ -36,25 +33,56 @@ class OfficeOperatorClient(httpx.AsyncClient):
             break
 
 
+class ASRClient(httpx.AsyncClient):
+
+    def __init__(self, model: str, *args, **kwargs):
+        self.model: str = model
+        super().__init__(*args, **kwargs)
+
+    async def transcribe(self, file_path: str, mimetype: str, retry_cnt: int = 3) -> str:
+        with open(file_path, "rb") as f:
+            bytes_content: bytes = f.read()
+
+        for i in range(retry_cnt):
+            try:
+                response: httpx.Response = await self.post(
+                    "/audio/transcriptions",
+                    files={"file": (file_path, io.BytesIO(bytes_content), mimetype)},
+                    data={"model": self.model}
+                )
+                assert response.is_success, response.text
+                return response.json()["text"]
+            except (TimeoutError, httpcore.ReadTimeout, httpx.ReadTimeout):
+                continue
+        raise RuntimeError("ASR transcription failed after retries")
+
+
 class Convertor:
-    def __init__(self, office_operator_base_url: str):
+    def __init__(self, office_operator_base_url: str, asr_config: OpenAIConfig):
         self.markitdown: MarkItDown = MarkItDown()
         self.office_operator_base_url: str = office_operator_base_url
+        self.asr_client: ASRClient = ASRClient(
+            model=asr_config.model,
+            base_url=asr_config.base_url,
+            headers={"Authorization": f"Bearer {asr_config.api_key}"},
+        )
 
-    async def convert(self, filepath: str, ext: str) -> str:
-        if ext in [".pptx", ".docx", ".pdf", ".ppt", ".doc"]:
+    async def convert(self, filepath: str, mime_ext: str, mimetype: str) -> str:
+        if mime_ext in [".pptx", ".docx", ".pdf", ".ppt", ".doc"]:
             path = filepath
-            if ext in [".ppt", ".doc"]:
+            if mime_ext in [".ppt", ".doc"]:
                 path: str = filepath + "x"
                 async with OfficeOperatorClient(base_url=self.office_operator_base_url) as client:
-                    await client.migrate(filepath, ext, path)
+                    await client.migrate(filepath, mime_ext, path, mimetype)
             result = self.markitdown.convert(path)
             markdown: str = result.text_content
-        elif ext in [".md", ".txt"]:
+        elif mime_ext in [".md", ".txt"]:
             with open(filepath, 'r') as f:
                 markdown: str = f.read()
+        elif mime_ext in [".wav", ".mp3", ".pcm", ".opus", ".webm"]:
+            markdown: str = await self.asr_client.transcribe(filepath, mimetype)
         else:
-            raise ValueError(f"unsupported_type: {ext}")
+            raise ValueError(f"unsupported_type: {mime_ext}")
         return markdown
 
 
@@ -65,7 +93,7 @@ class FileReader(BaseFunction):
         self.mimetype_mapping: dict[str, str] = {
             "text/x-markdown": ".md"
         }
-        self.convertor: Convertor = Convertor(config.task.office_operator_base_url)
+        self.convertor: Convertor = Convertor(config.task.office_operator_base_url, config.task.asr)
 
     async def download(self, resource_id: str, target: str):
         async with httpx.AsyncClient(base_url=self.base_url) as client:
@@ -99,7 +127,7 @@ class FileReader(BaseFunction):
             mime_ext: str | None = self.guess_extension(mimetype)
 
             try:
-                markdown: str = await self.convertor.convert(local_path, mime_ext)
+                markdown: str = await self.convertor.convert(local_path, mime_ext, mimetype)
             except ValueError:
                 return {
                     "message": "unsupported_type",

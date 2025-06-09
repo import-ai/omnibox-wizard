@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 from common import project_root
 from tests.helper.backend_client import BackendClient
 from tests.helper.fixture import backend_client
+from wizard.config import OpenAIConfig
 from wizard.entity import Task
 from wizard.wand.functions.file_reader import Convertor
 from wizard.wand.worker import Worker
@@ -75,13 +76,22 @@ async def test_file_reader(worker: Worker, uploaded_file: str):
 
 @pytest.fixture(scope="function")
 def convertor() -> Convertor:
-    return Convertor(office_operator_base_url=os.environ["OBW_TASK_OFFICE_OPERATOR_BASE_URL"])
+    return Convertor(
+        office_operator_base_url=os.environ["OBW_TASK_OFFICE_OPERATOR_BASE_URL"],
+        asr_config=OpenAIConfig(
+            api_key=os.environ["OBW_TASK_ASR_API_KEY"],
+            model=os.environ["OBW_TASK_ASR_MODEL"],
+            base_url=os.environ["OBW_TASK_ASR_BASE_URL"]
+        )
+    )
 
 
 @pytest.mark.parametrize("filename", [
-    "example.doc"
+    # "example.doc",
+    "test.mp3",
 ])
 async def test_convertor(convertor: Convertor, filename):
     filepath: str = project_root.path(os.path.join("tests/resources/files", filename))
-    markdown: str = await convertor.convert(filepath, '.doc')
+    mimetype, _ = mimetypes.guess_type(filepath)
+    markdown: str = await convertor.convert(filepath, os.path.splitext(filepath)[1], mimetype)
     print(markdown)

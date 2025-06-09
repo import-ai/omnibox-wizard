@@ -1,6 +1,7 @@
 from typing import List, Tuple
 
 from meilisearch_python_sdk import AsyncClient
+from meilisearch_python_sdk.types import Filter
 from openai import AsyncOpenAI
 
 from wizard.config import VectorConfig
@@ -48,10 +49,21 @@ class MeiliVectorDB:
             ]
         )
 
-    async def query(
-        self, query: str, k: int, namespace_id: str, where: dict
+    async def query_chunks(
+        self,
+        query: str,
+        k: int,
+        filter: List[str | List[str]],
     ) -> List[Tuple[Chunk, float]]:
-        await self.index.search(
-            query, limit=k, filter=["namespace_id = {}".format(namespace_id)]
+        type_filter = "type = {}".format(IndexRecordType.chunk)
+        results = await self.index.search(
+            query, limit=k, filter=filter + [type_filter], show_ranking_score=True
         )
-        raise NotImplementedError()
+        output: List[Tuple[Chunk, float]] = []
+        for hit in results.hits:
+            chunk_data = hit["chunk"]
+            score = hit["_rankingScore"]
+            if chunk_data:
+                chunk = Chunk(**chunk_data)
+                output.append((chunk, score))
+        return output

@@ -240,7 +240,7 @@ For each function call, return a json object with function name and arguments wi
         :return: An async iterable of ChatResponse objects.
         """
         tool_executor_config_list: list[ToolExecutorConfig] = [
-            self.retriever_mapping[tool.name].get_tool_executor_config(tool)
+            self.retriever_mapping[tool.name].get_tool_executor_config(tool, trace_info=trace_info)
             for tool in agent_request.tools or []
         ]
 

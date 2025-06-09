@@ -1,5 +1,6 @@
 import asyncio
 from datetime import datetime
+from functools import partial
 
 import httpx
 
@@ -68,17 +69,18 @@ class SearXNG(BaseRetriever):
                 trace_info.debug({"len(retrievals)": len(retrievals)})
             if retrievals:
                 return retrievals[:k]
-            trace_info.warning({
-                "message": f"Search failed, retrying {i + 1}/{retry_cnt + 1}",
-                "query": query,
-                "page_number": page_number,
-                "k": k
-            })
+            if trace_info:
+                trace_info.warning({
+                    "message": f"Search failed, retrying {i + 1}/{retry_cnt + 1}",
+                    "query": query,
+                    "page_number": page_number,
+                    "k": k
+                })
             await asyncio.sleep(retry_sleep)
         return []
 
     def get_function(self, tool: BaseTool, **kwargs) -> SearchFunction:
-        return self.search
+        return partial(self.search, **kwargs)
 
     def get_schema(self) -> dict:
         return self.generate_schema("web_search", "Search the web for public information.")

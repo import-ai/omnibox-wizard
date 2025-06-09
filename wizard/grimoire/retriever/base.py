@@ -8,10 +8,10 @@ SearchFunction = Callable[[str], Awaitable[list[BaseRetrieval]]]
 
 
 class BaseRetriever(ABC):
-    def get_tool_executor_config(self, tool: BaseTool) -> ToolExecutorConfig:
+    def get_tool_executor_config(self, tool: BaseTool, **kwargs) -> ToolExecutorConfig:
         return ToolExecutorConfig(
             name=tool.name,
-            func=self.get_function(tool),
+            func=self.get_function(tool, **kwargs),
             schema=self.get_schema(),
         )
 

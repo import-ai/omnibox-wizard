@@ -217,3 +217,9 @@ class MeiliVectorRetriever(BaseRetriever):
             for chunk, score in recall_result_list
         ]
         return retrievals
+
+
+async def init_meili_vector_db(config: VectorConfig):
+    vector_db = MeiliVectorDB(config)
+    await vector_db.init_index()
+    return vector_db

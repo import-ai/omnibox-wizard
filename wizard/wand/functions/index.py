@@ -6,13 +6,13 @@ from common.trace_info import TraceInfo
 from wizard.config import WorkerConfig
 from wizard.entity import Task
 from wizard.grimoire.entity.chunk import Chunk, ChunkType
-from wizard.grimoire.retriever.vector_db import VectorDB
+from wizard.grimoire.retriever.meili_vector_db import MeiliVectorDB
 from wizard.wand.functions.base_function import BaseFunction
 
 
 class DeleteIndex(BaseFunction):
     def __init__(self, config: WorkerConfig):
-        self.vector_db: VectorDB = VectorDB(config.vector)
+        self.vector_db: MeiliVectorDB = MeiliVectorDB(config.vector)
 
     async def run(self, task: Task, trace_info: TraceInfo) -> dict:
         input_data = task.input

@@ -67,7 +67,7 @@ class Agent(BaseStreamable):
     async def chat(
             self,
             message_dtos: list[MessageDto],
-            enable_thinking: bool = False,
+            enable_thinking: bool | None = None,
             tools: list[dict] | None = None,
             custom_tool_call: bool = False,
             force_private_search_option: Literal["disable", "enable", "auto"] = "auto"
@@ -113,7 +113,7 @@ For each function call, return a json object with function name and arguments wi
                 messages=messages,
                 tools=tools if tools and not custom_tool_call else NOT_GIVEN,
                 stream=True,
-                extra_body={"enable_thinking": enable_thinking}
+                **({"extra_body": {"enable_thinking": enable_thinking}} if enable_thinking is not None else {})
             )
 
             yield ChatBOSResponse(role="assistant")

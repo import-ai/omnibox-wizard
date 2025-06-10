@@ -36,8 +36,8 @@ class Condition(BaseModel):
         return where
 
     def to_meili_where(self) -> List[str | List[str]]:
-        and_clause = []
-        or_clause = []
+        and_clause: List[str | List[str]] = ['namespace_id = "{}"'.format(self.namespace_id)]
+        or_clause: List[str] = []
         if self.resource_ids:
             or_clause.append(
                 'chunk.resource_id IN [{}]'.format(", ".join('"{}"'.format(rid) for rid in self.resource_ids))

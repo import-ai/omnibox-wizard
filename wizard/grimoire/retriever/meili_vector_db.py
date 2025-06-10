@@ -107,9 +107,8 @@ class MeiliVectorDB:
                 )
             )
 
-        self.index = index
-
     async def insert(self, namespace_id: str, chunk_list: List[Chunk]):
+        index = self.meili.index(self.index_uid)
         for i in range(0, len(chunk_list), self.batch_size):
             batch = chunk_list[i : i + self.batch_size]
             embeddings = await self.openai.embeddings.create(
@@ -124,16 +123,17 @@ class MeiliVectorDB:
                     namespace_id=namespace_id,
                     chunk=chunk,
                     _vectors={
-                        "omnibox_embed": embed.embedding,
+                        self.embedder_name: embed.embedding,
                     },
                 )
                 records.append(record.model_dump(by_alias=True))
-            await self.index.add_documents([record.model_dump() for record in records])
+            await index.add_documents(records, primary_key="id")
 
     async def remove(self, namespace_id: str, resource_id: str):
-        await self.index.delete_documents_by_filter(
+        index = self.meili.index(self.index_uid)
+        await index.delete_documents_by_filter(
             filter=[
-                "type = {}".format(IndexRecordType.chunk),
+                "type = {}".format(IndexRecordType.chunk.value),
                 "namespace_id = {}".format(namespace_id),
                 "chunk.resource_id = {}".format(resource_id),
             ]
@@ -145,9 +145,10 @@ class MeiliVectorDB:
         k: int,
         filter: List[str | List[str]],
     ) -> List[Tuple[Chunk, float]]:
-        type_filter = "type = {}".format(IndexRecordType.chunk)
-        results = await self.index.search(
-            query, limit=k, filter=filter + [type_filter], show_ranking_score=True
+        index = self.meili.index(self.index_uid)
+        combined_filters = filter + ["type = {}".format(IndexRecordType.chunk.value)]
+        results = await index.search(
+            query, limit=k, filter=combined_filters, show_ranking_score=True
         )
         output: List[Tuple[Chunk, float]] = []
         for hit in results.hits:

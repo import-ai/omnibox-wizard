@@ -19,9 +19,9 @@ from wizard.grimoire.entity.api import (
 )
 from wizard.grimoire.entity.tools import ToolExecutorConfig
 from wizard.grimoire.retriever.base import BaseRetriever
+from wizard.grimoire.retriever.meili_vector_db import MeiliVectorRetriever
 from wizard.grimoire.retriever.reranker import get_tool_executor_config
 from wizard.grimoire.retriever.searxng import SearXNG
-from wizard.grimoire.retriever.vector_db import VectorRetriever
 
 DEFAULT_TOOL_NAME: str = "private_search"
 
@@ -44,7 +44,7 @@ class Agent(BaseStreamable):
             self.system_prompt = f.read()
 
         self.web_search_retriever = SearXNG(base_url=tools_config.searxng_base_url)
-        self.knowledge_database_retriever = VectorRetriever(config=vector_config)
+        self.knowledge_database_retriever = MeiliVectorRetriever(config=vector_config)
 
         self.retriever_mapping: dict[str, BaseRetriever] = {
             each.name: each

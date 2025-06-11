@@ -5,7 +5,6 @@ from fastapi import APIRouter, Depends
 
 from common.config_loader import Loader
 from common.trace_info import TraceInfo
-from tests.test_vector import namespace_id
 from wizard.api.depends import get_trace_info
 from wizard.api.entity import (
     SearchRequest,

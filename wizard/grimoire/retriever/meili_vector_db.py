@@ -133,7 +133,7 @@ class MeiliVectorDB:
     async def upsert_message(self, namespace_id: str, user_id: str, message: Message):
         embedding = await self.openai.embeddings.create(
             model=self.config.embedding.model,
-            input=message.content or "",
+            input=message.message.content or "",
         )
         record = IndexRecord(
             id="message_{}".format(message.message_id),

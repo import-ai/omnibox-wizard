@@ -15,6 +15,7 @@ from common.trace_info import TraceInfo
 from wizard.config import VectorConfig
 from wizard.grimoire.entity.chunk import Chunk, ResourceChunkRetrieval
 from wizard.grimoire.entity.index_record import IndexRecord, IndexRecordType
+from wizard.grimoire.entity.message import Message
 from wizard.grimoire.entity.retrieval import Score
 from wizard.grimoire.entity.tools import (
     Condition,
@@ -107,7 +108,7 @@ class MeiliVectorDB:
                 )
             )
 
-    async def insert(self, namespace_id: str, chunk_list: List[Chunk]):
+    async def insert_chunks(self, namespace_id: str, chunk_list: List[Chunk]):
         index = self.meili.index(self.index_uid)
         for i in range(0, len(chunk_list), self.batch_size):
             batch = chunk_list[i : i + self.batch_size]
@@ -118,7 +119,7 @@ class MeiliVectorDB:
             records = []
             for chunk, embed in zip(batch, embeddings.data):
                 record = IndexRecord(
-                    id=chunk.chunk_id,
+                    id="chunk_{}".format(chunk.chunk_id),
                     type=IndexRecordType.chunk,
                     namespace_id=namespace_id,
                     chunk=chunk,
@@ -129,7 +130,12 @@ class MeiliVectorDB:
                 records.append(record.model_dump(by_alias=True))
             await index.add_documents(records, primary_key="id")
 
-    async def remove(self, namespace_id: str, resource_id: str):
+    async def upsert_message(self, namespace_id: str, user_id: str, message: Message):
+        raise NotImplementedError(
+            "MeiliVectorDB does not support inserting messages directly."
+        )
+
+    async def remove_chunks(self, namespace_id: str, resource_id: str):
         index = self.meili.index(self.index_uid)
         await index.delete_documents_by_filter(
             filter=[

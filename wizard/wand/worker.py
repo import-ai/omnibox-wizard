@@ -13,7 +13,7 @@ from wizard.entity import Task
 from wizard.wand.functions.base_function import BaseFunction
 from wizard.wand.functions.file_reader import FileReader
 from wizard.wand.functions.html_reader import HTMLReaderV2
-from wizard.wand.functions.index import UpsertIndex, DeleteIndex
+from wizard.wand.functions.index import UpsertIndex, DeleteIndex, UpsertMessageIndex
 
 
 class Worker:
@@ -26,7 +26,8 @@ class Worker:
             "collect": HTMLReaderV2(),
             "upsert_index": UpsertIndex(config),
             "delete_index": DeleteIndex(config),
-            "file_reader": FileReader(config)
+            "file_reader": FileReader(config),
+            "upsert_message_index": UpsertMessageIndex(config),
         }
 
         self.logger = get_logger(f"worker_{self.worker_id}")

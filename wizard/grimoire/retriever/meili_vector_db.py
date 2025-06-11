@@ -2,6 +2,7 @@ from functools import partial
 from typing import List, Tuple
 
 from meilisearch_python_sdk import AsyncClient
+from meilisearch_python_sdk.models.search import Hybrid
 from meilisearch_python_sdk.models.settings import (
     Embedders,
     FilterableAttributeFeatures,
@@ -157,6 +158,43 @@ class MeiliVectorDB:
                 "chunk.resource_id = {}".format(resource_id),
             ]
         )
+
+    async def search(
+        self,
+        query: str,
+        namespace_id: str | None,
+        user_id: str | None,
+        type: IndexRecordType | None,
+        offset: int,
+        limit: int,
+    ) -> List[IndexRecord]:
+        filter: List[str | List[str]] = []
+        if namespace_id:
+            filter.append("namespace_id = {}".format(namespace_id))
+        if user_id:
+            filter.append("user_id NOT EXISTS or user_id = {}".format(user_id))
+        if type:
+            filter.append("type = {}".format(type.value))
+
+        vector: list[float] | None = None
+        hybrid: Hybrid | None = None
+        if query:
+            embedding = await self.openai.embeddings.create(
+                model=self.config.embedding.model, input=query
+            )
+            vector = embedding.data[0].embedding
+            hybrid = Hybrid(embedder=self.embedder_name, semantic_ratio=0.5)
+
+        index = self.meili.index(self.index_uid)
+        results = await index.search(
+            query,
+            filter=filter,
+            vector=vector,
+            hybrid=hybrid,
+            offset=offset,
+            limit=limit,
+        )
+        return [IndexRecord(**hit) for hit in results.hits]
 
     async def query_chunks(
         self,

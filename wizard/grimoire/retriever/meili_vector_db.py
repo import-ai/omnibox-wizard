@@ -133,12 +133,19 @@ class MeiliVectorDB:
             await index.add_documents(records, primary_key="id")
 
     async def upsert_message(self, namespace_id: str, user_id: str, message: Message):
+        index = self.meili.index(self.index_uid)
+        id="message_{}".format(message.message_id)
+
+        if not message.message.content.strip():
+            await index.delete_document(id)
+            return
+
         embedding = await self.openai.embeddings.create(
             model=self.config.embedding.model,
             input=message.message.content or "",
         )
         record = IndexRecord(
-            id="message_{}".format(message.message_id),
+            id=id,
             type=IndexRecordType.message,
             namespace_id=namespace_id,
             user_id=user_id,
@@ -147,7 +154,6 @@ class MeiliVectorDB:
                 self.embedder_name: embedding.data[0].embedding,
             },
         )
-        index = self.meili.index(self.index_uid)
         await index.add_documents([record.model_dump(by_alias=True)], primary_key="id")
 
     async def remove_chunks(self, namespace_id: str, resource_id: str):

@@ -49,7 +49,7 @@ async def tags(
     return TagsResponse(tags=await common_ai.tags(request.text, trace_info=trace_info))
 
 
-@internal_router.get("/search", tags=[], response_model=SearchResponse)
+@internal_router.post("/search", tags=[], response_model=SearchResponse)
 async def search(
     request: SearchRequest, trace_info: TraceInfo = Depends(get_trace_info)
 ):

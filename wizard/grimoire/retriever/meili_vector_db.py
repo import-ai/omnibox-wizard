@@ -68,6 +68,7 @@ class MeiliVectorDB:
 
         expected_filters = [
             "namespace_id",
+            "user_id",
             "type",
             "chunk.resource_id",
             "chunk.parent_id",
@@ -172,7 +173,7 @@ class MeiliVectorDB:
         if namespace_id:
             filter.append("namespace_id = {}".format(namespace_id))
         if user_id:
-            filter.append("user_id NOT EXISTS or user_id = {}".format(user_id))
+            filter.append("user_id NOT EXISTS OR user_id IS NULL OR user_id = {}".format(user_id))
         if type:
             filter.append("type = {}".format(type.value))
 

@@ -19,6 +19,7 @@ class VectorConfig(BaseModel):
     embedding: OpenAIConfig
     host: str
     port: int = Field(default=8000)
+    meili_api_key: str = Field(default=None)
     batch_size: int = Field(default=1)
     max_results: int = Field(default=10)
 

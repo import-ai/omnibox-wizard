@@ -28,11 +28,11 @@ from wizard.grimoire.retriever.base import BaseRetriever, SearchFunction
 
 
 def to_filterable_attributes(
-    filter: str, comparison: bool = False
+        filter_: str, comparison: bool = False
 ) -> FilterableAttributes:
     """Convert a string filter to FilterableAttributes."""
     return FilterableAttributes(
-        attribute_patterns=[filter],
+        attribute_patterns=[filter_],
         features=FilterableAttributeFeatures(
             facet_search=False,
             filter=Filter(equality=True, comparison=comparison),
@@ -113,7 +113,7 @@ class MeiliVectorDB:
     async def insert_chunks(self, namespace_id: str, chunk_list: List[Chunk]):
         index = self.meili.index(self.index_uid)
         for i in range(0, len(chunk_list), self.batch_size):
-            batch = chunk_list[i : i + self.batch_size]
+            batch = chunk_list[i: i + self.batch_size]
             embeddings = await self.openai.embeddings.create(
                 model=self.config.embedding.model,
                 input=[chunk.text or "" for chunk in batch],
@@ -134,10 +134,10 @@ class MeiliVectorDB:
 
     async def upsert_message(self, namespace_id: str, user_id: str, message: Message):
         index = self.meili.index(self.index_uid)
-        id="message_{}".format(message.message_id)
+        record_id = "message_{}".format(message.message_id)
 
         if not message.message.content.strip():
-            await index.delete_document(id)
+            await index.delete_document(record_id)
             return
 
         embedding = await self.openai.embeddings.create(
@@ -145,7 +145,7 @@ class MeiliVectorDB:
             input=message.message.content or "",
         )
         record = IndexRecord(
-            id=id,
+            id=record_id,
             type=IndexRecordType.message,
             namespace_id=namespace_id,
             user_id=user_id,
@@ -167,21 +167,21 @@ class MeiliVectorDB:
         )
 
     async def search(
-        self,
-        query: str,
-        namespace_id: str | None,
-        user_id: str | None,
-        type: IndexRecordType | None,
-        offset: int,
-        limit: int,
+            self,
+            query: str,
+            namespace_id: str | None,
+            user_id: str | None,
+            record_type: IndexRecordType | None,
+            offset: int,
+            limit: int,
     ) -> List[IndexRecord]:
-        filter: List[str | List[str]] = []
+        filter_: List[str | List[str]] = []
         if namespace_id:
-            filter.append("namespace_id = {}".format(namespace_id))
+            filter_.append("namespace_id = {}".format(namespace_id))
         if user_id:
-            filter.append("user_id NOT EXISTS OR user_id IS NULL OR user_id = {}".format(user_id))
-        if type:
-            filter.append("type = {}".format(type.value))
+            filter_.append("user_id NOT EXISTS OR user_id IS NULL OR user_id = {}".format(user_id))
+        if record_type:
+            filter_.append("type = {}".format(record_type.value))
 
         vector: list[float] | None = None
         hybrid: Hybrid | None = None
@@ -195,7 +195,7 @@ class MeiliVectorDB:
         index = self.meili.index(self.index_uid)
         results = await index.search(
             query,
-            filter=filter,
+            filter=filter_,
             vector=vector,
             hybrid=hybrid,
             offset=offset,
@@ -204,13 +204,13 @@ class MeiliVectorDB:
         return [IndexRecord(**hit) for hit in results.hits]
 
     async def query_chunks(
-        self,
-        query: str,
-        k: int,
-        filter: List[str | List[str]],
+            self,
+            query: str,
+            k: int,
+            filter_: List[str | List[str]],
     ) -> List[Tuple[Chunk, float]]:
         index = self.meili.index(self.index_uid)
-        combined_filters = filter + ["type = {}".format(IndexRecordType.chunk.value)]
+        combined_filters = filter_ + ["type = {}".format(IndexRecordType.chunk.value)]
         results = await index.search(
             query, limit=k, filter=combined_filters, show_ranking_score=True
         )
@@ -232,14 +232,14 @@ class MeiliVectorRetriever(BaseRetriever):
     def get_folder(cls, resource_id: str, resources: list[Resource]) -> str | None:
         for resource in resources:
             if (
-                resource.type == PrivateSearchResourceType.FOLDER
-                and resource_id in resource.child_ids
+                    resource.type == PrivateSearchResourceType.FOLDER
+                    and resource_id in resource.child_ids
             ):
                 return resource.name
         return None
 
     def get_function(
-        self, private_search_tool: PrivateSearchTool, **kwargs
+            self, private_search_tool: PrivateSearchTool, **kwargs
     ) -> SearchFunction:
         return partial(
             self.query, private_search_tool=private_search_tool, k=20, **kwargs
@@ -251,12 +251,12 @@ class MeiliVectorRetriever(BaseRetriever):
         )
 
     async def query(
-        self,
-        query: str,
-        k: int,
-        *,
-        private_search_tool: PrivateSearchTool,
-        trace_info: TraceInfo | None = None,
+            self,
+            query: str,
+            k: int,
+            *,
+            private_search_tool: PrivateSearchTool,
+            trace_info: TraceInfo | None = None,
     ) -> list[ResourceChunkRetrieval]:
         condition: Condition = private_search_tool.to_condition()
         where = condition.to_meili_where()

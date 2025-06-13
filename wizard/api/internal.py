@@ -57,7 +57,7 @@ async def search(
         query=request.query,
         namespace_id=request.namespace_id,
         user_id=request.user_id,
-        type=request.type,
+        record_type=request.type,
         offset=request.offset,
         limit=request.limit,
     )

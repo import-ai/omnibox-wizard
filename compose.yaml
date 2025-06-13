@@ -8,8 +8,8 @@ services:
       - "/etc/localtime:/etc/localtime:ro"
     environment:
       ENV: "dev"
-      OBW_VECTOR_HOST: chromadb
-      OBW_VECTOR_PORT: 8000
+      OBW_VECTOR_HOST: "http://meilisearch:7700"
+      OBW_VECTOR_MEILI_API_KEY: ${OBW_VECTOR_MEILI_API_KEY}
       OBW_BACKEND_BASE_URL: "http://backend:8000"
     ports:
       - "8001:8000"
@@ -22,7 +22,7 @@ services:
       retries: 5
       start_period: 5s
     depends_on:
-      chromadb:
+      meilisearch:
         condition: service_healthy
 
   wizard-worker:
@@ -30,8 +30,8 @@ services:
     restart: always
     environment:
       ENV: "dev"
-      OBW_VECTOR_HOST: chromadb
-      OBW_VECTOR_PORT: 8000
+      OBW_VECTOR_HOST: "http://meilisearch:7700"
+      OBW_VECTOR_MEILI_API_KEY: ${OBW_VECTOR_MEILI_API_KEY}
       OBW_BACKEND_BASE_URL: "http://backend:8000"
     volumes:
       - "/etc/localtime:/etc/localtime:ro"
@@ -46,19 +46,16 @@ services:
       retries: 5
       start_period: 5s
     depends_on:
-      chromadb:
+      meilisearch:
         condition: service_healthy
 
-  chromadb:
-    image: chromadb/chroma:1.0.7
+  meilisearch:
+    image: getmeili/meilisearch:v1.14
     restart: always
-    ports:
-      - "8002:8000"
-    volumes:
-      - "/etc/localtime:/etc/localtime:ro"
+    environment:
+      MEILI_MASTER_KEY: ${OBW_VECTOR_MEILI_API_KEY}
     healthcheck:
-      test: [ "CMD", "/bin/bash", "-c", "cat < /dev/null > /dev/tcp/localhost/8000" ]
-      interval: 30s
+      test: [ "CMD", "curl", "-I", "http://127.0.0.1:7700/health" ]
+      interval: 5s
       timeout: 3s
       retries: 5
-      start_period: 5s

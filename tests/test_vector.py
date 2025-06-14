@@ -3,21 +3,24 @@ from typing import List, Tuple
 import pytest
 
 from src.common.config_loader import Loader
-from tests.helper.fixture import chromadb_endpoint
 from src.wizard.config import Config, ENV_PREFIX
 from src.wizard.grimoire.entity.chunk import Chunk, ChunkType
 from src.wizard.grimoire.retriever.vector_db import VectorDB
+from tests.helper.fixture import meilisearch_endpoint
+from wizard.grimoire.entity.tools import Condition
+from wizard.grimoire.retriever.meili_vector_db import MeiliVectorDB
 
 namespace_id = "pytest"
 
 
 @pytest.fixture(scope="function")
-async def db(chromadb_endpoint: str) -> VectorDB:
+async def db(meilisearch_endpoint: str) -> VectorDB:
     from dotenv import load_dotenv
     load_dotenv()
     loader = Loader(Config, env_prefix=ENV_PREFIX)
     config: Config = loader.load()
-    db: VectorDB = VectorDB(config.vector)
+    db: MeiliVectorDB = MeiliVectorDB(config.vector)
+    await db.init_index()
     common_params = {
         "chunk_type": ChunkType.keyword,
         "namespace_id": namespace_id,
@@ -30,8 +33,7 @@ async def db(chromadb_endpoint: str) -> VectorDB:
         Chunk(resource_id="a", text="car", title="apple", **common_params),
         Chunk(resource_id="b", text="snake", title="snake", **common_params)
     ]
-    await db.insert(namespace_id, chunk_list)
-    assert await (await db.get_collection(namespace_id)).count() > 0
+    await db.insert_chunks(namespace_id, chunk_list)
     yield db
 
 
@@ -40,17 +42,15 @@ async def db(chromadb_endpoint: str) -> VectorDB:
     ("bike", 3, 0, "car", "a"),
     ("chunk_type", 3, 0, "snake", "b")
 ])
-async def test_db_query(db: VectorDB, query: str, k: int, rank: int, expected_text: str,
+async def test_db_query(db: MeiliVectorDB, query: str, k: int, rank: int, expected_text: str,
                         expected_resource_id: str):
-    assert await (await db.get_collection(namespace_id)).count() > 0
-    result_list: List[Tuple[Chunk, float]] = await db.query(query, k, condition={"namespace_id": namespace_id})
+    result_list: List[Tuple[Chunk, float]] = await db.query_chunks(
+        query, k, Condition(namespace_id=namespace_id).to_meili_where())
     assert len(result_list) == k
     assert result_list[rank][0].text == expected_text
     assert result_list[rank][0].resource_id == expected_resource_id
 
 
 @pytest.mark.parametrize("resource_id, expected_count", [("a", 1), ("b", 2)])
-async def test_db_remove(db: VectorDB, resource_id: str, expected_count: int):
-    assert await (await db.get_collection(namespace_id)).count() == 3
-    await db.remove(namespace_id, resource_id)
-    assert await (await db.get_collection(namespace_id)).count() == expected_count
+async def test_db_remove(db: MeiliVectorDB, resource_id: str, expected_count: int):
+    await db.remove_chunks(namespace_id, resource_id)

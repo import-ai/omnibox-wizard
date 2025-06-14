@@ -13,6 +13,7 @@ from src.common.logger import get_logger
 from src.common.trace_info import TraceInfo
 from tests.helper.backend_client import BackendClient
 from tests.helper.chroma_container import ChromaContainer
+from tests.helper.meilisearch_container import MeiliSearchContainer
 from src.wizard.api.server import app
 from src.wizard.config import Config, ENV_PREFIX, WorkerConfig
 from src.wizard.wand.worker import Worker
@@ -27,6 +28,16 @@ def chromadb_endpoint() -> str:
         endpoint: str = server_info["endpoint"]
         os.environ[f"{ENV_PREFIX}_VECTOR_HOST"] = server_info["host"]
         os.environ[f"{ENV_PREFIX}_VECTOR_PORT"] = server_info["port"]
+        yield endpoint
+
+
+@pytest.fixture(scope="function")
+def meilisearch_endpoint() -> str:
+    with MeiliSearchContainer() as meilisearch:
+        server_info: dict = meilisearch.get_config()
+        endpoint: str = server_info["endpoint"]
+        os.environ[f"{ENV_PREFIX}_VECTOR_HOST"] = endpoint
+        os.environ[f"{ENV_PREFIX}_VECTOR_MEILI_API_KEY"] = server_info["master_key"]
         yield endpoint
 
 
@@ -72,7 +83,7 @@ def config(chromadb_endpoint: str) -> Config:
 
 
 @pytest.fixture(scope="function")
-def worker_config(chromadb_endpoint: str) -> WorkerConfig:
+def worker_config(meilisearch_endpoint: str) -> WorkerConfig:
     load_dotenv()
     loader = Loader(WorkerConfig, env_prefix=ENV_PREFIX)
     config = loader.load()

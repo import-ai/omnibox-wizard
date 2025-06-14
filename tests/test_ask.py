@@ -4,12 +4,12 @@ from typing import Iterator, List
 import httpx
 import pytest
 
-from tests.helper.fixture import client, worker
 from src.wizard.entity import Task
 from src.wizard.grimoire.agent.agent import Agent
-from src.wizard.grimoire.entity.api import BaseChatRequest, MessageDto
+from src.wizard.grimoire.entity.api import MessageDto
 from src.wizard.grimoire.entity.tools import Condition
 from src.wizard.wand.worker import Worker
+from tests.helper.fixture import client, worker
 
 
 class Colors:

@@ -54,7 +54,7 @@ class VectorDB:
             query: str,
             k: int,
             namespace_id: str,
-            where: dict
+            where: dict | None = None
     ) -> List[Tuple[Chunk, float]]:
         collection = await self.get_collection(name=namespace_id)
         batch_result_list: chromadb.QueryResult = await collection.query(

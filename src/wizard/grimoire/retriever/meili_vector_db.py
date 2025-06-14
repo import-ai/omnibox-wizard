@@ -166,6 +166,19 @@ class MeiliVectorDB:
             ]
         )
 
+    async def vector_params(self, query: str) -> dict:
+        if query:
+            embedding = await self.openai.embeddings.create(
+                model=self.config.embedding.model, input=query
+            )
+            vector = embedding.data[0].embedding
+            hybrid = Hybrid(embedder=self.embedder_name, semantic_ratio=0.5)
+            return {
+                "vector": vector,
+                "hybrid": hybrid,
+            }
+        return {}
+
     async def search(
             self,
             query: str,
@@ -182,25 +195,9 @@ class MeiliVectorDB:
             filter_.append("user_id NOT EXISTS OR user_id IS NULL OR user_id = {}".format(user_id))
         if record_type:
             filter_.append("type = {}".format(record_type.value))
-
-        vector: list[float] | None = None
-        hybrid: Hybrid | None = None
-        if query:
-            embedding = await self.openai.embeddings.create(
-                model=self.config.embedding.model, input=query
-            )
-            vector = embedding.data[0].embedding
-            hybrid = Hybrid(embedder=self.embedder_name, semantic_ratio=0.5)
-
+        vector_params: dict = await self.vector_params(query)
         index = self.meili.index(self.index_uid)
-        results = await index.search(
-            query,
-            filter=filter_,
-            vector=vector,
-            hybrid=hybrid,
-            offset=offset,
-            limit=limit,
-        )
+        results = await index.search(query, filter=filter_, offset=offset, limit=limit, **vector_params)
         return [IndexRecord(**hit) for hit in results.hits]
 
     async def query_chunks(
@@ -211,9 +208,8 @@ class MeiliVectorDB:
     ) -> List[Tuple[Chunk, float]]:
         index = self.meili.index(self.index_uid)
         combined_filters = filter_ + ["type = {}".format(IndexRecordType.chunk.value)]
-        results = await index.search(
-            query, limit=k, filter=combined_filters, show_ranking_score=True
-        )
+        vector_params: dict = await self.vector_params(query)
+        results = await index.search(query, limit=k, filter=combined_filters, show_ranking_score=True, **vector_params)
         output: List[Tuple[Chunk, float]] = []
         for hit in results.hits:
             chunk_data = hit["chunk"]

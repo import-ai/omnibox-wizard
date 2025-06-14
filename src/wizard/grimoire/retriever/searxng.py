@@ -1,6 +1,7 @@
 import asyncio
 from datetime import datetime
 from functools import partial
+from urllib.parse import urlparse
 
 import httpx
 
@@ -11,6 +12,10 @@ from src.wizard.grimoire.entity.tools import BaseTool
 from src.wizard.grimoire.retriever.base import BaseRetriever, SearchFunction
 
 
+def get_domain(url: str) -> str:
+    return urlparse(url).netloc
+
+
 class SearXNGRetrieval(BaseRetrieval):
     result: dict
 
@@ -19,12 +24,18 @@ class SearXNGRetrieval(BaseRetrieval):
 
     def to_prompt(self) -> str:
         citation = self.to_citation()
-        return remove_continuous_break_lines("\n".join([
-            f"Title: {citation.title}" if citation.title else "",
-            f"Snippet:" if citation.snippet else "",
-            citation.snippet if citation.snippet else "",
-            f"Updated at: {citation.updated_at} " if citation.updated_at else "",
-        ]))
+        contents: list[str] = []
+
+        if citation.title:
+            contents.append(f"<title>{citation.title}</title>")
+        if citation.snippet:
+            contents.append(f"<snippet>{citation.snippet}</snippet>")
+        if citation.updated_at:
+            contents.append(f"<updated_at>{citation.updated_at}</updated_at>")
+        if citation.link and (host := get_domain(citation.link)):
+            contents.append(f"<host>{host}</host>")
+
+        return remove_continuous_break_lines("\n".join(contents))
 
     def to_citation(self) -> Citation:
         citation: Citation = Citation(

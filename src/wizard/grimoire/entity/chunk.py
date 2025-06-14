@@ -1,7 +1,7 @@
 import time
 from datetime import datetime
 from enum import Enum
-from typing import Optional, Literal
+from typing import Optional
 
 import shortuuid
 from pydantic import BaseModel, Field
@@ -50,13 +50,18 @@ class ResourceChunkRetrieval(BaseRetrieval):
         return "private"
 
     def to_prompt(self) -> str:
-        return remove_continuous_break_lines("\n".join([
-            f"Folder: {self.folder}" if self.folder else "",
-            f"Title: {self.chunk.title}" if self.chunk.title else "",
-            f"Chunk:" if self.chunk.text else "",
-            self.chunk.text if self.chunk.text else "",
-            f"Updated at: {timestamp_to_datetime(self.chunk.updated_at)}",
-        ]))
+        contents: list[str] = []
+        citation = self.to_citation()
+
+        if self.folder:
+            contents.append(f"<folder>{self.folder}</folder>")
+        if citation.title:
+            contents.append(f"<title>{citation.title}</title>")
+        if citation.snippet:
+            contents.append(f"<snippet>{citation.snippet}</snippet>")
+        if citation.updated_at:
+            contents.append(f"<updated_at>{citation.updated_at}</updated_at>")
+        return remove_continuous_break_lines("\n".join(contents))
 
     def to_citation(self) -> Citation:
         return Citation(

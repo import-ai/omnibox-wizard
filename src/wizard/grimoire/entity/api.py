@@ -15,6 +15,7 @@ class ChatOptions(BaseModel):
     enable_thinking: bool = Field(default=None)
     merge_search: bool = Field(default=None, description="Whether to merge search results from multiple tools.")
     force_search: bool = Field(default=None, description="Whether to force search.")
+    lang: Literal["简体中文", "English"] = Field(default=None, description="Language of the response.")
 
 
 class MessageAttrs(ChatOptions):

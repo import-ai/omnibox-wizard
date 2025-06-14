@@ -254,7 +254,7 @@ For each function call, return a json object with function name and arguments wi
         if not messages:
             prompt: str = render_template(self.system_prompt, {
                 "now": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "lang": "简体中文",
+                "lang": agent_request.lang or "简体中文",
             }).strip()
             system_message: dict = {"role": "system", "content": prompt}
             for r in self.yield_complete_message(system_message):

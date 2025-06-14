@@ -2,11 +2,11 @@ from typing import List, Tuple
 
 import pytest
 
-from common.config_loader import Loader
+from src.common.config_loader import Loader
 from tests.helper.fixture import chromadb_endpoint
-from wizard.config import Config, ENV_PREFIX
-from wizard.grimoire.entity.chunk import Chunk, ChunkType
-from wizard.grimoire.retriever.vector_db import VectorDB
+from src.wizard.config import Config, ENV_PREFIX
+from src.wizard.grimoire.entity.chunk import Chunk, ChunkType
+from src.wizard.grimoire.retriever.vector_db import VectorDB
 
 namespace_id = "pytest"
 

@@ -3,11 +3,11 @@ import os
 
 import pytest
 
-from common import project_root
-from common.trace_info import TraceInfo
+from src.common import project_root
+from src.common.trace_info import TraceInfo
 from tests.helper.fixture import trace_info
-from wizard.entity import Task
-from wizard.wand.functions.html_reader import HTMLReaderV2
+from src.wizard.entity import Task
+from src.wizard.wand.functions import HTMLReaderV2
 
 html_reader_base_dir = "tests/resources/files/html_reader_input"
 

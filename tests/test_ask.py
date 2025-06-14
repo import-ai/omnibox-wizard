@@ -5,11 +5,11 @@ import httpx
 import pytest
 
 from tests.helper.fixture import client, worker
-from wizard.entity import Task
-from wizard.grimoire.agent.agent import Agent
-from wizard.grimoire.entity.api import BaseChatRequest, MessageDto
-from wizard.grimoire.entity.tools import Condition
-from wizard.wand.worker import Worker
+from src.wizard.entity import Task
+from src.wizard.grimoire.agent.agent import Agent
+from src.wizard.grimoire.entity.api import BaseChatRequest, MessageDto
+from src.wizard.grimoire.entity.tools import Condition
+from src.wizard.wand.worker import Worker
 
 
 class Colors:

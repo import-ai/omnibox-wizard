@@ -14,6 +14,6 @@ class Write(Agent):
             openai_config=openai_config,
             tools_config=tools_config,
             vector_config=vector_config,
-            system_prompt_template_path="src/resources/prompts/write.md",
+            system_prompt_template_name="write.j2",
             reranker_config=reranker_config,
         )

@@ -1,6 +1,6 @@
 from enum import Enum
 from functools import partial
-from typing import List, Literal, Callable, TypedDict, Awaitable
+from typing import List, Literal, Callable, TypedDict, Awaitable, Union
 
 from pydantic import BaseModel, Field
 
@@ -105,3 +105,24 @@ class PrivateSearchTool(BaseTool):
 
 class WebSearchTool(BaseTool):
     name: Literal["web_search"] = "web_search"
+
+
+_Tool = Union[PrivateSearchTool, WebSearchTool]
+
+
+class ToolDict:
+    def __init__(self, tools: list[_Tool]) -> None:
+        self.tools: list[_Tool] = tools
+
+    @property
+    def dict(self) -> dict[str, _Tool]:
+        return {tool['name']: tool for tool in self.tools}
+
+    def __getitem__(self, item: str) -> dict:
+        return self.dict[item]
+
+    def __contains__(self, item: str) -> bool:
+        return item in self.dict
+
+    def get(self, item: str, default=None) -> _Tool | None:
+        return self.dict.get(item, default)

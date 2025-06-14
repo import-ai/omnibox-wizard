@@ -1,5 +1,4 @@
 import json as jsonlib
-from datetime import datetime
 from typing import AsyncIterable, Literal, Iterable
 from uuid import uuid4
 
@@ -7,8 +6,7 @@ from openai import AsyncOpenAI, AsyncStream, NOT_GIVEN
 from openai.types.chat import ChatCompletionChunk
 from openai.types.chat.chat_completion_chunk import ChoiceDeltaToolCall
 
-from src.common import project_root
-from src.common.template_render import render_template
+from common.template_parser import get_template, render_template
 from src.common.trace_info import TraceInfo
 from src.common.utils import remove_continuous_break_lines
 from src.wizard.config import OpenAIConfig, ToolsConfig, VectorConfig
@@ -17,7 +15,7 @@ from src.wizard.grimoire.base_streamable import BaseStreamable, ChatResponse
 from src.wizard.grimoire.entity.api import (
     ChatDeltaResponse, AgentRequest, ChatBOSResponse, ChatEOSResponse, MessageDto, ChatOptions, ChatBaseResponse
 )
-from src.wizard.grimoire.entity.tools import ToolExecutorConfig
+from src.wizard.grimoire.entity.tools import ToolExecutorConfig, ToolDict
 from src.wizard.grimoire.retriever.base import BaseRetriever
 from src.wizard.grimoire.retriever.meili_vector_db import MeiliVectorRetriever
 from src.wizard.grimoire.retriever.reranker import get_tool_executor_config
@@ -32,7 +30,7 @@ class Agent(BaseStreamable):
             openai_config: OpenAIConfig,
             tools_config: ToolsConfig,
             vector_config: VectorConfig,
-            system_prompt_template_path: str,
+            system_prompt_template_name: str,
             reranker_config: OpenAIConfig | None = None,
     ):
         self.client = AsyncOpenAI(api_key=openai_config.api_key, base_url=openai_config.base_url)
@@ -40,8 +38,7 @@ class Agent(BaseStreamable):
 
         self.reranker_config: OpenAIConfig | None = reranker_config
 
-        with project_root.open(system_prompt_template_path) as f:
-            self.system_prompt = f.read()
+        self.system_prompt_template = get_template(system_prompt_template_name)
 
         self.web_search_retriever = SearXNG(base_url=tools_config.searxng_base_url)
         self.knowledge_database_retriever = MeiliVectorRetriever(config=vector_config)
@@ -188,16 +185,16 @@ For each function call, return a json object with function name and arguments wi
 
     @classmethod
     def parse_selected_resources(cls, options: ChatOptions) -> str:
-        for tool in options.tools or []:
-            if tool.name == "private_search":
-                if tool.resources:
-                    resources = [
-                        resource.model_dump(include={"name", "type"}, exclude_none=True)
-                        for resource in tool.resources
-                    ]
-                    return "# Selected private resources\n\n```json\n" + jsonlib.dumps(
-                        resources, ensure_ascii=False, separators=(",", ":")
-                    ) + "\n```"
+        tools = ToolDict(options.tools or [])
+
+        if (tool := tools.get("private_search")) and tool.resources:
+            resources = [
+                resource.model_dump(include={"name", "type"}, exclude_none=True)
+                for resource in tool.resources
+            ]
+            return "# Selected private resources\n\n```json\n" + jsonlib.dumps(
+                resources, ensure_ascii=False, separators=(",", ":")
+            ) + "\n```"
         return ""
 
     @classmethod
@@ -252,10 +249,10 @@ For each function call, return a json object with function name and arguments wi
         messages: list[MessageDto] = agent_request.messages or []
 
         if not messages:
-            prompt: str = render_template(self.system_prompt, {
-                "now": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "lang": agent_request.lang or "简体中文",
-            }).strip()
+            prompt: str = render_template(
+                self.system_prompt_template,
+                lang=agent_request.lang or "简体中文",
+            )
             system_message: dict = {"role": "system", "content": prompt}
             for r in self.yield_complete_message(system_message):
                 yield r

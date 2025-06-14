@@ -14,6 +14,6 @@ class Ask(Agent):
             openai_config=openai_config,
             tools_config=tools_config,
             vector_config=vector_config,
-            system_prompt_template_path="src/resources/prompts/ask.md",
+            system_prompt_template_name="ask.j2",
             reranker_config=reranker_config,
         )

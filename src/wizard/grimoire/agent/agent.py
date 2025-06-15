@@ -1,9 +1,10 @@
 import json as jsonlib
+import os
 from functools import partial
 from typing import AsyncIterable, Literal, Iterable
 from uuid import uuid4
 
-from openai import AsyncOpenAI, AsyncStream, NOT_GIVEN
+from openai import AsyncOpenAI, AsyncStream
 from openai.types.chat import ChatCompletionChunk
 from openai.types.chat.chat_completion_chunk import ChoiceDeltaToolCall
 
@@ -21,7 +22,7 @@ from src.wizard.grimoire.entity.chunk import ResourceChunkRetrieval
 from src.wizard.grimoire.entity.tools import ToolExecutorConfig, ToolDict, Resource
 from src.wizard.grimoire.retriever.base import BaseRetriever
 from src.wizard.grimoire.retriever.meili_vector_db import MeiliVectorRetriever
-from src.wizard.grimoire.retriever.reranker import get_tool_executor_config
+from src.wizard.grimoire.retriever.reranker import get_tool_executor_config, get_merged_description
 from src.wizard.grimoire.retriever.searxng import SearXNG
 
 DEFAULT_TOOL_NAME: str = "private_search"
@@ -118,6 +119,7 @@ class Agent(BaseStreamable):
             vector_config: VectorConfig,
             system_prompt_template_name: str,
             reranker_config: OpenAIConfig | None = None,
+            custom_tool_call: bool | None = None,
     ):
         self.client = AsyncOpenAI(api_key=openai_config.api_key, base_url=openai_config.base_url)
         self.model = openai_config.model
@@ -126,13 +128,15 @@ class Agent(BaseStreamable):
 
         self.system_prompt_template = get_template(system_prompt_template_name)
 
-        self.web_search_retriever = SearXNG(base_url=tools_config.searxng_base_url)
         self.knowledge_database_retriever = MeiliVectorRetriever(config=vector_config)
+        self.web_search_retriever = SearXNG(base_url=tools_config.searxng_base_url)
 
         self.retriever_mapping: dict[str, BaseRetriever] = {
             each.name: each
-            for each in [self.web_search_retriever, self.knowledge_database_retriever]
+            for each in [self.knowledge_database_retriever, self.web_search_retriever]
         }
+
+        self.custom_tool_call: bool | None = custom_tool_call
 
     @classmethod
     def has_function(cls, tools: list[dict] | None, function_name: str) -> bool:
@@ -175,20 +179,6 @@ class Agent(BaseStreamable):
             for r in self.yield_complete_message(assistant_message):
                 yield r
         else:
-            if custom_tool_call and len(messages) == 2:
-                messages[0]['content'] += """\n\n# Tools
-
-You may call one or more functions to assist with the user query.
-
-You are provided with function signatures within <tools></tools> XML tags:
-<tools>
-{{tools}}
-</tools>
-
-For each function call, return a json object with function name and arguments within <tool_call></tool_call> XML tags:
-<tool_call>
-{"name": <function-name>, "arguments": <args-json-object>}
-</tool_call>""".replace("{{tools}}", "\n".join([json_dumps(tool) for tool in tools or []]))
             if trace_info:
                 trace_info.debug({
                     "messages": messages,
@@ -200,9 +190,16 @@ For each function call, return a json object with function name and arguments wi
             openai_response: AsyncStream[ChatCompletionChunk] = await self.client.chat.completions.create(
                 model=self.model,
                 messages=messages,
-                tools=tools if tools and not custom_tool_call else NOT_GIVEN,
                 stream=True,
-                **({"extra_body": {"enable_thinking": enable_thinking}} if enable_thinking is not None else {})
+                **((
+                       {
+                           "extra_body": {"enable_thinking": enable_thinking}
+                       } if enable_thinking is not None else {}
+                   ) | (
+                       {
+                           "tools": tools
+                       } if (tools and not custom_tool_call) else {}
+                   ))
             )
 
             yield ChatBOSResponse(role="assistant")
@@ -287,6 +284,10 @@ For each function call, return a json object with function name and arguments wi
         :param agent_request: The request containing the user's query and tools to be used.
         :return: An async iterable of ChatResponse objects.
         """
+        all_tools: list[dict] = [retriever.get_schema() for retriever in self.retriever_mapping.values()]
+        if all_tools and agent_request.merge_search:
+            all_tools = [BaseRetriever.generate_schema("search", get_merged_description(all_tools))]
+
         tool_executor_config_list: list[ToolExecutorConfig] = [
             self.retriever_mapping[tool.name].get_tool_executor_config(tool, trace_info=trace_info)
             for tool in agent_request.tools or []
@@ -304,6 +305,7 @@ For each function call, return a json object with function name and arguments wi
             prompt: str = render_template(
                 self.system_prompt_template,
                 lang=agent_request.lang or "简体中文",
+                tools="\n".join(json_dumps(tool) for tool in all_tools) if self.custom_tool_call and all_tools else None
             )
             system_message: dict = {"role": "system", "content": prompt}
             for r in self.yield_complete_message(system_message):
@@ -325,7 +327,7 @@ For each function call, return a json object with function name and arguments wi
                     messages=list(map(UserQueryPreprocessor.parse_message, messages)),
                     enable_thinking=agent_request.enable_thinking,
                     tools=tool_executor.tools,
-                    custom_tool_call=False,
+                    custom_tool_call=self.custom_tool_call,
                     force_private_search_option="disable",
                     trace_info=trace_info,
             ):

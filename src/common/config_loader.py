@@ -1,7 +1,8 @@
 import argparse
 import inspect
 import os
-from typing import Dict, Type, TypeVar, Optional, List, Generic, Literal, Tuple
+from types import UnionType
+from typing import Dict, Type, TypeVar, Optional, List, Generic, Literal, Tuple, get_origin, get_args, Union
 
 from pydantic import BaseModel
 from pydantic.fields import FieldInfo  # noqa
@@ -29,6 +30,30 @@ def dict_prefix_filter(prefix: str, data: dict) -> dict:
     return {k[len(prefix):]: v for k, v in data.items() if k.startswith(prefix)}
 
 
+def parse_value(value: str, cls: Type):
+    if cls is bool:
+        return value.lower() in ("true", "1", "yes")
+    return cls(value)
+
+
+def get_types(annotation: Type) -> List[Type]:
+    if get_origin(annotation) in [Union, UnionType]:
+        classes = [cls for cls in get_args(annotation) if cls is not type(None)]
+    else:
+        classes = [annotation]
+    return classes
+
+
+def parse_annotation(value: str, annotation: Type):
+    classes = get_types(annotation)
+    for cls in classes:
+        try:
+            return parse_value(value, cls)
+        except (ValueError, TypeError):
+            continue
+    raise ValueError(f"Cannot parse value '{value}' to any of {classes}")
+
+
 def dfs(config_model: Type[_Config], env_dict: Dict[str, str]) -> dict:
     result = {}
     for field_name, field_info in config_model.model_fields.items():  # noqa
@@ -36,7 +61,7 @@ def dfs(config_model: Type[_Config], env_dict: Dict[str, str]) -> dict:
         if "" in filtered_env_dict:
             assert len(filtered_env_dict) == 1, f"Conflict name: {field_name}"
             value = filtered_env_dict.pop("")
-            result[field_name] = field_info.annotation(value)  # noqa
+            result[field_name] = parse_annotation(value, field_info.annotation)
             continue
         if filtered_env_dict:
             assert issubclass(field_info.annotation, BaseModel)
@@ -79,8 +104,9 @@ class Loader(Generic[_Config]):
         self.config_path: str | None = config_path
         self.config_dict: dict | None = config_dict
 
-    def fields(self, config_model: Type[_Config] | None = None, prefix: List[str] = None) -> List[
-        Tuple[List[str], FieldInfo]]:
+    def fields(
+            self, config_model: Type[_Config] | None = None, prefix: List[str] = None
+    ) -> List[Tuple[List[str], FieldInfo]]:
         fields: List[Tuple[List[str], FieldInfo]] = []
         prefix: List[str] = prefix or []
         for key, field_info in config_model.model_fields.items():  # noqa
@@ -114,7 +140,7 @@ class Loader(Generic[_Config]):
             parser.add_argument(
                 f"--{name}",
                 dest=name,
-                type=field_info.annotation,
+                type=get_types(field_info.annotation)[0],
                 default=None,
                 help=field_info.description,
             )

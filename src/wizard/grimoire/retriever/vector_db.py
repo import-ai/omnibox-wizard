@@ -85,8 +85,9 @@ class VectorRetriever(BaseRetriever):
     def get_function(self, private_search_tool: PrivateSearchTool, **kwargs) -> SearchFunction:
         return partial(self.query, private_search_tool=private_search_tool, k=20, **kwargs)
 
-    def get_schema(self) -> dict:
-        return self.generate_schema("private_search", "Search for user's private & personal resources.")
+    @classmethod
+    def get_schema(cls) -> dict:
+        return cls.generate_schema("private_search", "Search for user's private & personal resources.")
 
     async def query(
             self,

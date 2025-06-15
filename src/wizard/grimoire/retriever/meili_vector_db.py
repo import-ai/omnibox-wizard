@@ -247,8 +247,9 @@ class MeiliVectorRetriever(BaseRetriever):
             self.query, private_search_tool=private_search_tool, k=20, **kwargs
         )
 
-    def get_schema(self) -> dict:
-        return self.generate_schema(
+    @classmethod
+    def get_schema(cls) -> dict:
+        return cls.generate_schema(
             "private_search", "Search for user's private & personal resources."
         )
 

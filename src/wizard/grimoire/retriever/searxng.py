@@ -93,5 +93,6 @@ class SearXNG(BaseRetriever):
     def get_function(self, tool: BaseTool, **kwargs) -> SearchFunction:
         return partial(self.search, **kwargs)
 
-    def get_schema(self) -> dict:
-        return self.generate_schema("web_search", "Search the web for public information.")
+    @classmethod
+    def get_schema(cls) -> dict:
+        return cls.generate_schema("web_search", "Search the web for public information.")

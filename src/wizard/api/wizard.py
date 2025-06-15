@@ -27,8 +27,20 @@ async def init():
     loader = Loader(Config, env_prefix=ENV_PREFIX)
     config: Config = loader.load()
 
-    ask = Ask(config.grimoire.openai["large"], config.tools, config.vector, config.tools.reranker)
-    write = Write(config.grimoire.openai["large"], config.tools, config.vector, config.tools.reranker)
+    ask = Ask(
+        config.grimoire.openai["large"],
+        config.tools,
+        config.vector,
+        config.tools.reranker,
+        config.grimoire.custom_tool_call,
+    )
+    write = Write(
+        config.grimoire.openai["large"],
+        config.tools,
+        config.vector,
+        config.tools.reranker,
+        config.grimoire.custom_tool_call,
+    )
 
 
 async def call_stream(s: BaseStreamable, request: BaseChatRequest, trace_info: TraceInfo) -> AsyncIterator[dict]:

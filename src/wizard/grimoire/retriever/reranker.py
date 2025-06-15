@@ -38,17 +38,21 @@ class RerankResponse(BaseModel):
     meta: Meta
 
 
+def get_merged_description(tools: list[dict]) -> str:
+    descriptions = [f'- {tool["function"]["description"]}' for tool in tools]
+    return '\n'.join([
+        "This tool can search for various types of information, they include but are not limited to:",
+        *descriptions
+    ])
+
+
 def get_tool_executor_config(
         tool_executor_config_list: list[ToolExecutorConfig],
         openai_config: OpenAIConfig | None
 ) -> ToolExecutorConfig:
     funcs = [config["func"] for config in tool_executor_config_list]
-    descriptions = [f'- {config["schema"]["function"]["description"]}' for config in tool_executor_config_list]
     name = "search"
-    description: str = '\n'.join([
-        "This tool can search for various types of information, they include but are not limited to:",
-        *descriptions
-    ])
+    description: str = get_merged_description([config["schema"] for config in tool_executor_config_list])
     return ToolExecutorConfig(
         name=name,
         func=partial(Reranker(openai_config).search, funcs=funcs),

@@ -48,6 +48,7 @@ class GrimoireOpenAIConfig(BaseModel):
 
 class GrimoireConfig(BaseModel):
     openai: GrimoireOpenAIConfig = Field(default=None)
+    custom_tool_call: bool | None = Field(default=None)
 
 
 class BackendConfig(BaseModel):

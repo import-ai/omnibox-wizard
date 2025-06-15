@@ -1,4 +1,4 @@
-from abc import ABC
+from abc import ABC, abstractmethod
 from typing import Callable, Awaitable
 
 from src.wizard.grimoire.entity.retrieval import BaseRetrieval
@@ -15,11 +15,14 @@ class BaseRetriever(ABC):
             schema=self.get_schema(),
         )
 
+    @abstractmethod
     def get_function(self, tool: BaseTool, **kwargs) -> SearchFunction:
         raise NotImplementedError
 
-    def get_schema(self) -> dict:
-        return self.generate_schema(name="search", description=f"Search for information.")
+    @classmethod
+    @abstractmethod
+    def get_schema(cls) -> dict:
+        raise NotImplementedError
 
     @property
     def name(self) -> str:

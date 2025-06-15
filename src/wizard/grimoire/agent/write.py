@@ -9,6 +9,7 @@ class Write(Agent):
             tools_config: ToolsConfig,
             vector_config: VectorConfig,
             reranker_config: OpenAIConfig | None = None,
+            custom_tool_call: bool | None = None,
     ):
         super().__init__(
             openai_config=openai_config,
@@ -16,4 +17,5 @@ class Write(Agent):
             vector_config=vector_config,
             system_prompt_template_name="write.j2",
             reranker_config=reranker_config,
+            custom_tool_call=custom_tool_call,
         )

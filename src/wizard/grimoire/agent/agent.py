@@ -153,7 +153,9 @@ class Agent(BaseStreamable):
             enable_thinking: bool | None = None,
             tools: list[dict] | None = None,
             custom_tool_call: bool = False,
-            force_private_search_option: Literal["disable", "enable", "auto"] = "auto"
+            force_private_search_option: Literal["disable", "enable", "auto"] = "auto",
+            *,
+            trace_info: TraceInfo | None = None
     ) -> AsyncIterable[ChatResponse | dict]:
         assistant_message: dict = {'role': 'assistant'}
 
@@ -187,6 +189,14 @@ For each function call, return a json object with function name and arguments wi
 <tool_call>
 {"name": <function-name>, "arguments": <args-json-object>}
 </tool_call>""".replace("{{tools}}", "\n".join([json_dumps(tool) for tool in tools or []]))
+            if trace_info:
+                trace_info.debug({
+                    "messages": messages,
+                    "enable_thinking": enable_thinking,
+                    "tools": tools,
+                    "custom_tool_call": custom_tool_call,
+                    "force_private_search_option": force_private_search_option
+                })
             openai_response: AsyncStream[ChatCompletionChunk] = await self.client.chat.completions.create(
                 model=self.model,
                 messages=messages,
@@ -316,7 +326,8 @@ For each function call, return a json object with function name and arguments wi
                     enable_thinking=agent_request.enable_thinking,
                     tools=tool_executor.tools,
                     custom_tool_call=False,
-                    force_private_search_option="disable"
+                    force_private_search_option="disable",
+                    trace_info=trace_info,
             ):
                 if isinstance(chunk, MessageDto):
                     messages.append(chunk)

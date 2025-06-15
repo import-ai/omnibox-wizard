@@ -5,7 +5,7 @@ import httpx
 import pytest
 
 from src.wizard.entity import Task
-from src.wizard.grimoire.agent.agent import Agent
+from src.wizard.grimoire.agent.agent import UserQueryPreprocessor
 from src.wizard.grimoire.entity.api import MessageDto
 from src.wizard.grimoire.entity.tools import Condition
 from src.wizard.wand.worker import Worker
@@ -54,7 +54,7 @@ def assert_stream(stream: Iterator[str]) -> list[dict]:
                         print_colored(content, color=Colors.MAGENTA, end="", flush=True)
                     else:
                         if message_dto.message['role'] == 'user':
-                            content = Agent.parse_message(message_dto)["content"]
+                            content = UserQueryPreprocessor.parse_message(message_dto)["content"]
                         print(content, end="", flush=True)
             if tool_calls := message_dto.message.get('tool_calls', []):
                 print_colored(jsonlib.dumps(tool_calls, ensure_ascii=False), color=Colors.YELLOW, end="", flush=True)
@@ -109,6 +109,7 @@ async def add_index(
 
     assert processed_task.created_at is not None
     assert processed_task.ended_at is not None
+    assert processed_task.exception is None, f"Task failed with exception: {processed_task.exception}"
 
     output = processed_task.output
     assert output["success"] is True
@@ -192,7 +193,7 @@ def get_agent_request(
     }
 
 
-@pytest.mark.parametrize("enable_thinking", [False])
+@pytest.mark.parametrize("enable_thinking", [True, False, None])
 @pytest.mark.parametrize("query, resource_ids, parent_ids, expected_messages_length", [
     # ("今天北京的天气", None, None, 5),
     # ("下周计划", None, None, 5),

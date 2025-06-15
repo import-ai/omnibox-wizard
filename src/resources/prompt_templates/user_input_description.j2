@@ -1,9 +1,13 @@
-User's input will be three parts or fewer:
+The user's input consists of up to 4 components:
 
-- a question
-- current selected tools
-- current selected private resources.
+1. **Query**: The user's main question or request
+2. **Selected Tools**: Currently active tools by user. (may be empty)
+3. **Selected Private Resources**: Specific resources the user has chosen (may be empty)
+4. **Related Private Resources**: Relevant resources from the user's private knowledge base that relate to the query (appears when `Selected Private Resources` is empty and private search is enabled)
 
-Selected tools and private resources could be empty.
+**NOTES**:
 
-If selected private resources are empty, but private search is enabled, that means you can search the user's whole private knowledge base to find relevant information.
+- Not all components will be present in every input
+- When "Selected Private Resources" is empty but private search is enabled, you have access to search the user's entire private knowledge base for relevant information
+- Empty tool or resource selections should be treated as no constraints rather than restrictions
+- Related private resource are provided as suggestions to help identify potentially relevant content in the knowledge base

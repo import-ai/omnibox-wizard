@@ -1,4 +1,5 @@
 import json as jsonlib
+from functools import partial
 from typing import AsyncIterable, Literal, Iterable
 from uuid import uuid4
 
@@ -13,15 +14,100 @@ from src.wizard.config import OpenAIConfig, ToolsConfig, VectorConfig
 from src.wizard.grimoire.agent.tool_executor import ToolExecutor
 from src.wizard.grimoire.base_streamable import BaseStreamable, ChatResponse
 from src.wizard.grimoire.entity.api import (
-    ChatDeltaResponse, AgentRequest, ChatBOSResponse, ChatEOSResponse, MessageDto, ChatOptions, ChatBaseResponse
+    ChatDeltaResponse, AgentRequest, ChatBOSResponse, ChatEOSResponse, MessageDto,
+    ChatRequestOptions, ChatBaseResponse, MessageAttrs
 )
-from src.wizard.grimoire.entity.tools import ToolExecutorConfig, ToolDict
+from src.wizard.grimoire.entity.tools import ToolExecutorConfig, ToolDict, Resource
 from src.wizard.grimoire.retriever.base import BaseRetriever
 from src.wizard.grimoire.retriever.meili_vector_db import MeiliVectorRetriever
 from src.wizard.grimoire.retriever.reranker import get_tool_executor_config
 from src.wizard.grimoire.retriever.searxng import SearXNG
+from wizard.grimoire.entity.chunk import ResourceChunkRetrieval
 
 DEFAULT_TOOL_NAME: str = "private_search"
+json_dumps = partial(jsonlib.dumps, ensure_ascii=False, separators=(",", ":"))
+
+
+class UserQueryPreprocessor:
+    PRIVATE_SEARCH_TOOL_NAME: str = "private_search"
+
+    @classmethod
+    async def with_related_resources_(
+            cls,
+            message: MessageDto,
+            tool_executor_config: dict[str, ToolExecutorConfig]
+    ) -> MessageDto:
+        tools = ToolDict(message.attrs.tools or [])
+        if (tool := tools.get(cls.PRIVATE_SEARCH_TOOL_NAME)) and not tool.resources:
+            func = tool_executor_config[cls.PRIVATE_SEARCH_TOOL_NAME]["func"]
+            retrievals: list[ResourceChunkRetrieval] = await func(message.message["content"])
+            related_resources: list[Resource] = []
+            for r in retrievals:
+                if r.chunk.chunk_id not in [res.id for res in related_resources]:
+                    related_resources.append(Resource.model_validate({
+                        "id": r.chunk.chunk_id,
+                        "name": r.chunk.title,
+                        "type": r.chunk.type,
+                    }))
+            tool.related_resources = related_resources
+        return message
+
+    @classmethod
+    def parse_selected_resources(
+            cls,
+            options: ChatRequestOptions,
+    ) -> list[str]:
+        tools = ToolDict(options.tools or [])
+        if tool := tools.get(cls.PRIVATE_SEARCH_TOOL_NAME):
+            prompt_title = "Selected Private Resources" if tool.resources else "Related Private Resources"
+            resources: list[Resource] = tool.resources or tool.related_resources
+            if resources:
+                return [
+                    f"# {prompt_title}",
+                    "\n".join([
+                        "```json",
+                        json_dumps([resource.model_dump(include={"name", "type"}, exclude_none=True) for resource in
+                                    resources]),
+                        "```"
+                    ])
+                ]
+        return []
+
+    @classmethod
+    def parse_selected_tools(cls, attrs: MessageAttrs) -> list[str]:
+        if not attrs.tools:
+            return []
+        tools = [tool.name for tool in attrs.tools]
+        return [
+            "# Selected Tools",
+            "\n".join([
+                "```json",
+                json_dumps(tools),
+                "```"
+            ])
+        ]
+
+    @classmethod
+    def parse_user_query(
+            cls,
+            query: str,
+            attrs: MessageAttrs,
+    ) -> str:
+        return remove_continuous_break_lines("\n\n".join([
+            "# Query",
+            query,
+            *cls.parse_selected_resources(attrs),
+            *cls.parse_selected_tools(attrs),
+        ]))
+
+    @classmethod
+    def parse_message(cls, message: MessageDto) -> dict:
+        openai_message: dict = message.message
+        if openai_message['role'] == 'user' and message.attrs:
+            return openai_message | {
+                "content": cls.parse_user_query(message.message["content"], message.attrs)
+            }
+        return openai_message
 
 
 class Agent(BaseStreamable):
@@ -63,14 +149,12 @@ class Agent(BaseStreamable):
 
     async def chat(
             self,
-            message_dtos: list[MessageDto],
+            messages: list[dict[str, str]],
             enable_thinking: bool | None = None,
             tools: list[dict] | None = None,
             custom_tool_call: bool = False,
             force_private_search_option: Literal["disable", "enable", "auto"] = "auto"
     ) -> AsyncIterable[ChatResponse | dict]:
-        messages = list(map(self.parse_message, message_dtos))
-
         assistant_message: dict = {'role': 'assistant'}
 
         force_private_search: bool = (force_private_search_option == "enable" or (
@@ -83,9 +167,7 @@ class Agent(BaseStreamable):
                 "type": "function",
                 "function": {
                     "name": DEFAULT_TOOL_NAME,
-                    "arguments": jsonlib.dumps(
-                        {"query": messages[1]['content']}, ensure_ascii=False, separators=(",", ":")
-                    )
+                    "arguments": json_dumps({"query": messages[1]['content']})
                 }
             })
             for r in self.yield_complete_message(assistant_message):
@@ -104,7 +186,7 @@ You are provided with function signatures within <tools></tools> XML tags:
 For each function call, return a json object with function name and arguments within <tool_call></tool_call> XML tags:
 <tool_call>
 {"name": <function-name>, "arguments": <args-json-object>}
-</tool_call>""".replace("{{tools}}", "\n".join([jsonlib.dumps(tool, ensure_ascii=False) for tool in tools or []]))
+</tool_call>""".replace("{{tools}}", "\n".join([json_dumps(tool) for tool in tools or []]))
             openai_response: AsyncStream[ChatCompletionChunk] = await self.client.chat.completions.create(
                 model=self.model,
                 messages=messages,
@@ -167,9 +249,7 @@ For each function call, return a json object with function name and arguments wi
                     if json_str := line.strip():
                         try:
                             tool_call_json: dict = jsonlib.loads(json_str)
-                            tool_call_json['arguments'] = jsonlib.dumps(
-                                tool_call_json['arguments'], ensure_ascii=False, separators=(",", ":")
-                            )
+                            tool_call_json['arguments'] = json_dumps(tool_call_json['arguments'])
                             assistant_message.setdefault('tool_calls', []).append({
                                 "id": str(uuid4()).replace('-', ''),
                                 "type": "function",
@@ -182,45 +262,6 @@ For each function call, return a json object with function name and arguments wi
 
             yield ChatEOSResponse()
         yield MessageDto.model_validate({"message": assistant_message})
-
-    @classmethod
-    def parse_selected_resources(cls, options: ChatOptions) -> str:
-        tools = ToolDict(options.tools or [])
-
-        if (tool := tools.get("private_search")) and tool.resources:
-            resources = [
-                resource.model_dump(include={"name", "type"}, exclude_none=True)
-                for resource in tool.resources
-            ]
-            return "# Selected private resources\n\n```json\n" + jsonlib.dumps(
-                resources, ensure_ascii=False, separators=(",", ":")
-            ) + "\n```"
-        return ""
-
-    @classmethod
-    def parse_selected_tools(cls, options: ChatOptions) -> str:
-        if not options.tools:
-            return ""
-        tools = [tool.name for tool in options.tools]
-        return "# Selected tools\n\n```json\n" + jsonlib.dumps(
-            tools, ensure_ascii=False, separators=(",", ":")
-        ) + "\n```"
-
-    @classmethod
-    def parse_user_query(cls, query: str, options: ChatOptions) -> str:
-        return remove_continuous_break_lines("\n\n".join([
-            "# Query",
-            query,
-            cls.parse_selected_resources(options),
-            cls.parse_selected_tools(options),
-        ]))
-
-    @classmethod
-    def parse_message(cls, message: MessageDto) -> dict:
-        openai_message: dict = message.message
-        if openai_message['role'] == 'user' and message.attrs:
-            return openai_message | {"content": cls.parse_user_query(message.message["content"], message.attrs)}
-        return openai_message
 
     async def astream(self, trace_info: TraceInfo, agent_request: AgentRequest) -> AsyncIterable[ChatResponse]:
         """
@@ -244,7 +285,8 @@ For each function call, return a json object with function name and arguments wi
         if agent_request.merge_search:
             tool_executor_config_list = [get_tool_executor_config(tool_executor_config_list, self.reranker_config)]
 
-        tool_executor = ToolExecutor({c["name"]: c for c in tool_executor_config_list})
+        tool_executor_config: dict = {c["name"]: c for c in tool_executor_config_list}
+        tool_executor = ToolExecutor(tool_executor_config)
 
         messages: list[MessageDto] = agent_request.messages or []
 
@@ -260,18 +302,17 @@ For each function call, return a json object with function name and arguments wi
 
         user_message: MessageDto = MessageDto.model_validate({
             "message": {"role": "user", "content": agent_request.query},
-            "attrs": agent_request.model_dump(
-                exclude_none=True,
-                include={"enable_thinking", "merge_search", "tools"}
-            ),
+            "attrs": agent_request.model_dump(exclude_none=True),
         })
+        user_message = await UserQueryPreprocessor.with_related_resources_(user_message, tool_executor_config)
+
         messages.append(user_message)
         for r in self.yield_complete_message(user_message.message, user_message.attrs):
             yield r
 
         while messages[-1].message['role'] != 'assistant':
             async for chunk in self.chat(
-                    messages,
+                    messages=list(map(UserQueryPreprocessor.parse_message, messages)),
                     enable_thinking=agent_request.enable_thinking,
                     tools=tool_executor.tools,
                     custom_tool_call=False,

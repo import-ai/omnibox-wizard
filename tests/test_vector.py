@@ -1,3 +1,4 @@
+import asyncio
 from typing import List, Tuple
 
 import pytest
@@ -20,7 +21,6 @@ async def db(meilisearch_endpoint: str) -> VectorDB:
     loader = Loader(Config, env_prefix=ENV_PREFIX)
     config: Config = loader.load()
     db: MeiliVectorDB = MeiliVectorDB(config.vector)
-    await db.init_index()
     common_params = {
         "chunk_type": ChunkType.keyword,
         "namespace_id": namespace_id,
@@ -54,3 +54,7 @@ async def test_db_query(db: MeiliVectorDB, query: str, k: int, rank: int, expect
 @pytest.mark.parametrize("resource_id, expected_count", [("a", 1), ("b", 2)])
 async def test_db_remove(db: MeiliVectorDB, resource_id: str, expected_count: int):
     await db.remove_chunks(namespace_id, resource_id)
+    index = db.meili.index(db.index_uid)
+    await asyncio.sleep(1)  # Wait for MeiliSearch to update the index
+    stats = await index.get_stats()
+    assert stats.number_of_documents == expected_count

@@ -47,10 +47,16 @@ class MeiliVectorDB:
         self.openai = AsyncOpenAI(
             api_key=config.embedding.api_key, base_url=config.embedding.base_url
         )
-        self.meili = AsyncClient(config.host, config.meili_api_key)
+        self.meili: AsyncClient = ...
         self.index_uid = "omniboxIndex"
         self.embedder_name = "omniboxEmbed"
         self.embedder_dimensions = 1024
+
+    async def get_index(self):
+        if self.meili is ...:
+            self.meili = AsyncClient(self.config.host, self.config.meili_api_key)
+            await self.init_index()
+        return self.meili.index(self.index_uid)
 
     async def init_index(self):
         index = await self.meili.get_or_create_index(self.index_uid)
@@ -111,7 +117,7 @@ class MeiliVectorDB:
             )
 
     async def insert_chunks(self, namespace_id: str, chunk_list: List[Chunk]):
-        index = self.meili.index(self.index_uid)
+        index = await self.get_index()
         for i in range(0, len(chunk_list), self.batch_size):
             batch = chunk_list[i: i + self.batch_size]
             embeddings = await self.openai.embeddings.create(
@@ -133,7 +139,7 @@ class MeiliVectorDB:
             await index.add_documents(records, primary_key="id")
 
     async def upsert_message(self, namespace_id: str, user_id: str, message: Message):
-        index = self.meili.index(self.index_uid)
+        index = await self.get_index()
         record_id = "message_{}".format(message.message_id)
 
         if not message.message.content.strip():
@@ -157,7 +163,7 @@ class MeiliVectorDB:
         await index.add_documents([record.model_dump(by_alias=True)], primary_key="id")
 
     async def remove_chunks(self, namespace_id: str, resource_id: str):
-        index = self.meili.index(self.index_uid)
+        index = await self.get_index()
         await index.delete_documents_by_filter(
             filter=[
                 "type = {}".format(IndexRecordType.chunk.value),
@@ -196,7 +202,7 @@ class MeiliVectorDB:
         if record_type:
             filter_.append("type = {}".format(record_type.value))
         vector_params: dict = await self.vector_params(query)
-        index = self.meili.index(self.index_uid)
+        index = await self.get_index()
         results = await index.search(query, filter=filter_, offset=offset, limit=limit, **vector_params)
         return [IndexRecord(**hit) for hit in results.hits]
 
@@ -206,7 +212,7 @@ class MeiliVectorDB:
             k: int,
             filter_: List[str | List[str]],
     ) -> List[Tuple[Chunk, float]]:
-        index = self.meili.index(self.index_uid)
+        index = await self.get_index()
         combined_filters = filter_ + ["type = {}".format(IndexRecordType.chunk.value)]
         vector_params: dict = await self.vector_params(query)
         results = await index.search(query, limit=k, filter=combined_filters, show_ranking_score=True, **vector_params)
@@ -278,9 +284,3 @@ class MeiliVectorRetriever(BaseRetriever):
             for chunk, score in recall_result_list
         ]
         return retrievals
-
-
-async def init_meili_vector_db(config: VectorConfig):
-    vector_db = MeiliVectorDB(config)
-    await vector_db.init_index()
-    return vector_db

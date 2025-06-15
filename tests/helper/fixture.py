@@ -75,7 +75,7 @@ async def base_url() -> str:
 
 
 @pytest.fixture(scope="function")
-def config(chromadb_endpoint: str) -> Config:
+def config(meilisearch_endpoint: str) -> Config:
     load_dotenv()
     loader = Loader(Config, env_prefix=ENV_PREFIX)
     config = loader.load()

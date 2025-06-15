@@ -10,15 +10,15 @@ class BaseChatRequest(BaseModel):
     query: str
 
 
-class ChatOptions(BaseModel):
+class ChatRequestOptions(BaseModel):
     tools: list[PrivateSearchTool | WebSearchTool] | None = Field(default=None)
-    enable_thinking: bool = Field(default=None)
-    merge_search: bool = Field(default=None, description="Whether to merge search results from multiple tools.")
-    force_search: bool = Field(default=None, description="Whether to force search.")
-    lang: Literal["简体中文", "English"] = Field(default=None, description="Language of the response.")
+    enable_thinking: bool | None = Field(default=None)
+    merge_search: bool | None = Field(default=None, description="Whether to merge search results from multiple tools.")
+    force_search: bool | None = Field(default=None, description="Whether to force search.")
+    lang: Literal["简体中文", "English"] | None = Field(default=None, description="Language of the response.")
 
 
-class MessageAttrs(ChatOptions):
+class MessageAttrs(ChatRequestOptions):
     citations: list[Citation] = Field(default=None)
 
 
@@ -27,7 +27,7 @@ class MessageDto(BaseModel):
     attrs: MessageAttrs | None = Field(default=None)
 
 
-class AgentRequest(BaseChatRequest, ChatOptions):
+class AgentRequest(BaseChatRequest, ChatRequestOptions):
     conversation_id: str
     messages: list[MessageDto] | None = Field(default=None)
 

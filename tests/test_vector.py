@@ -8,8 +8,8 @@ from src.wizard.config import Config, ENV_PREFIX
 from src.wizard.grimoire.entity.chunk import Chunk, ChunkType
 from src.wizard.grimoire.retriever.vector_db import VectorDB
 from tests.helper.fixture import meilisearch_endpoint
-from wizard.grimoire.entity.tools import Condition
-from wizard.grimoire.retriever.meili_vector_db import MeiliVectorDB
+from src.wizard.grimoire.entity.tools import Condition
+from src.wizard.grimoire.retriever.meili_vector_db import MeiliVectorDB
 
 namespace_id = "pytest"
 

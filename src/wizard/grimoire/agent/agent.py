@@ -7,7 +7,7 @@ from openai import AsyncOpenAI, AsyncStream, NOT_GIVEN
 from openai.types.chat import ChatCompletionChunk
 from openai.types.chat.chat_completion_chunk import ChoiceDeltaToolCall
 
-from common.template_parser import get_template, render_template
+from src.common.template_parser import get_template, render_template
 from src.common.trace_info import TraceInfo
 from src.common.utils import remove_continuous_break_lines
 from src.wizard.config import OpenAIConfig, ToolsConfig, VectorConfig
@@ -17,12 +17,12 @@ from src.wizard.grimoire.entity.api import (
     ChatDeltaResponse, AgentRequest, ChatBOSResponse, ChatEOSResponse, MessageDto,
     ChatRequestOptions, ChatBaseResponse, MessageAttrs
 )
+from src.wizard.grimoire.entity.chunk import ResourceChunkRetrieval
 from src.wizard.grimoire.entity.tools import ToolExecutorConfig, ToolDict, Resource
 from src.wizard.grimoire.retriever.base import BaseRetriever
 from src.wizard.grimoire.retriever.meili_vector_db import MeiliVectorRetriever
 from src.wizard.grimoire.retriever.reranker import get_tool_executor_config
 from src.wizard.grimoire.retriever.searxng import SearXNG
-from wizard.grimoire.entity.chunk import ResourceChunkRetrieval
 
 DEFAULT_TOOL_NAME: str = "private_search"
 json_dumps = partial(jsonlib.dumps, ensure_ascii=False, separators=(",", ":"))

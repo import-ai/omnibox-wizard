@@ -62,10 +62,10 @@ class SearXNG(BaseRetriever):
             query: str,
             *,
             page_number: int = 1,
-            k: int = 20,
+            k: int | None = None,
             retry_cnt: int = 2,  # First time may fail due to cold start, retry a few times
             retry_sleep: float = 1,
-            trace_info: TraceInfo | None = None
+            trace_info: TraceInfo | None = None,
     ) -> list[SearXNGRetrieval]:
         for i in range(retry_cnt + 1):
             async with httpx.AsyncClient(base_url=self.base_url) as c:
@@ -79,7 +79,7 @@ class SearXNG(BaseRetriever):
             if trace_info:
                 trace_info.debug({"len(retrievals)": len(retrievals)})
             if retrievals:
-                return retrievals[:k]
+                return retrievals[:k] if k else retrievals
             if trace_info:
                 trace_info.warning({
                     "message": f"Search failed, retrying {i + 1}/{retry_cnt + 1}",

@@ -1,5 +1,4 @@
 import json as jsonlib
-import os
 from functools import partial
 from typing import AsyncIterable, Literal, Iterable
 from uuid import uuid4
@@ -11,7 +10,7 @@ from openai.types.chat.chat_completion_chunk import ChoiceDeltaToolCall
 from src.common.template_parser import get_template, render_template
 from src.common.trace_info import TraceInfo
 from src.common.utils import remove_continuous_break_lines
-from src.wizard.config import OpenAIConfig, ToolsConfig, VectorConfig
+from src.wizard.config import OpenAIConfig, Config
 from src.wizard.grimoire.agent.tool_executor import ToolExecutor
 from src.wizard.grimoire.base_streamable import BaseStreamable, ChatResponse
 from src.wizard.grimoire.entity.api import (
@@ -22,7 +21,7 @@ from src.wizard.grimoire.entity.chunk import ResourceChunkRetrieval
 from src.wizard.grimoire.entity.tools import ToolExecutorConfig, ToolDict, Resource
 from src.wizard.grimoire.retriever.base import BaseRetriever
 from src.wizard.grimoire.retriever.meili_vector_db import MeiliVectorRetriever
-from src.wizard.grimoire.retriever.reranker import get_tool_executor_config, get_merged_description
+from src.wizard.grimoire.retriever.reranker import get_tool_executor_config, get_merged_description, Reranker
 from src.wizard.grimoire.retriever.searxng import SearXNG
 
 DEFAULT_TOOL_NAME: str = "private_search"
@@ -112,31 +111,25 @@ class UserQueryPreprocessor:
 
 
 class Agent(BaseStreamable):
-    def __init__(
-            self,
-            openai_config: OpenAIConfig,
-            tools_config: ToolsConfig,
-            vector_config: VectorConfig,
-            system_prompt_template_name: str,
-            reranker_config: OpenAIConfig | None = None,
-            custom_tool_call: bool | None = None,
-    ):
+    def __init__(self, config: Config, system_prompt_template_name: str):
+        openai_config: OpenAIConfig = config.grimoire.openai["large"]
+
         self.client = AsyncOpenAI(api_key=openai_config.api_key, base_url=openai_config.base_url)
         self.model = openai_config.model
 
-        self.reranker_config: OpenAIConfig | None = reranker_config
+        self.reranker_model_config: OpenAIConfig | None = config.tools.reranker
 
         self.system_prompt_template = get_template(system_prompt_template_name)
 
-        self.knowledge_database_retriever = MeiliVectorRetriever(config=vector_config)
-        self.web_search_retriever = SearXNG(base_url=tools_config.searxng_base_url)
+        self.knowledge_database_retriever = MeiliVectorRetriever(config=config.vector)
+        self.web_search_retriever = SearXNG(base_url=config.tools.searxng_base_url)
 
         self.retriever_mapping: dict[str, BaseRetriever] = {
             each.name: each
             for each in [self.knowledge_database_retriever, self.web_search_retriever]
         }
 
-        self.custom_tool_call: bool | None = custom_tool_call
+        self.custom_tool_call: bool | None = config.grimoire.custom_tool_call
 
     @classmethod
     def has_function(cls, tools: list[dict] | None, function_name: str) -> bool:
@@ -294,7 +287,17 @@ class Agent(BaseStreamable):
         ]
 
         if agent_request.merge_search:
-            tool_executor_config_list = [get_tool_executor_config(tool_executor_config_list, self.reranker_config)]
+            tool_executor_config_list = [
+                get_tool_executor_config(tool_executor_config_list, self.reranker_model_config)]
+        else:  # Add rerank to tool executor config if reranker_config is provided
+            if self.reranker_model_config:
+                for tool_executor_config in tool_executor_config_list:
+                    tool_executor_config["func"] = Reranker(self.reranker_model_config).wrap(
+                        func=tool_executor_config["func"],
+                        threshold=0.1,
+                        k=20,
+                        trace_info=trace_info.get_child("reranker")
+                    )
 
         tool_executor_config: dict = {c["name"]: c for c in tool_executor_config_list}
         tool_executor = ToolExecutor(tool_executor_config)
@@ -338,7 +341,7 @@ class Agent(BaseStreamable):
                 else:
                     raise ValueError(f"Unexpected chunk type: {type(chunk)}")
             if messages[-1].message.get('tool_calls', []):
-                async for chunk in tool_executor.astream(messages):
+                async for chunk in tool_executor.astream(messages, trace_info=trace_info.get_child("tool_executor")):
                     if isinstance(chunk, MessageDto):
                         messages.append(chunk)
                     elif isinstance(chunk, ChatBaseResponse):

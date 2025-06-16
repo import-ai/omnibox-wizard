@@ -244,7 +244,7 @@ class MeiliVectorRetriever(BaseRetriever):
             self, private_search_tool: PrivateSearchTool, **kwargs
     ) -> SearchFunction:
         return partial(
-            self.query, private_search_tool=private_search_tool, k=20, **kwargs
+            self.query, private_search_tool=private_search_tool, k=40, **kwargs
         )
 
     @classmethod

@@ -4,6 +4,7 @@ from functools import partial
 import httpx
 from pydantic import BaseModel
 
+from src.common.trace_info import TraceInfo
 from src.wizard.config import OpenAIConfig
 from src.wizard.grimoire.entity.retrieval import BaseRetrieval
 from src.wizard.grimoire.entity.tools import ToolExecutorConfig
@@ -69,7 +70,8 @@ class Reranker:
             query: str,
             retrievals: list[BaseRetrieval],
             k: int | None = None,
-            threshold: float | None = None
+            threshold: float | None = None,
+            trace_info: TraceInfo | None = None,
     ) -> list[BaseRetrieval]:
         if not retrievals:
             return []
@@ -93,10 +95,26 @@ class Reranker:
                 retrieval: BaseRetrieval = retrievals[item.index]
                 retrieval.score.rerank = item.relevance_score
                 reranked_results.append(retrieval)
-        return reranked_results
+        if trace_info:
+            trace_info.debug({
+                "query": query,
+                "k": k,
+                "threshold": threshold,
+                "rerank_response": rerank_response.model_dump(),
+                "len(retrievals)": len(retrievals),
+                "len(rerank_response.results)": len(rerank_response.results),
+                "len(reranked_results)": len(reranked_results),
+            })
+        return reranked_results[:k] if k else reranked_results
 
-    async def search(self, query: str, funcs: list[SearchFunction]) -> list[BaseRetrieval]:
+    def wrap(self, func: SearchFunction, *args, **kwargs) -> SearchFunction:
+        async def wrapped(query: str) -> list[BaseRetrieval]:
+            return await self.rerank(query, await func(query), *args, **kwargs)
+
+        return wrapped
+
+    async def search(self, query: str, funcs: list[SearchFunction], *args, **kwargs) -> list[BaseRetrieval]:
         results = await asyncio.gather(*[func(query) for func in funcs])
         flattened_results: list[BaseRetrieval] = sum(results, [])
-        reranked_results = await self.rerank(query, flattened_results)
+        reranked_results = await self.rerank(query, flattened_results, *args, **kwargs)
         return reranked_results

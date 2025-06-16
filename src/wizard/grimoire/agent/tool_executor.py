@@ -3,7 +3,11 @@ from typing import AsyncIterable
 
 from openai.types.chat import ChatCompletionAssistantMessageParam
 
-from src.wizard.grimoire.entity.api import ChatBaseResponse, ChatEOSResponse, ChatBOSResponse, ChatDeltaResponse, MessageDto
+from src.common.model_dump import model_dump
+from src.common.trace_info import TraceInfo
+from src.wizard.grimoire.entity.api import (
+    ChatBaseResponse, ChatEOSResponse, ChatBOSResponse, ChatDeltaResponse, MessageDto
+)
 from src.wizard.grimoire.entity.retrieval import BaseRetrieval
 from src.wizard.grimoire.entity.tools import ToolExecutorConfig
 
@@ -42,6 +46,7 @@ class ToolExecutor:
     async def astream(
             self,
             message_dtos: list[MessageDto],
+            trace_info: TraceInfo,
     ) -> AsyncIterable[ChatBaseResponse]:
         message: ChatCompletionAssistantMessageParam = message_dtos[-1].message
         if tool_calls := message.get('tool_calls', []):
@@ -50,12 +55,19 @@ class ToolExecutor:
                 tool_call_id: str = str(tool_call['id'])
                 function_args = jsonlib.loads(function['arguments'])
                 function_name = function['name']
+                logger = trace_info.get_child(addition_payload={
+                    "tool_call_id": tool_call_id,
+                    "function_name": function_name,
+                    "function_args": function_args,
+                })
 
                 yield ChatBOSResponse(role="tool")
                 if function_name in self.config:
                     func = self.config[function_name]['func']
                     result = await func(**function_args)
+                    logger.info({"result": model_dump(result)})
                 else:
+                    logger.error({"message": "Unknown function"})
                     raise ValueError(f"Unknown function: {function_name}")
 
                 if function_name.endswith("search"):

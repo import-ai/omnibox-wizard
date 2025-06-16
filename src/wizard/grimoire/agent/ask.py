@@ -1,21 +1,7 @@
-from src.wizard.config import OpenAIConfig, ToolsConfig, VectorConfig
+from src.wizard.config import OpenAIConfig, ToolsConfig, VectorConfig, Config
 from src.wizard.grimoire.agent.agent import Agent
 
 
 class Ask(Agent):
-    def __init__(
-            self,
-            openai_config: OpenAIConfig,
-            tools_config: ToolsConfig,
-            vector_config: VectorConfig,
-            reranker_config: OpenAIConfig | None = None,
-            custom_tool_call: bool | None = None,
-    ):
-        super().__init__(
-            openai_config=openai_config,
-            tools_config=tools_config,
-            vector_config=vector_config,
-            system_prompt_template_name="ask.j2",
-            reranker_config=reranker_config,
-            custom_tool_call=custom_tool_call,
-        )
+    def __init__(self, config: Config):
+        super().__init__(config=config, system_prompt_template_name="ask.j2")

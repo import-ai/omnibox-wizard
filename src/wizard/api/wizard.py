@@ -27,25 +27,13 @@ async def init():
     loader = Loader(Config, env_prefix=ENV_PREFIX)
     config: Config = loader.load()
 
-    ask = Ask(
-        config.grimoire.openai["large"],
-        config.tools,
-        config.vector,
-        config.tools.reranker,
-        config.grimoire.custom_tool_call,
-    )
-    write = Write(
-        config.grimoire.openai["large"],
-        config.tools,
-        config.vector,
-        config.tools.reranker,
-        config.grimoire.custom_tool_call,
-    )
+    ask = Ask(config)
+    write = Write(config)
 
 
 async def call_stream(s: BaseStreamable, request: BaseChatRequest, trace_info: TraceInfo) -> AsyncIterator[dict]:
     try:
-        async for delta in s.astream(trace_info, request):  # noqa
+        async for delta in s.astream(trace_info.get_child("agent"), request):  # noqa
             yield delta.model_dump(exclude_none=True)
     except Exception as e:
         yield {"response_type": "error", "message": "Unknown error"}

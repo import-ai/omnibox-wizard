@@ -5,7 +5,7 @@ import httpx
 from pydantic import BaseModel
 
 from src.common.trace_info import TraceInfo
-from src.wizard.config import OpenAIConfig
+from src.wizard.config import OpenAIConfig, RerankerConfig
 from src.wizard.grimoire.entity.retrieval import BaseRetrieval
 from src.wizard.grimoire.entity.tools import ToolExecutorConfig
 from src.wizard.grimoire.retriever.base import SearchFunction, BaseRetriever
@@ -39,31 +39,11 @@ class RerankResponse(BaseModel):
     meta: Meta
 
 
-def get_merged_description(tools: list[dict]) -> str:
-    descriptions = [f'- {tool["function"]["description"]}' for tool in tools]
-    return '\n'.join([
-        "This tool can search for various types of information, they include but are not limited to:",
-        *descriptions
-    ])
-
-
-def get_tool_executor_config(
-        tool_executor_config_list: list[ToolExecutorConfig],
-        openai_config: OpenAIConfig | None
-) -> ToolExecutorConfig:
-    funcs = [config["func"] for config in tool_executor_config_list]
-    name = "search"
-    description: str = get_merged_description([config["schema"] for config in tool_executor_config_list])
-    return ToolExecutorConfig(
-        name=name,
-        func=partial(Reranker(openai_config).search, funcs=funcs),
-        schema=BaseRetriever.generate_schema(name, description)
-    )
-
-
 class Reranker:
-    def __init__(self, config: OpenAIConfig):
-        self.config: OpenAIConfig = config
+    def __init__(self, config: RerankerConfig):
+        self.config: OpenAIConfig = config.openai
+        self.k: int | None = config.k
+        self.threshold: float | None = config.threshold
 
     async def rerank(
             self,
@@ -75,6 +55,9 @@ class Reranker:
     ) -> list[BaseRetrieval]:
         if not retrievals:
             return []
+
+        k = k or self.k
+        threshold = threshold or self.threshold
         async with httpx.AsyncClient(base_url=self.config.base_url) as client:
             response = await client.post(
                 "/rerank",
@@ -118,3 +101,25 @@ class Reranker:
         flattened_results: list[BaseRetrieval] = sum(results, [])
         reranked_results = await self.rerank(query, flattened_results, *args, **kwargs)
         return reranked_results
+
+
+def get_merged_description(tools: list[dict]) -> str:
+    descriptions = [f'- {tool["function"]["description"]}' for tool in tools]
+    return '\n'.join([
+        "This tool can search for various types of information, they include but are not limited to:",
+        *descriptions
+    ])
+
+
+def get_tool_executor_config(
+        tool_executor_config_list: list[ToolExecutorConfig],
+        reranker: Reranker | None = None,
+) -> ToolExecutorConfig:
+    funcs = [config["func"] for config in tool_executor_config_list]
+    name = "search"
+    description: str = get_merged_description([config["schema"] for config in tool_executor_config_list])
+    return ToolExecutorConfig(
+        name=name,
+        func=partial(reranker.search, funcs=funcs),
+        schema=BaseRetriever.generate_schema(name, description)
+    )

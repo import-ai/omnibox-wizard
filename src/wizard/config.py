@@ -66,9 +66,15 @@ class TaskConfig(BaseModel):
     asr: OpenAIConfig = Field(default=None)
 
 
+class RerankerConfig(BaseModel):
+    openai: OpenAIConfig = Field(default=None)
+    threshold: float = Field(default=None)
+    k: int = Field(default=None)
+
+
 class ToolsConfig(BaseModel):
     searxng_base_url: str
-    reranker: OpenAIConfig = Field(default=None)
+    reranker: RerankerConfig = Field(default=None)
 
 
 class Config(BaseModel):

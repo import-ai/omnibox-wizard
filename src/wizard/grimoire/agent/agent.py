@@ -117,12 +117,12 @@ class Agent(BaseStreamable):
         self.client = AsyncOpenAI(api_key=openai_config.api_key, base_url=openai_config.base_url)
         self.model = openai_config.model
 
-        self.reranker_model_config: OpenAIConfig | None = config.tools.reranker
-
         self.system_prompt_template = get_template(system_prompt_template_name)
 
         self.knowledge_database_retriever = MeiliVectorRetriever(config=config.vector)
         self.web_search_retriever = SearXNG(base_url=config.tools.searxng_base_url)
+
+        self.reranker: Reranker | None = Reranker(config.tools.reranker) if config.tools.reranker else None
 
         self.retriever_mapping: dict[str, BaseRetriever] = {
             each.name: each
@@ -287,15 +287,12 @@ class Agent(BaseStreamable):
         ]
 
         if agent_request.merge_search:
-            tool_executor_config_list = [
-                get_tool_executor_config(tool_executor_config_list, self.reranker_model_config)]
+            tool_executor_config_list = [get_tool_executor_config(tool_executor_config_list, self.reranker)]
         else:  # Add rerank to tool executor config if reranker_config is provided
-            if self.reranker_model_config:
+            if self.reranker:
                 for tool_executor_config in tool_executor_config_list:
-                    tool_executor_config["func"] = Reranker(self.reranker_model_config).wrap(
+                    tool_executor_config["func"] = self.reranker.wrap(
                         func=tool_executor_config["func"],
-                        threshold=0.1,
-                        k=20,
                         trace_info=trace_info.get_child("reranker")
                     )
 

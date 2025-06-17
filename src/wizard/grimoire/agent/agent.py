@@ -45,7 +45,7 @@ class UserQueryPreprocessor:
             for r in retrievals:
                 if r.chunk.chunk_id not in [res.id for res in related_resources]:
                     related_resources.append(Resource.model_validate({
-                        "id": r.chunk.chunk_id,
+                        "id": r.chunk.resource_id,
                         "name": r.chunk.title,
                         "type": r.type,
                     }))

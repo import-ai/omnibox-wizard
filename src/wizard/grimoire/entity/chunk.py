@@ -55,6 +55,8 @@ class ResourceChunkRetrieval(BaseRetrieval):
         contents: list[str] = []
         citation = self.to_citation()
 
+        if self.chunk.resource_id:
+            contents.append(f"<resource_id>{self.chunk.resource_id}</resource_id>")
         if self.folder:
             contents.append(f"<folder>{self.folder}</folder>")
         if citation.title:
@@ -63,6 +65,10 @@ class ResourceChunkRetrieval(BaseRetrieval):
             contents.append(f"<snippet>{citation.snippet}</snippet>")
         if citation.updated_at:
             contents.append(f"<updated_at>{citation.updated_at}</updated_at>")
+        if self.chunk.start_index is not None:
+            contents.append(f"<start_index>{self.chunk.start_index}</start_index>")
+        if self.chunk.end_index is not None:
+            contents.append(f"<end_index>{self.chunk.end_index}</end_index>")
         return remove_continuous_break_lines("\n".join(contents))
 
     def to_citation(self) -> Citation:

@@ -47,7 +47,7 @@ class UserQueryPreprocessor:
                     related_resources.append(Resource.model_validate({
                         "id": r.chunk.chunk_id,
                         "name": r.chunk.title,
-                        "type": r.chunk.type,
+                        "type": r.type,
                     }))
             tool.related_resources = related_resources
         return message

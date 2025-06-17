@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 from src.common.utils import remove_continuous_break_lines
 from src.wizard.grimoire.entity.retrieval import BaseRetrieval, Citation
+from src.wizard.grimoire.entity.tools import PrivateSearchResourceType
 
 
 class ChunkType(str, Enum):
@@ -44,6 +45,7 @@ class Chunk(BaseModel):
 
 class ResourceChunkRetrieval(BaseRetrieval):
     folder: str | None = Field(default=None, description="The folder of the chunk, if any")
+    type: PrivateSearchResourceType | None = Field(default=None, description="The type of the resource")
     chunk: Chunk
 
     def source(self) -> str:

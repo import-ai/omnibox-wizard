@@ -88,7 +88,7 @@ class Resource(BaseModel):
 class PrivateSearchTool(BaseTool):
     name: Literal["private_search"] = "private_search"
     namespace_id: str
-    visible_resource_ids: list[str] = Field(
+    visible_resources: list[Resource] = Field(
         exclude=True, default=None, description="Required in `AgentRequest`, excluded in `MessageDto`.")
     resources: list[Resource] = Field(default=None)
     related_resources: list[Resource] = Field(
@@ -98,11 +98,11 @@ class PrivateSearchTool(BaseTool):
     )
 
     def to_condition(self) -> Condition:
-        if not self.visible_resource_ids:
-            raise AssertionError("`visible_resource_ids` must be provided when export to `Condition`.")
+        if self.visible_resources is None:
+            raise AssertionError("`visible_resources` must be provided when export to `Condition`.")
         return Condition(
             namespace_id=self.namespace_id,
-            resource_ids=self.visible_resource_ids,
+            resource_ids=[r.id for r in self.visible_resources],
         )
 
     def to_func(self, func: AsyncCallable, /, **kwargs) -> AsyncCallable:

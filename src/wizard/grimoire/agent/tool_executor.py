@@ -26,8 +26,11 @@ def retrieval_wrapper(
             '</cite>'
         ]
         retrieval_prompt_list.append("\n".join(prompt_list))
-    retrieval_prompt: str = "\n\n".join(retrieval_prompt_list) or "Not found"
-    content = "\n".join(["<retrievals>", retrieval_prompt, "</retrievals>"])
+    if retrieval_prompt_list:
+        retrieval_prompt: str = "\n\n".join(retrieval_prompt_list)
+        content: str = "\n".join(["<retrievals>", retrieval_prompt, "</retrievals>"])
+    else:
+        content: str = "Not found"
     return MessageDto.model_validate({
         "message": {"role": "tool", "tool_call_id": tool_call_id, "content": content},
         "attrs": {"citations": citations}

@@ -180,10 +180,13 @@ def get_agent_request(
             {
                 "name": "private_search",
                 "namespace_id": namespace_id,
-                "visible_resource_ids": (resource_ids or []) + sum(map(get_resource_ids, parent_ids or []), []),
+                "visible_resources": [
+                    *map(get_resource, resource_ids or []),
+                    *map(get_resource, sum(map(get_resource_ids, parent_ids or []), []))
+                ],
                 "resources": [
-                    *[get_resource(r) for r in resource_ids or []],
-                    *[get_folder(p) for p in parent_ids or []],
+                    *map(get_resource, resource_ids or []),
+                    *map(get_folder, parent_ids or []),
                 ]
             },
             {
@@ -213,7 +216,8 @@ def test_ask(client: httpx.Client, vector_db_init: bool, namespace_id: str, quer
         enable_thinking=enable_thinking
     )
     messages = assert_stream(api_stream(client, "/api/v1/wizard/ask", request))
-    assert len(messages) == expected_messages_length
+    cnt: int = len(messages)
+    assert cnt == expected_messages_length
 
 
 @pytest.mark.parametrize("condition", [

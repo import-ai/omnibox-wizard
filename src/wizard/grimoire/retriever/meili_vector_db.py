@@ -230,14 +230,21 @@ class MeiliVectorRetriever(BaseRetriever):
     def __init__(self, config: VectorConfig):
         self.vector_db = MeiliVectorDB(config)
 
-    @classmethod
-    def get_folder(cls, resource_id: str, resources: list[Resource]) -> str | None:
+    @staticmethod
+    def get_folder(resource_id: str, resources: list[Resource]) -> str | None:
         for resource in resources:
             if (
                     resource.type == PrivateSearchResourceType.FOLDER
                     and resource_id in resource.child_ids
             ):
                 return resource.name
+        return None
+
+    @staticmethod
+    def get_type(resource_id: str, resources: list[Resource]) -> PrivateSearchResourceType | None:
+        for resource in resources:
+            if resource.id == resource_id:
+                return resource.type
         return None
 
     def get_function(
@@ -263,25 +270,27 @@ class MeiliVectorRetriever(BaseRetriever):
     ) -> list[ResourceChunkRetrieval]:
         condition: Condition = private_search_tool.to_condition()
         where = condition.to_meili_where()
-        if trace_info:
-            trace_info.debug(
-                {
-                    "where": where,
-                    "condition": condition.model_dump() if condition else condition,
-                }
-            )
         if len(where) == 0:
+            trace_info and trace_info.warning({
+                "warning": "empty_where",
+                "where": where,
+                "condition": condition.model_dump() if condition else condition,
+            })
             return []
 
         recall_result_list = await self.vector_db.query_chunks(query, k, where)
         retrievals: List[ResourceChunkRetrieval] = [
             ResourceChunkRetrieval(
                 chunk=chunk,
-                folder=self.get_folder(
-                    chunk.resource_id, private_search_tool.resources or []
-                ),
+                folder=self.get_folder(chunk.resource_id, private_search_tool.resources or []),
+                type=self.get_type(chunk.resource_id, private_search_tool.visible_resources or []),
                 score=Score(recall=score, rerank=0),
             )
             for chunk, score in recall_result_list
         ]
+        trace_info and trace_info.debug({
+            "where": where,
+            "condition": condition.model_dump() if condition else condition,
+            "len(retrievals)": len(retrievals),
+        })
         return retrievals

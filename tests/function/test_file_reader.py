@@ -5,13 +5,13 @@ import tempfile
 import pytest
 from dotenv import load_dotenv
 
-from common import project_root
+from src.common import project_root
 from tests.helper.backend_client import BackendClient
 from tests.helper.fixture import backend_client
-from wizard.config import OpenAIConfig
-from wizard.entity import Task
-from wizard.wand.functions.file_reader import Convertor
-from wizard.wand.worker import Worker
+from src.wizard.config import OpenAIConfig
+from src.wizard.entity import Task
+from src.wizard.wand.functions import Convertor
+from src.wizard.wand.worker import Worker
 
 load_dotenv()
 

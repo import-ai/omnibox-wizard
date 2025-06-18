@@ -4,12 +4,12 @@ from typing import Iterator, List
 import httpx
 import pytest
 
+from src.wizard.entity import Task
+from src.wizard.grimoire.agent.agent import UserQueryPreprocessor
+from src.wizard.grimoire.entity.api import MessageDto
+from src.wizard.grimoire.entity.tools import Condition
+from src.wizard.wand.worker import Worker
 from tests.helper.fixture import client, worker
-from wizard.entity import Task
-from wizard.grimoire.agent.agent import Agent
-from wizard.grimoire.entity.api import BaseChatRequest, MessageDto
-from wizard.grimoire.entity.tools import Condition
-from wizard.wand.worker import Worker
 
 
 class Colors:
@@ -54,7 +54,7 @@ def assert_stream(stream: Iterator[str]) -> list[dict]:
                         print_colored(content, color=Colors.MAGENTA, end="", flush=True)
                     else:
                         if message_dto.message['role'] == 'user':
-                            content = Agent.parse_message(message_dto)["content"]
+                            content = UserQueryPreprocessor.parse_message(message_dto)["content"]
                         print(content, end="", flush=True)
             if tool_calls := message_dto.message.get('tool_calls', []):
                 print_colored(jsonlib.dumps(tool_calls, ensure_ascii=False), color=Colors.YELLOW, end="", flush=True)
@@ -109,6 +109,7 @@ async def add_index(
 
     assert processed_task.created_at is not None
     assert processed_task.ended_at is not None
+    assert processed_task.exception is None, f"Task failed with exception: {processed_task.exception}"
 
     output = processed_task.output
     assert output["success"] is True
@@ -179,10 +180,13 @@ def get_agent_request(
             {
                 "name": "private_search",
                 "namespace_id": namespace_id,
-                "visible_resource_ids": (resource_ids or []) + sum(map(get_resource_ids, parent_ids or []), []),
+                "visible_resources": [
+                    *map(get_resource, resource_ids or []),
+                    *map(get_resource, sum(map(get_resource_ids, parent_ids or []), []))
+                ],
                 "resources": [
-                    *[get_resource(r) for r in resource_ids or []],
-                    *[get_folder(p) for p in parent_ids or []],
+                    *map(get_resource, resource_ids or []),
+                    *map(get_folder, parent_ids or []),
                 ]
             },
             {
@@ -192,7 +196,7 @@ def get_agent_request(
     }
 
 
-@pytest.mark.parametrize("enable_thinking", [False])
+@pytest.mark.parametrize("enable_thinking", [True, False, None])
 @pytest.mark.parametrize("query, resource_ids, parent_ids, expected_messages_length", [
     # ("今天北京的天气", None, None, 5),
     # ("下周计划", None, None, 5),
@@ -212,7 +216,8 @@ def test_ask(client: httpx.Client, vector_db_init: bool, namespace_id: str, quer
         enable_thinking=enable_thinking
     )
     messages = assert_stream(api_stream(client, "/api/v1/wizard/ask", request))
-    assert len(messages) == expected_messages_length
+    cnt: int = len(messages)
+    assert cnt == expected_messages_length
 
 
 @pytest.mark.parametrize("condition", [

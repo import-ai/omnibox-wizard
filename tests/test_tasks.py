@@ -2,12 +2,12 @@ import os
 
 import httpx
 
-from common.logger import get_logger
-from common.trace_info import TraceInfo
+from src.common.logger import get_logger
+from src.common.trace_info import TraceInfo
 from tests.helper.fixture import client, worker_config
 from tests.helper.fixture import trace_info
-from wizard.config import WorkerConfig, ENV_PREFIX
-from wizard.wand.worker import Worker
+from src.wizard.config import WorkerConfig, ENV_PREFIX
+from src.wizard.wand.worker import Worker
 
 logger = get_logger("tests")
 

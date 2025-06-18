@@ -1,0 +1,13 @@
+# Tools
+
+There are many tools in system, you may call one or more **user selected tools** to assist with the user query.
+
+Available system tools are provided with function signatures within <tools></tools> XML tags:
+<tools>
+{{ tools }}
+</tools>
+
+For each function call, return a json object with function name and arguments within <tool_call></tool_call> XML tags:
+<tool_call>
+{"name": <function-name>, "arguments": <args-json-object>}
+</tool_call>

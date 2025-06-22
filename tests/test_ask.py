@@ -48,7 +48,7 @@ def assert_stream(stream: Iterator[str]) -> list[dict]:
             messages.append({'role': response['role']})
         elif response_type == "eos":
             message_dto = MessageDto.model_validate({"message": messages[-1], "attrs": messages[-1].get('attrs', None)})
-            for key in ['content', 'reasoning_content']:
+            for key in ['reasoning_content', 'content']:
                 if content := message_dto.message.get(key, ""):
                     if key == 'reasoning_content':
                         print_colored(content, color=Colors.MAGENTA, end="", flush=True)

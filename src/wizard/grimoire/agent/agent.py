@@ -59,7 +59,7 @@ class UserQueryPreprocessor:
     ) -> list[str]:
         tools = ToolDict(options.tools or [])
         if tool := tools.get(cls.PRIVATE_SEARCH_TOOL_NAME):
-            prompt_title = "Selected Private Resources" if tool.resources else "System Suggested Private Resources"
+            prompt_title = "Selected Private Resources" if tool.resources else "Related Private Resources"
             resources: list[Resource] = tool.resources or tool.related_resources
             if resources:
                 return [

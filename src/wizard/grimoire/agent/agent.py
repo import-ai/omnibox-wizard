@@ -7,7 +7,8 @@ from openai import AsyncOpenAI, AsyncStream
 from openai.types.chat import ChatCompletionChunk
 from openai.types.chat.chat_completion_chunk import ChoiceDeltaToolCall
 
-from src.common.template_parser import get_template, render_template
+from src.common import project_root
+from src.common.template_parser import TemplateParser
 from src.common.trace_info import TraceInfo
 from src.common.utils import remove_continuous_break_lines
 from src.wizard.config import OpenAIConfig, Config
@@ -117,7 +118,8 @@ class Agent(BaseStreamable):
         self.client = AsyncOpenAI(api_key=openai_config.api_key, base_url=openai_config.base_url)
         self.model = openai_config.model
 
-        self.system_prompt_template = get_template(system_prompt_template_name)
+        self.template_parser = TemplateParser(base_dir=project_root.path("src/resources/prompt_templates"))
+        self.system_prompt_template = self.template_parser.get_template(system_prompt_template_name)
 
         self.knowledge_database_retriever = MeiliVectorRetriever(config=config.vector)
         self.web_search_retriever = SearXNG(base_url=config.tools.searxng_base_url)
@@ -302,7 +304,7 @@ class Agent(BaseStreamable):
         messages: list[MessageDto] = agent_request.messages or []
 
         if not messages:
-            prompt: str = render_template(
+            prompt: str = self.template_parser.render_template(
                 self.system_prompt_template,
                 lang=agent_request.lang or "简体中文",
                 tools="\n".join(json_dumps(tool) for tool in all_tools) if self.custom_tool_call and all_tools else None

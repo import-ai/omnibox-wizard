@@ -54,8 +54,9 @@ def format_date(date: str | None) -> str | None:
 
 
 class SearXNG(BaseRetriever):
-    def __init__(self, base_url: str):
+    def __init__(self, base_url: str, engines: str | None = None):
         self.base_url: str = base_url
+        self.engines: str | None = engines
 
     async def search(
             self,
@@ -70,7 +71,9 @@ class SearXNG(BaseRetriever):
         for i in range(retry_cnt + 1):
             async with httpx.AsyncClient(base_url=self.base_url) as c:
                 httpx_response: httpx.Response = await c.get(
-                    "/search", params={"q": query, "pageno": page_number, "format": "json"}
+                    "/search", params={"q": query, "pageno": page_number, "format": "json"} | (
+                        {"engines": self.engines} if self.engines else {}
+                    )
                 )
                 httpx_response.raise_for_status()
             search_result: dict = httpx_response.json()

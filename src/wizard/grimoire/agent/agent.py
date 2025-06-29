@@ -122,7 +122,9 @@ class Agent(BaseStreamable):
         self.system_prompt_template = self.template_parser.get_template(system_prompt_template_name)
 
         self.knowledge_database_retriever = MeiliVectorRetriever(config=config.vector)
-        self.web_search_retriever = SearXNG(base_url=config.tools.searxng_base_url)
+        self.web_search_retriever = SearXNG(
+            base_url=config.tools.searxng.base_url, engines=config.tools.searxng.engines
+        )
 
         self.reranker: Reranker | None = Reranker(config.tools.reranker) if config.tools.reranker else None
 

@@ -72,8 +72,13 @@ class RerankerConfig(BaseModel):
     k: int = Field(default=None)
 
 
+class SearXNGConfig(BaseModel):
+    base_url: str
+    engines: str | None = Field(default=None)
+
+
 class ToolsConfig(BaseModel):
-    searxng_base_url: str
+    searxng: SearXNGConfig
     reranker: RerankerConfig = Field(default=None)
 
 

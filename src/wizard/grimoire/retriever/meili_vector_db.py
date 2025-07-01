@@ -257,7 +257,8 @@ class MeiliVectorRetriever(BaseRetriever):
     @classmethod
     def get_schema(cls) -> dict:
         return cls.generate_schema(
-            "private_search", "Search for user's private & personal resources."
+            "private_search",
+            "Search for user's private & personal resources. Return in <cite id=\"\"></cite> format."
         )
 
     async def query(

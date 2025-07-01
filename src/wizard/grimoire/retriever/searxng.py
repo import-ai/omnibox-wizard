@@ -98,4 +98,7 @@ class SearXNG(BaseRetriever):
 
     @classmethod
     def get_schema(cls) -> dict:
-        return cls.generate_schema("web_search", "Search the web for public information.")
+        return cls.generate_schema(
+            "web_search",
+            "Search the web for public information. Return in <cite id=\"\"></cite> format."
+        )

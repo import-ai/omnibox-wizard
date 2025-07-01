@@ -1,6 +1,6 @@
 from enum import Enum
 from functools import partial
-from typing import List, Literal, Callable, TypedDict, Awaitable, Union
+from typing import List, Literal, Callable, TypedDict, Awaitable, Union, get_args, cast
 
 from pydantic import BaseModel, Field
 
@@ -114,6 +114,7 @@ class WebSearchTool(BaseTool):
 
 
 _Tool = Union[PrivateSearchTool, WebSearchTool]
+ALL_TOOLS: tuple[str] = cast(tuple[str], get_args(ToolName))
 
 
 class ToolDict:

@@ -6,7 +6,6 @@ import pytest
 from src.common.config_loader import Loader
 from src.wizard.config import Config, ENV_PREFIX
 from src.wizard.grimoire.entity.chunk import Chunk, ChunkType
-from src.wizard.grimoire.retriever.vector_db import VectorDB
 from tests.helper.fixture import meilisearch_endpoint
 from src.wizard.grimoire.entity.tools import Condition
 from src.wizard.grimoire.retriever.meili_vector_db import MeiliVectorDB
@@ -15,7 +14,7 @@ namespace_id = "pytest"
 
 
 @pytest.fixture(scope="function")
-async def db(meilisearch_endpoint: str) -> VectorDB:
+async def db(meilisearch_endpoint: str) -> MeiliVectorDB:
     from dotenv import load_dotenv
     load_dotenv()
     loader = Loader(Config, env_prefix=ENV_PREFIX)

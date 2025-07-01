@@ -32,12 +32,17 @@ async def init():
 
 
 async def call_stream(s: BaseStreamable, request: BaseChatRequest, trace_info: TraceInfo) -> AsyncIterator[dict]:
+    trace_info.debug({"request": request.model_dump(exclude_none=True)})
     try:
         async for delta in s.astream(trace_info.get_child("agent"), request):  # noqa
             yield delta.model_dump(exclude_none=True)
     except Exception as e:
         yield {"response_type": "error", "message": "Unknown error"}
-        trace_info.logger.exception({"exception_class": e.__class__.__name__, "exception_message": str(e)})
+        trace_info.exception({
+            "exception_class": e.__class__.__name__,
+            "exception_message": str(e),
+            "request": request.model_dump(exclude_none=True),
+        })
     yield {"response_type": "done"}
 
 

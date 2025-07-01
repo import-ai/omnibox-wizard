@@ -19,7 +19,7 @@ from src.wizard.grimoire.entity.api import (
     ChatRequestOptions, ChatBaseResponse, MessageAttrs
 )
 from src.wizard.grimoire.entity.chunk import ResourceChunkRetrieval
-from src.wizard.grimoire.entity.tools import ToolExecutorConfig, ToolDict, Resource
+from src.wizard.grimoire.entity.tools import ToolExecutorConfig, ToolDict, Resource, ALL_TOOLS
 from src.wizard.grimoire.retriever.base import BaseRetriever
 from src.wizard.grimoire.retriever.meili_vector_db import MeiliVectorRetriever
 from src.wizard.grimoire.retriever.reranker import get_tool_executor_config, get_merged_description, Reranker
@@ -76,14 +76,15 @@ class UserQueryPreprocessor:
 
     @classmethod
     def parse_selected_tools(cls, attrs: MessageAttrs) -> list[str]:
-        if not attrs.tools:
-            return []
-        tools = [tool.name for tool in attrs.tools]
+        tools = [tool.name for tool in attrs.tools or []]
         return [
             "# Selected Tools",
             "\n".join([
                 "```json",
-                json_dumps(tools),
+                json_dumps({
+                    "selected": tools,
+                    "disabled": [t for t in ALL_TOOLS if t not in tools],
+                }),
                 "```"
             ])
         ]
@@ -282,6 +283,7 @@ class Agent(BaseStreamable):
         :return: An async iterable of ChatResponse objects.
         """
         all_tools: list[dict] = [retriever.get_schema() for retriever in self.retriever_mapping.values()]
+        assert all(t in self.retriever_mapping for t in ALL_TOOLS), "All tools must be registered in retriever mapping."
         if all_tools and agent_request.merge_search:
             all_tools = [BaseRetriever.generate_schema("search", get_merged_description(all_tools))]
 

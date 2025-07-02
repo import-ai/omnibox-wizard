@@ -13,6 +13,7 @@ from src.common.template_parser import TemplateParser
 from src.common.trace_info import TraceInfo
 from src.common.utils import remove_continuous_break_lines
 from src.wizard.config import OpenAIConfig, Config
+from src.wizard.grimoire.agent.stream_parser import StreamParser, DeltaOperation
 from src.wizard.grimoire.agent.tool_executor import ToolExecutor
 from src.wizard.grimoire.base_streamable import BaseStreamable, ChatResponse
 from src.wizard.grimoire.entity.api import (
@@ -232,11 +233,8 @@ class Agent(BaseSearchableAgent):
             )
 
             yield ChatBOSResponse(role="assistant")
-
-            tool_calls_buffer: str = ''
-            bot: str = '<tool_call>'
-            eot: str = '</tool_call>'
-            during_tool_call: bool = False
+            tool_calls_buffer: str = ""
+            stream_parser: StreamParser = StreamParser()
 
             async for chunk in openai_response:
                 delta = chunk.choices[0].delta
@@ -261,19 +259,15 @@ class Agent(BaseSearchableAgent):
                 for key in ['content', 'reasoning_content']:
                     if hasattr(delta, key) and (v := getattr(delta, key)):
                         if key == 'content':
-                            normal_content: str = v
-                            if bot in normal_content:
-                                during_tool_call = True
-                                normal_content, tool_call_delta = v.split(bot, 1)
-                                tool_calls_buffer += tool_call_delta
-                            elif during_tool_call:
-                                if eot in normal_content:
-                                    during_tool_call = False
-                                    tool_call_delta, normal_content = v.split(eot, 1)
-                                    tool_calls_buffer += tool_call_delta
+                            normal_content: str = ''
+                            operations: list[DeltaOperation] = stream_parser.parse(v)
+                            for operation in operations:
+                                if operation['type'] == 'think':
+                                    raise ValueError('Unexpected think operation in content delta.')
+                                elif operation['type'] == 'tool_call':
+                                    tool_calls_buffer += operation['delta']
                                 else:
-                                    tool_calls_buffer += normal_content
-                                    normal_content = ''
+                                    normal_content += operation['delta']
                             if normal_content:
                                 assistant_message[key] = assistant_message.get(key, '') + normal_content
                                 yield ChatDeltaResponse.model_validate({"message": {key: normal_content}})

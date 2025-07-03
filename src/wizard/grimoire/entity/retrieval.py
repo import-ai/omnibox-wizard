@@ -28,3 +28,18 @@ class BaseRetrieval(BaseModel):
     @abstractmethod
     def to_citation(self) -> Citation:
         raise NotImplementedError
+
+
+def retrievals2prompt(retrievals: list[BaseRetrieval], current_cite_cnt: int = 0) -> str:
+    retrieval_prompt_list: list[str] = []
+    for i, retrieval in enumerate(retrievals):
+        prompt_list: list[str] = [
+            f'<cite id="{current_cite_cnt + i + 1}" source="{retrieval.source()}">',
+            retrieval.to_prompt(),
+            '</cite>'
+        ]
+        retrieval_prompt_list.append("\n".join(prompt_list))
+    if retrieval_prompt_list:
+        retrieval_prompt: str = "\n\n".join(retrieval_prompt_list)
+        return "\n".join(["<retrievals>", retrieval_prompt, "</retrievals>"])
+    return "Not found"

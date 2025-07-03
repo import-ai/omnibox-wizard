@@ -2,20 +2,19 @@ from typing import TypedDict, Literal, List
 
 
 class DeltaOperation(TypedDict):
-    type: Literal['content', 'think', 'tool_call']
+    type: str
     delta: str
 
 
 class StreamParser:
-    def __init__(self):
+    def __init__(self, tags: List[str] | None = None, default: str = "content"):
         # Track the current tag context and buffer for incomplete tags
-        self._current = "content"  # Default type
+        self._default: str = default
+        self._current: str = self._default  # Default type
         self._buffer = ""
         self._tag_stack = []
-        self._tag_map = {
-            "think": "think",
-            "tool_call": "tool_call",
-        }
+
+        self._tags = sum([[f"<{tag}>", f"</{tag}>"] for tag in tags or ["think", "tool_call"]], [])
 
     def parse(self, token: str) -> List[DeltaOperation]:
         ops: List[DeltaOperation] = []
@@ -37,21 +36,19 @@ class StreamParser:
 
             # Now at a tag
             # Try to consume a tag fully, if not enough chars then buffer and break
-            # Tags are of form <think>, </think>, <tool_call>, </tool_call>
-            for tag in ["<think>", "</think>", "<tool_call>", "</tool_call>"]:
+            for tag in self._tags:
                 tag_len = len(tag)
                 if text.startswith(tag, cursor):
                     if tag[1] == "/":
                         # It's a closing tag
                         self._tag_stack.pop() if self._tag_stack else None
-                        # After closing, revert to previous or default to 'content'
-                        self._current = self._tag_stack[-1] if self._tag_stack else "content"
+                        # After closing, revert to previous or default to self._default
+                        self._current = self._tag_stack[-1] if self._tag_stack else self._default
                     else:
                         # It's an opening tag
                         name = tag[1:-1]
-                        mapped = self._tag_map[name]
-                        self._tag_stack.append(mapped)
-                        self._current = mapped
+                        self._tag_stack.append(name)
+                        self._current = name
                     cursor += tag_len
                     break
             else:

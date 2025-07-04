@@ -1,4 +1,5 @@
 import json as jsonlib
+from abc import ABC
 from functools import partial
 from typing import AsyncIterable, Literal, Iterable
 from uuid import uuid4
@@ -12,6 +13,7 @@ from src.common.template_parser import TemplateParser
 from src.common.trace_info import TraceInfo
 from src.common.utils import remove_continuous_break_lines
 from src.wizard.config import OpenAIConfig, Config
+from src.wizard.grimoire.agent.stream_parser import StreamParser, DeltaOperation
 from src.wizard.grimoire.agent.tool_executor import ToolExecutor
 from src.wizard.grimoire.base_streamable import BaseStreamable, ChatResponse
 from src.wizard.grimoire.entity.api import (
@@ -112,16 +114,8 @@ class UserQueryPreprocessor:
         return openai_message
 
 
-class Agent(BaseStreamable):
-    def __init__(self, config: Config, system_prompt_template_name: str):
-        openai_config: OpenAIConfig = config.grimoire.openai["large"]
-
-        self.client = AsyncOpenAI(api_key=openai_config.api_key, base_url=openai_config.base_url)
-        self.model = openai_config.model
-
-        self.template_parser = TemplateParser(base_dir=project_root.path("src/resources/prompt_templates"))
-        self.system_prompt_template = self.template_parser.get_template(system_prompt_template_name)
-
+class BaseSearchableAgent(BaseStreamable, ABC):
+    def __init__(self, config: Config):
         self.knowledge_database_retriever = MeiliVectorRetriever(config=config.vector)
         self.web_search_retriever = SearXNG(
             base_url=config.tools.searxng.base_url, engines=config.tools.searxng.engines
@@ -133,6 +127,44 @@ class Agent(BaseStreamable):
             each.name: each
             for each in [self.knowledge_database_retriever, self.web_search_retriever]
         }
+
+        self.all_tools: list[dict] = [retriever.get_schema() for retriever in self.retriever_mapping.values()]
+        assert all(t in self.retriever_mapping for t in ALL_TOOLS), "All tools must be registered in retriever mapping."
+
+    def get_tool_executor(
+            self, agent_request: AgentRequest,
+            trace_info: TraceInfo,
+            wrap_reranker: bool = True
+    ) -> ToolExecutor:
+        tool_executor_config_list: list[ToolExecutorConfig] = [
+            self.retriever_mapping[tool.name].get_tool_executor_config(tool, trace_info=trace_info.get_child(tool.name))
+            for tool in agent_request.tools or []
+        ]
+
+        if agent_request.merge_search:
+            tool_executor_config_list = [get_tool_executor_config(tool_executor_config_list, self.reranker)]
+        elif self.reranker and wrap_reranker:  # Add rerank to tool executor config if reranker_config is provided
+            for tool_executor_config in tool_executor_config_list:
+                tool_executor_config["func"] = self.reranker.wrap(
+                    func=tool_executor_config["func"],
+                    trace_info=trace_info.get_child("reranker")
+                )
+
+        tool_executor_config: dict = {c["name"]: c for c in tool_executor_config_list}
+        tool_executor = ToolExecutor(tool_executor_config)
+        return tool_executor
+
+
+class Agent(BaseSearchableAgent):
+    def __init__(self, config: Config, system_prompt_template_name: str):
+        super().__init__(config)
+        openai_config: OpenAIConfig = config.grimoire.openai["large"]
+
+        self.client = AsyncOpenAI(api_key=openai_config.api_key, base_url=openai_config.base_url)
+        self.model = openai_config.model
+
+        self.template_parser = TemplateParser(base_dir=project_root.path("src/resources/prompt_templates"))
+        self.system_prompt_template = self.template_parser.get_template(system_prompt_template_name)
 
         self.custom_tool_call: bool | None = config.grimoire.custom_tool_call
 
@@ -201,11 +233,8 @@ class Agent(BaseStreamable):
             )
 
             yield ChatBOSResponse(role="assistant")
-
-            tool_calls_buffer: str = ''
-            bot: str = '<tool_call>'
-            eot: str = '</tool_call>'
-            during_tool_call: bool = False
+            tool_calls_buffer: str = ""
+            stream_parser: StreamParser = StreamParser()
 
             async for chunk in openai_response:
                 delta = chunk.choices[0].delta
@@ -230,19 +259,15 @@ class Agent(BaseStreamable):
                 for key in ['content', 'reasoning_content']:
                     if hasattr(delta, key) and (v := getattr(delta, key)):
                         if key == 'content':
-                            normal_content: str = v
-                            if bot in normal_content:
-                                during_tool_call = True
-                                normal_content, tool_call_delta = v.split(bot, 1)
-                                tool_calls_buffer += tool_call_delta
-                            elif during_tool_call:
-                                if eot in normal_content:
-                                    during_tool_call = False
-                                    tool_call_delta, normal_content = v.split(eot, 1)
-                                    tool_calls_buffer += tool_call_delta
+                            normal_content: str = ''
+                            operations: list[DeltaOperation] = stream_parser.parse(v)
+                            for operation in operations:
+                                if operation['type'] == 'think':
+                                    raise ValueError('Unexpected think operation in content delta.')
+                                elif operation['type'] == 'tool_call':
+                                    tool_calls_buffer += operation['delta']
                                 else:
-                                    tool_calls_buffer += normal_content
-                                    normal_content = ''
+                                    normal_content += operation['delta']
                             if normal_content:
                                 assistant_message[key] = assistant_message.get(key, '') + normal_content
                                 yield ChatDeltaResponse.model_validate({"message": {key: normal_content}})
@@ -282,32 +307,14 @@ class Agent(BaseStreamable):
         :param agent_request: The request containing the user's query and tools to be used.
         :return: An async iterable of ChatResponse objects.
         """
-        all_tools: list[dict] = [retriever.get_schema() for retriever in self.retriever_mapping.values()]
-        assert all(t in self.retriever_mapping for t in ALL_TOOLS), "All tools must be registered in retriever mapping."
-        if all_tools and agent_request.merge_search:
-            all_tools = [BaseRetriever.generate_schema("search", get_merged_description(all_tools))]
-
-        tool_executor_config_list: list[ToolExecutorConfig] = [
-            self.retriever_mapping[tool.name].get_tool_executor_config(tool, trace_info=trace_info)
-            for tool in agent_request.tools or []
-        ]
-
-        if agent_request.merge_search:
-            tool_executor_config_list = [get_tool_executor_config(tool_executor_config_list, self.reranker)]
-        else:  # Add rerank to tool executor config if reranker_config is provided
-            if self.reranker:
-                for tool_executor_config in tool_executor_config_list:
-                    tool_executor_config["func"] = self.reranker.wrap(
-                        func=tool_executor_config["func"],
-                        trace_info=trace_info.get_child("reranker")
-                    )
-
-        tool_executor_config: dict = {c["name"]: c for c in tool_executor_config_list}
-        tool_executor = ToolExecutor(tool_executor_config)
-
+        tool_executor = self.get_tool_executor(agent_request, trace_info=trace_info)
         messages: list[MessageDto] = agent_request.messages or []
 
         if not messages:
+            all_tools = self.all_tools
+            if agent_request.merge_search:
+                all_tools = [BaseRetriever.generate_schema("search", get_merged_description(all_tools))]
+
             prompt: str = self.template_parser.render_template(
                 self.system_prompt_template,
                 lang=agent_request.lang or "简体中文",
@@ -322,7 +329,7 @@ class Agent(BaseStreamable):
             "message": {"role": "user", "content": agent_request.query},
             "attrs": agent_request.model_dump(exclude_none=True),
         })
-        user_message = await UserQueryPreprocessor.with_related_resources_(user_message, tool_executor_config)
+        user_message = await UserQueryPreprocessor.with_related_resources_(user_message, tool_executor.config)
 
         messages.append(user_message)
         for r in self.yield_complete_message(user_message.message, user_message.attrs):

@@ -8,32 +8,19 @@ from src.common.trace_info import TraceInfo
 from src.wizard.grimoire.entity.api import (
     ChatBaseResponse, ChatEOSResponse, ChatBOSResponse, ChatDeltaResponse, MessageDto
 )
-from src.wizard.grimoire.entity.retrieval import BaseRetrieval
+from src.wizard.grimoire.entity.retrieval import BaseRetrieval, retrievals2prompt
 from src.wizard.grimoire.entity.tools import ToolExecutorConfig
 
 
 def retrieval_wrapper(
         tool_call_id: str,
         current_cite_cnt: int,
-        retrieval_list: list[BaseRetrieval]
+        retrievals: list[BaseRetrieval]
 ) -> MessageDto:
-    citations = [retrieval.to_citation() for retrieval in retrieval_list]
-    retrieval_prompt_list: list[str] = []
-    for i, retrieval in enumerate(retrieval_list):
-        prompt_list: list[str] = [
-            f'<cite id="{current_cite_cnt + i + 1}" source="{retrieval.source()}">',
-            retrieval.to_prompt(),
-            '</cite>'
-        ]
-        retrieval_prompt_list.append("\n".join(prompt_list))
-    if retrieval_prompt_list:
-        retrieval_prompt: str = "\n\n".join(retrieval_prompt_list)
-        content: str = "\n".join(["<retrievals>", retrieval_prompt, "</retrievals>"])
-    else:
-        content: str = "Not found"
+    content: str = retrievals2prompt(retrievals, current_cite_cnt)
     return MessageDto.model_validate({
         "message": {"role": "tool", "tool_call_id": tool_call_id, "content": content},
-        "attrs": {"citations": citations}
+        "attrs": {"citations": [retrieval.to_citation() for retrieval in retrievals]}
     })
 
 
@@ -77,7 +64,7 @@ class ToolExecutor:
                     message_dto: MessageDto = retrieval_wrapper(
                         tool_call_id=tool_call_id,
                         current_cite_cnt=get_citation_cnt(message_dtos),
-                        retrieval_list=result
+                        retrievals=result
                     )
                 else:
                     raise ValueError(f"Unknown function: {function_name}")

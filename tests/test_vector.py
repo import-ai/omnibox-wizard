@@ -3,12 +3,12 @@ from typing import List, Tuple
 
 import pytest
 
-from src.common.config_loader import Loader
-from src.wizard.config import Config, ENV_PREFIX
-from src.wizard.grimoire.entity.chunk import Chunk, ChunkType
+from omnibox.common.config_loader import Loader
+from omnibox.wizard.config import Config, ENV_PREFIX
+from omnibox.wizard.grimoire.entity.chunk import Chunk, ChunkType
 from tests.helper.fixture import meilisearch_endpoint
-from src.wizard.grimoire.entity.tools import Condition
-from src.wizard.grimoire.retriever.meili_vector_db import MeiliVectorDB
+from omnibox.wizard.grimoire.entity.tools import Condition
+from omnibox.wizard.grimoire.retriever.meili_vector_db import MeiliVectorDB
 
 namespace_id = "pytest"
 

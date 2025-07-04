@@ -7,16 +7,16 @@ import pytest
 from dotenv import load_dotenv
 from fastapi.testclient import TestClient
 
-from src.common import project_root
-from src.common.config_loader import Loader
-from src.common.logger import get_logger
-from src.common.trace_info import TraceInfo
+from omnibox.common import project_root
+from omnibox.common.config_loader import Loader
+from omnibox.common.logger import get_logger
+from omnibox.common.trace_info import TraceInfo
 from tests.helper.backend_client import BackendClient
 from tests.helper.chroma_container import ChromaContainer
 from tests.helper.meilisearch_container import MeiliSearchContainer
-from src.wizard.api.server import app
-from src.wizard.config import Config, ENV_PREFIX, WorkerConfig
-from src.wizard.wand.worker import Worker
+from omnibox.wizard.api.server import app
+from omnibox.wizard.config import Config, ENV_PREFIX, WorkerConfig
+from omnibox.wizard.wand.worker import Worker
 
 logger = get_logger("fixture")
 

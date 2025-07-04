@@ -1,9 +1,9 @@
 import pytest
 
-from src.common.trace_info import TraceInfo
+from omnibox.common.trace_info import TraceInfo
 from tests.helper.fixture import trace_info, remote_config
-from src.wizard.config import Config
-from src.wizard.grimoire.common_ai import CommonAI
+from omnibox.wizard.config import Config
+from omnibox.wizard.grimoire.common_ai import CommonAI
 
 text_list: list[str] = [
     "小明是谁？",

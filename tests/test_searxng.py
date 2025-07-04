@@ -2,7 +2,7 @@ import os
 
 from dotenv import load_dotenv
 
-from src.wizard.grimoire.retriever.searxng import SearXNG
+from omnibox.wizard.grimoire.retriever.searxng import SearXNG
 
 load_dotenv()
 

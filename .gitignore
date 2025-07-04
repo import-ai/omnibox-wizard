@@ -164,4 +164,4 @@ cython_debug/
 .DS_Store
 tests/resources/files/*
 
-src/compose
+omnibox/compose

@@ -4,7 +4,7 @@ import httpx
 import yaml
 from testcontainers.core.container import DockerContainer
 
-from src.common import project_root
+from omnibox.common import project_root
 
 
 class MeiliSearchContainer(DockerContainer):

@@ -2,11 +2,11 @@ import asyncio
 import tomllib
 from argparse import Namespace, ArgumentParser
 
-from src.common import project_root
-from src.common.config_loader import Loader
-from src.common.logger import get_logger
-from src.wizard.config import WorkerConfig, ENV_PREFIX
-from src.wizard.wand.worker import Worker
+from omnibox.common import project_root
+from omnibox.common.config_loader import Loader
+from omnibox.common.logger import get_logger
+from omnibox.wizard.config import WorkerConfig, ENV_PREFIX
+from omnibox.wizard.wand.worker import Worker
 
 with project_root.open("pyproject.toml", "rb") as f:
     version = tomllib.load(f)["project"]["version"]

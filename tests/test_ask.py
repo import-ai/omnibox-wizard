@@ -4,11 +4,11 @@ from typing import Iterator, List
 import httpx
 import pytest
 
-from src.wizard.entity import Task
-from src.wizard.grimoire.agent.agent import UserQueryPreprocessor
-from src.wizard.grimoire.entity.api import MessageDto
-from src.wizard.grimoire.entity.tools import Condition
-from src.wizard.wand.worker import Worker
+from omnibox_wizard.wizard.entity import Task
+from omnibox_wizard.wizard.grimoire.agent.agent import UserQueryPreprocessor
+from omnibox_wizard.wizard.grimoire.entity.api import MessageDto
+from omnibox_wizard.wizard.grimoire.entity.tools import Condition
+from omnibox_wizard.wizard.wand.worker import Worker
 from tests.helper.fixture import client, worker
 
 

@@ -3,11 +3,11 @@ import os
 
 import pytest
 
-from src.common import project_root
-from src.common.trace_info import TraceInfo
+from omnibox_wizard.common import project_root
+from omnibox_wizard.common.trace_info import TraceInfo
 from tests.helper.fixture import trace_info
-from src.wizard.entity import Task
-from src.wizard.wand.functions import HTMLReaderV2
+from omnibox_wizard.wizard.entity import Task
+from omnibox_wizard.wizard.wand.functions import HTMLReaderV2
 
 html_reader_base_dir = "tests/resources/files/html_reader_input"
 

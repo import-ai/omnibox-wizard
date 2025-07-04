@@ -1,6 +1,6 @@
 import pytest
 
-from src.wizard.grimoire.agent.stream_parser import StreamParser, DeltaOperation
+from omnibox_wizard.wizard.grimoire.agent.stream_parser import StreamParser, DeltaOperation
 
 test_cases = [
     ["<think>\n", "当前", "情", "况应该调用工", "具 private", "_search\n<", "/", "think", ">\n我将调", "用工具：\n<t",

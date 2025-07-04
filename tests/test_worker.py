@@ -1,12 +1,12 @@
 import httpx
 import pytest
 
-from src.common import project_root
+from omnibox_wizard.common import project_root
 from tests.helper.backend_client import BackendClient
 from tests.helper.fixture import worker_config, backend_client
-from src.wizard.config import WorkerConfig
-from src.wizard.entity import Task
-from src.wizard.wand.worker import Worker
+from omnibox_wizard.wizard.config import WorkerConfig
+from omnibox_wizard.wizard.entity import Task
+from omnibox_wizard.wizard.wand.worker import Worker
 
 fake_html: bool = False
 

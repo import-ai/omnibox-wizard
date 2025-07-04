@@ -5,13 +5,13 @@ import tempfile
 import pytest
 from dotenv import load_dotenv
 
-from src.common import project_root
+from omnibox_wizard.common import project_root
 from tests.helper.backend_client import BackendClient
 from tests.helper.fixture import backend_client
-from src.wizard.config import OpenAIConfig
-from src.wizard.entity import Task
-from src.wizard.wand.functions import Convertor
-from src.wizard.wand.worker import Worker
+from omnibox_wizard.wizard.config import OpenAIConfig
+from omnibox_wizard.wizard.entity import Task
+from omnibox_wizard.wizard.wand.functions import Convertor
+from omnibox_wizard.wizard.wand.worker import Worker
 
 load_dotenv()
 

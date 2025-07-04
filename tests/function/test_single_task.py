@@ -2,9 +2,9 @@ import httpx
 import pytest
 
 from tests.helper.fixture import worker_config
-from src.wizard.config import WorkerConfig
-from src.wizard.entity import Task
-from src.wizard.wand.worker import Worker
+from omnibox_wizard.wizard.config import WorkerConfig
+from omnibox_wizard.wizard.entity import Task
+from omnibox_wizard.wizard.wand.worker import Worker
 
 
 @pytest.mark.parametrize("task_id", ["UqZHmUr28DyZRQ4y5SxGji"])

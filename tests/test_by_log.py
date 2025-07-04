@@ -4,7 +4,7 @@ import os
 import httpx
 import pytest
 
-from src.common import project_root
+from omnibox_wizard.common import project_root
 from tests.helper.fixture import client
 from tests.test_ask import assert_stream, api_stream
 

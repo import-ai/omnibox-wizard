@@ -4,9 +4,9 @@ from concurrent.futures import ThreadPoolExecutor
 from uvicorn import Config, Server
 
 from tests.helper.fixture import config, remote_config
-from src.wizard.api.server import app
-from src.wizard.config import WorkerConfig
-from src.wizard.wand.worker import Worker
+from omnibox_wizard.wizard.api.server import app
+from omnibox_wizard.wizard.config import WorkerConfig
+from omnibox_wizard.wizard.wand.worker import Worker
 
 
 def run_server_in_thread(host: str, port: int):

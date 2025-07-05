@@ -2,7 +2,7 @@ from typing import TypedDict, Literal, List
 
 
 class DeltaOperation(TypedDict):
-    type: str
+    tag: str
     delta: str
 
 
@@ -27,11 +27,11 @@ class StreamParser:
             if next_tag_start == -1:
                 # No tag, all in current context
                 if cursor < len(text):
-                    ops.append({"type": self._current, "delta": text[cursor:]})
+                    ops.append({"tag": self._current, "delta": text[cursor:]})
                 break
             if next_tag_start > cursor:
                 # Content before next tag
-                ops.append({"type": self._current, "delta": text[cursor:next_tag_start]})
+                ops.append({"tag": self._current, "delta": text[cursor:next_tag_start]})
                 cursor = next_tag_start
 
             # Now at a tag

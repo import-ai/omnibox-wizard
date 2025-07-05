@@ -262,9 +262,9 @@ class Agent(BaseSearchableAgent):
                             normal_content: str = ''
                             operations: list[DeltaOperation] = stream_parser.parse(v)
                             for operation in operations:
-                                if operation['type'] == 'think':
+                                if operation['tag'] == 'think':
                                     raise ValueError('Unexpected think operation in content delta.')
-                                elif operation['type'] == 'tool_call':
+                                elif operation['tag'] == 'tool_call':
                                     tool_calls_buffer += operation['delta']
                                 else:
                                     normal_content += operation['delta']

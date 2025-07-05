@@ -35,6 +35,6 @@ def test_stream_output_parser(tokens: list[str]):
     for token in tokens:
         operations: list[DeltaOperation] = parser.parse(token)
         for op in operations:
-            message[op['type']] += op['delta']
+            message[op['tag']] += op['delta']
     for key in message.keys():
         assert message[key] == expected_message[key]

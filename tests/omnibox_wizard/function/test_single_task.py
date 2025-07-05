@@ -1,7 +1,7 @@
 import httpx
 import pytest
 
-from tests.helper.fixture import worker_config
+from tests.omnibox_wizard.helper.fixture import worker_config
 from omnibox_wizard.wizard.config import WorkerConfig
 from omnibox_wizard.wizard.entity import Task
 from omnibox_wizard.wizard.wand.worker import Worker

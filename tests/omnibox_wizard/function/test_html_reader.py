@@ -5,7 +5,7 @@ import pytest
 
 from omnibox_wizard.common import project_root
 from omnibox_wizard.common.trace_info import TraceInfo
-from tests.helper.fixture import trace_info
+from tests.omnibox_wizard.helper.fixture import trace_info
 from omnibox_wizard.wizard.entity import Task
 from omnibox_wizard.wizard.wand.functions import HTMLReaderV2
 

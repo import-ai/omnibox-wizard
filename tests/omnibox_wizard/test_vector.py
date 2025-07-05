@@ -6,7 +6,7 @@ import pytest
 from omnibox_wizard.common.config_loader import Loader
 from omnibox_wizard.wizard.config import Config, ENV_PREFIX
 from omnibox_wizard.wizard.grimoire.entity.chunk import Chunk, ChunkType
-from tests.helper.fixture import meilisearch_endpoint
+from tests.omnibox_wizard.helper.fixture import meilisearch_endpoint
 from omnibox_wizard.wizard.grimoire.entity.tools import Condition
 from omnibox_wizard.wizard.grimoire.retriever.meili_vector_db import MeiliVectorDB
 

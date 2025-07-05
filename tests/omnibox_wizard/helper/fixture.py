@@ -11,9 +11,9 @@ from omnibox_wizard.common import project_root
 from omnibox_wizard.common.config_loader import Loader
 from omnibox_wizard.common.logger import get_logger
 from omnibox_wizard.common.trace_info import TraceInfo
-from tests.helper.backend_client import BackendClient
-from tests.helper.chroma_container import ChromaContainer
-from tests.helper.meilisearch_container import MeiliSearchContainer
+from tests.omnibox_wizard.helper.backend_client import BackendClient
+from tests.omnibox_wizard.helper.chroma_container import ChromaContainer
+from tests.omnibox_wizard.helper.meilisearch_container import MeiliSearchContainer
 from omnibox_wizard.wizard.api.server import app
 from omnibox_wizard.wizard.config import Config, ENV_PREFIX, WorkerConfig
 from omnibox_wizard.wizard.wand.worker import Worker

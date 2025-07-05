@@ -5,8 +5,8 @@ import httpx
 import pytest
 
 from omnibox_wizard.common import project_root
-from tests.helper.fixture import client
-from tests.test_ask import assert_stream, api_stream
+from tests.omnibox_wizard.helper.fixture import client
+from tests.omnibox_wizard.test_ask import assert_stream, api_stream
 
 log_basedir: str = project_root.path("tests/resources/files/log_inputs")
 logs = os.listdir(log_basedir)

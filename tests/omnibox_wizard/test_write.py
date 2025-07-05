@@ -3,8 +3,8 @@ from typing import List
 import httpx
 import pytest
 
-from tests.helper.fixture import client
-from tests.test_ask import assert_stream, api_stream, namespace_id, get_agent_request, vector_db_init
+from tests.omnibox_wizard.helper.fixture import client
+from tests.omnibox_wizard.test_ask import assert_stream, api_stream, namespace_id, get_agent_request, vector_db_init
 
 
 @pytest.mark.parametrize("enable_thinking", [True, False, None])

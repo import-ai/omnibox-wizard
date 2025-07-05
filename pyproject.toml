@@ -3,9 +3,9 @@ name = "omnibox-wizard"
 version = "0.1.0"
 description = "OmniBox Wizard"
 authors = [
-    {name = "Lucien Shui",email = "lucien@lucien.ink"}
+    { name = "Lucien Shui", email = "lucien@lucien.ink" }
 ]
-license = {text = "Apache License 2.0"}
+license = { text = "Apache License 2.0" }
 readme = "README.md"
 requires-python = ">=3.12,<4.0"
 dependencies = [
@@ -26,10 +26,7 @@ dependencies = [
 ]
 
 [tool.poetry]
-package-mode = true
-
-[[tool.poetry.packages]]
-include = "omnibox_wizard"
+package-mode = false
 
 [tool.poetry.group.test.dependencies]
 pytest = "^8.3.5"

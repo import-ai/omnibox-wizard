@@ -3,7 +3,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from uvicorn import Config, Server
 
-from tests.helper.fixture import config, remote_config
+from tests.omnibox_wizard.helper.fixture import config, remote_config
 from omnibox_wizard.wizard.api.server import app
 from omnibox_wizard.wizard.config import WorkerConfig
 from omnibox_wizard.wizard.wand.worker import Worker

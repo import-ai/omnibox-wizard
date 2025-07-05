@@ -1,7 +1,7 @@
 import pytest
 
 from omnibox_wizard.common.trace_info import TraceInfo
-from tests.helper.fixture import trace_info, remote_config
+from tests.omnibox_wizard.helper.fixture import trace_info, remote_config
 from omnibox_wizard.wizard.config import Config
 from omnibox_wizard.wizard.grimoire.common_ai import CommonAI
 

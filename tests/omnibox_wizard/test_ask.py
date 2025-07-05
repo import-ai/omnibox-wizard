@@ -9,7 +9,7 @@ from omnibox_wizard.wizard.grimoire.agent.agent import UserQueryPreprocessor
 from omnibox_wizard.wizard.grimoire.entity.api import MessageDto
 from omnibox_wizard.wizard.grimoire.entity.tools import Condition
 from omnibox_wizard.wizard.wand.worker import Worker
-from tests.helper.fixture import client, worker
+from tests.omnibox_wizard.helper.fixture import client, worker
 
 
 class Colors:

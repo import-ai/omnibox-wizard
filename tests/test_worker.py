@@ -2,32 +2,33 @@ import httpx
 import pytest
 
 from omnibox_wizard.common import project_root
-from tests.helper.backend_client import BackendClient
-from tests.helper.fixture import worker_config, backend_client
 from omnibox_wizard.wizard.config import WorkerConfig
 from omnibox_wizard.wizard.entity import Task
 from omnibox_wizard.wizard.wand.worker import Worker
+from tests.helper.backend_client import BackendClient
+from tests.helper.fixture import worker_config, backend_client
 
-fake_html: bool = False
+fake_html: bool = True
 
 
 @pytest.fixture(scope="function")
 def html() -> str:
-    with project_root.open("tests/resources/files/index.html") as f:
-        yield f.read()
+    if fake_html:
+        html = "<html><header><title>Test Title</title></header><body><p>Hello World!</p></body></html>"
+        yield html
+    else:
+        with project_root.open("tests/resources/files/index.html") as f:
+            yield f.read()
 
 
 @pytest.fixture(scope="function")
 def task_id(backend_client: BackendClient, html: str) -> int:
-    if fake_html:
-        html = "<html><header><title>Test Title</title></header><body><p>Hello World!</p></body></html>"
-
     response: httpx.Response = backend_client.post("/api/v1/wizard/collect", json={
         "url": "https://example.com",
         "html": html,
         "title": "Test",
         "namespace_id": backend_client.namespace_id,
-        "space_type": "private"
+        "parentId": backend_client.private_root_id,
     })
 
     json_response: dict = response.json()

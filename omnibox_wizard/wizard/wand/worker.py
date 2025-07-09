@@ -70,11 +70,7 @@ class Worker:
                     return task
                 json_response = http_response.json()
                 logging_func({"status_code": http_response.status_code, "response": json_response})
-                if json_response:
-                    return Task.model_validate(json_response | {
-                        "user_id": json_response["user"]["id"],
-                        "namespace_id": json_response["namespace"]["id"]
-                    })
+                return Task.model_validate(json_response)
         except Exception as e:
             self.logger.exception({"error": CommonException.parse_exception(e)})
         return task

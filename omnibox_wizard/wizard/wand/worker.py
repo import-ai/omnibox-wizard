@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Optional, Callable
 
 import httpx
+from pydantic.alias_generators import to_snake
 
 from omnibox_wizard.common.exception import CommonException
 from omnibox_wizard.common.logger import get_logger
@@ -70,11 +71,7 @@ class Worker:
                     return task
                 json_response = http_response.json()
                 logging_func({"status_code": http_response.status_code, "response": json_response})
-                if json_response:
-                    return Task.model_validate(json_response | {
-                        "user_id": json_response["user"]["id"],
-                        "namespace_id": json_response["namespace"]["id"]
-                    })
+                return Task.model_validate({to_snake(key): value for key, value in json_response.items()})
         except Exception as e:
             self.logger.exception({"error": CommonException.parse_exception(e)})
         return task

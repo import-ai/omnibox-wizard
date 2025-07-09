@@ -27,12 +27,18 @@ class BackendClient(httpx.Client):
 
         self.headers["Authorization"] = f"Bearer {self.access_token}"
 
-        response: httpx.Response = self.get("/api/v1/namespaces/user")
+        response: httpx.Response = self.get("/api/v1/namespaces")
+        assert response.is_success, response.text
         namespace_list_result: dict = response.json()
-        assert response.is_success, namespace_list_result
         assert len(namespace_list_result) > 0
         namespace: dict = namespace_list_result[0]
         self.namespace_id: str = namespace["id"]
+
+        response: httpx.Response = self.get(f"/api/v1/namespaces/{self.namespace_id}/root")
+        assert response.is_success, response.text
+        json_response: dict = response.json()
+        self.private_root_id: str = json_response["private"]["id"]
+        self.teamspace_root_id: str = json_response["teamspace"]["id"]
 
     def __enter__(self) -> "BackendClient":
         return self

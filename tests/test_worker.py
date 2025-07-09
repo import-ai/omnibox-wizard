@@ -8,7 +8,7 @@ from omnibox_wizard.wizard.wand.worker import Worker
 from tests.helper.backend_client import BackendClient
 from tests.helper.fixture import worker_config, backend_client
 
-fake_html: bool = False
+fake_html: bool = True
 
 
 @pytest.fixture(scope="function")

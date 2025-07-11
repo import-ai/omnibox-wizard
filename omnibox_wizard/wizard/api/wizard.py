@@ -4,6 +4,7 @@ from typing import AsyncIterator
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 
 from omnibox_wizard.common.config_loader import Loader
 from omnibox_wizard.common.trace_info import TraceInfo
@@ -32,7 +33,7 @@ async def init():
 
 
 async def stream_wrapper(
-        request: BaseChatRequest,
+        request: BaseModel,
         stream: AsyncIterator[ChatResponse],
         trace_info: TraceInfo
 ) -> AsyncIterator[dict]:

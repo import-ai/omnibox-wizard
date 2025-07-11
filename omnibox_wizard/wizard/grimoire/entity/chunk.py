@@ -1,13 +1,12 @@
 import time
 from datetime import datetime
 from enum import Enum
-from typing import Optional
+from typing import Optional, Literal
 
 import shortuuid
 from pydantic import BaseModel, Field
 
-from omnibox_wizard.common.utils import remove_continuous_break_lines
-from omnibox_wizard.wizard.grimoire.entity.retrieval import BaseRetrieval, Citation
+from omnibox_wizard.wizard.grimoire.entity.retrieval import BaseRetrieval, Citation, to_prompt
 from omnibox_wizard.wizard.grimoire.entity.tools import PrivateSearchResourceType
 
 
@@ -47,34 +46,35 @@ class ResourceChunkRetrieval(BaseRetrieval):
     folder: str | None = Field(default=None, description="The folder of the chunk, if any")
     type: PrivateSearchResourceType | None = Field(default=None, description="The type of the resource")
     chunk: Chunk
+    source: Literal["private"] = "private"
 
-    def source(self) -> str:
-        return "private"
-
-    def to_prompt(self) -> str:
-        contents: list[str] = []
+    def to_prompt(self, i: int | None = None) -> str:
         citation = self.to_citation()
 
+        tag_attrs: dict = {"source": self.source}
+        body_attrs: dict = {}
+
         if self.chunk.resource_id:
-            contents.append(f"<resource_id>{self.chunk.resource_id}</resource_id>")
+            tag_attrs["resource_id"] = self.chunk.resource_id
         if self.folder:
-            contents.append(f"<folder>{self.folder}</folder>")
+            tag_attrs["folder"] = self.folder
         if citation.title:
-            contents.append(f"<title>{citation.title}</title>")
+            tag_attrs["title"] = citation.title
         if citation.snippet:
-            contents.append(f"<snippet>{citation.snippet}</snippet>")
+            body_attrs["snippet"] = citation.snippet
         if citation.updated_at:
-            contents.append(f"<updated_at>{citation.updated_at}</updated_at>")
+            tag_attrs["updated_at"] = citation.updated_at
         if self.chunk.start_index is not None:
-            contents.append(f"<start_index>{self.chunk.start_index}</start_index>")
+            tag_attrs["start_index"] = str(self.chunk.start_index)
         if self.chunk.end_index is not None:
-            contents.append(f"<end_index>{self.chunk.end_index}</end_index>")
-        return remove_continuous_break_lines("\n".join(contents))
+            tag_attrs["end_index"] = str(self.chunk.end_index)
+        return to_prompt(tag_attrs, body_attrs, i=i)
 
     def to_citation(self) -> Citation:
         return Citation(
             title=self.chunk.title,
             snippet=self.chunk.text,
             link=self.chunk.resource_id,
-            updated_at=timestamp_to_datetime(self.chunk.updated_at)
+            updated_at=timestamp_to_datetime(self.chunk.updated_at),
+            source=self.source,
         )

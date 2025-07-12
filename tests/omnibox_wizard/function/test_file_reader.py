@@ -6,8 +6,8 @@ import pytest
 from dotenv import load_dotenv
 
 from omnibox_wizard.common import project_root
-from tests.helper.backend_client import BackendClient
-from tests.helper.fixture import backend_client
+from tests.omnibox_wizard.helper.backend_client import BackendClient
+from tests.omnibox_wizard.helper.fixture import backend_client
 from omnibox_wizard.wizard.config import OpenAIConfig
 from omnibox_wizard.wizard.entity import Task
 from omnibox_wizard.wizard.wand.functions import Convertor

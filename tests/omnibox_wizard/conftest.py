@@ -1,5 +1,5 @@
 # https://blog.csdn.net/qq_36606793/article/details/118523699
-from tests.helper.fixture import *  # noqa
+from tests.omnibox_wizard.helper.fixture import *  # noqa
 
 
 def pytest_collection_modifyitems(items):  # noqa

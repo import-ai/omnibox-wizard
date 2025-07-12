@@ -132,16 +132,16 @@ class BaseSearchableAgent(BaseStreamable, ABC):
         assert all(t in self.retriever_mapping for t in ALL_TOOLS), "All tools must be registered in retriever mapping."
 
     def get_tool_executor(
-            self, agent_request: AgentRequest,
+            self, options: ChatRequestOptions,
             trace_info: TraceInfo,
             wrap_reranker: bool = True
     ) -> ToolExecutor:
         tool_executor_config_list: list[ToolExecutorConfig] = [
             self.retriever_mapping[tool.name].get_tool_executor_config(tool, trace_info=trace_info.get_child(tool.name))
-            for tool in agent_request.tools or []
+            for tool in options.tools or []
         ]
 
-        if agent_request.merge_search:
+        if options.merge_search:
             tool_executor_config_list = [get_tool_executor_config(tool_executor_config_list, self.reranker)]
         elif self.reranker and wrap_reranker:  # Add rerank to tool executor config if reranker_config is provided
             for tool_executor_config in tool_executor_config_list:
@@ -262,9 +262,9 @@ class Agent(BaseSearchableAgent):
                             normal_content: str = ''
                             operations: list[DeltaOperation] = stream_parser.parse(v)
                             for operation in operations:
-                                if operation['type'] == 'think':
+                                if operation['tag'] == 'think':
                                     raise ValueError('Unexpected think operation in content delta.')
-                                elif operation['type'] == 'tool_call':
+                                elif operation['tag'] == 'tool_call':
                                     tool_calls_buffer += operation['delta']
                                 else:
                                     normal_content += operation['delta']

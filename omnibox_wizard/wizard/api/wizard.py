@@ -4,6 +4,7 @@ from typing import AsyncIterator
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 
 from omnibox_wizard.common.config_loader import Loader
 from omnibox_wizard.common.trace_info import TraceInfo
@@ -31,10 +32,14 @@ async def init():
     write = Write(config)
 
 
-async def call_stream(s: BaseStreamable, request: BaseChatRequest, trace_info: TraceInfo) -> AsyncIterator[dict]:
+async def stream_wrapper(
+        request: BaseModel,
+        stream: AsyncIterator[ChatResponse],
+        trace_info: TraceInfo
+) -> AsyncIterator[dict]:
     trace_info.debug({"request": request.model_dump(exclude_none=True)})
     try:
-        async for delta in s.astream(trace_info.get_child("agent"), request):  # noqa
+        async for delta in stream:
             yield delta.model_dump(exclude_none=True)
     except Exception as e:
         yield {"response_type": "error", "message": "Unknown error"}
@@ -44,6 +49,12 @@ async def call_stream(s: BaseStreamable, request: BaseChatRequest, trace_info: T
             "request": request.model_dump(exclude_none=True),
         })
     yield {"response_type": "done"}
+
+
+async def call_stream(s: BaseStreamable, request: BaseChatRequest, trace_info: TraceInfo) -> AsyncIterator[dict]:
+    stream = s.astream(trace_info.get_child("agent"), request)
+    async for delta in stream_wrapper(request, stream, trace_info):  # noqa
+        yield delta
 
 
 async def sse_format(iterator: AsyncIterator[dict]) -> AsyncIterator[str]:

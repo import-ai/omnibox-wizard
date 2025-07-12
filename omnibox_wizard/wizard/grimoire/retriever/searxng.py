@@ -1,48 +1,31 @@
 import asyncio
 from datetime import datetime
 from functools import partial
-from urllib.parse import urlparse
+from typing import Literal
 
 import httpx
 
 from omnibox_wizard.common.trace_info import TraceInfo
-from omnibox_wizard.common.utils import remove_continuous_break_lines
 from omnibox_wizard.wizard.grimoire.entity.retrieval import Citation, BaseRetrieval
 from omnibox_wizard.wizard.grimoire.entity.tools import BaseTool
 from omnibox_wizard.wizard.grimoire.retriever.base import BaseRetriever, SearchFunction
 
 
-def get_domain(url: str) -> str:
-    return urlparse(url).netloc
-
-
 class SearXNGRetrieval(BaseRetrieval):
     result: dict
+    source: Literal["web"] = "web"
 
-    def source(self) -> str:
-        return "web"
-
-    def to_prompt(self) -> str:
+    def to_prompt(self, i: int | None = None) -> str:
         citation = self.to_citation()
-        contents: list[str] = []
-
-        if citation.title:
-            contents.append(f"<title>{citation.title}</title>")
-        if citation.snippet:
-            contents.append(f"<snippet>{citation.snippet}</snippet>")
-        if citation.updated_at:
-            contents.append(f"<updated_at>{citation.updated_at}</updated_at>")
-        if citation.link and (host := get_domain(citation.link)):
-            contents.append(f"<host>{host}</host>")
-
-        return remove_continuous_break_lines("\n".join(contents))
+        return citation.to_prompt(i)
 
     def to_citation(self) -> Citation:
         citation: Citation = Citation(
             link=self.result['url'],
             title=self.result['title'],
             snippet=self.result['content'],
-            updated_at=format_date(self.result.get('publishedDate', None))
+            updated_at=format_date(self.result.get('publishedDate', None)),
+            source=self.source,
         )
         return citation
 

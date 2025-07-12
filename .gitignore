@@ -162,6 +162,4 @@ cython_debug/
 .idea/
 
 .DS_Store
-tests/resources/files/*
-
-omnibox_wizard/compose
+tests/omnibox_wizard/resources/files/*

@@ -147,5 +147,5 @@ class FileReader(BaseFunction):
                     "mime_ext": mime_ext,
                 }
 
-        result_dict: dict = {"title": title, "markdown": markdown, "images": images}
+        result_dict: dict = {"title": title, "markdown": markdown} | ({"images": images} if images else {})
         return result_dict

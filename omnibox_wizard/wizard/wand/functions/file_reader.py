@@ -11,6 +11,7 @@ from omnibox_wizard.common.trace_info import TraceInfo
 from omnibox_wizard.wizard.config import WorkerConfig, OpenAIConfig
 from omnibox_wizard.wizard.entity import Task
 from omnibox_wizard.wizard.wand.functions.base_function import BaseFunction
+from omnibox_wizard.wizard.wand.functions.file_readers.pdf_reader import PDFReader
 
 
 class OfficeOperatorClient(httpx.AsyncClient):
@@ -58,7 +59,12 @@ class ASRClient(httpx.AsyncClient):
 
 
 class Convertor:
-    def __init__(self, office_operator_base_url: str, asr_config: OpenAIConfig):
+    def __init__(
+            self,
+            office_operator_base_url: str,
+            asr_config: OpenAIConfig,
+            pdf_reader_base_url: str,
+    ):
         self.markitdown: MarkItDown = MarkItDown()
         self.office_operator_base_url: str = office_operator_base_url
         self.asr_client: ASRClient = ASRClient(
@@ -66,9 +72,10 @@ class Convertor:
             base_url=asr_config.base_url,
             headers={"Authorization": f"Bearer {asr_config.api_key}"},
         )
+        self.pdf_reader: PDFReader = PDFReader(base_url=pdf_reader_base_url)
 
-    async def convert(self, filepath: str, mime_ext: str, mimetype: str) -> str:
-        if mime_ext in [".pptx", ".docx", ".pdf", ".ppt", ".doc"]:
+    async def convert(self, filepath: str, mime_ext: str, mimetype: str) -> tuple[str, dict[str, str]]:
+        if mime_ext in [".pptx", ".docx", ".ppt", ".doc"]:
             path = filepath
             if mime_ext in [".ppt", ".doc"]:
                 path: str = filepath + "x"
@@ -76,6 +83,8 @@ class Convertor:
                     await client.migrate(filepath, mime_ext, path, mimetype)
             result = self.markitdown.convert(path)
             markdown: str = result.text_content
+        elif mime_ext in [".pdf"]:
+            return await self.pdf_reader.convert(filepath)
         elif mime_ext in [".md", ".txt"]:
             with open(filepath, 'r') as f:
                 markdown: str = f.read()
@@ -83,7 +92,7 @@ class Convertor:
             markdown: str = await self.asr_client.transcribe(filepath, mimetype)
         else:
             raise ValueError(f"unsupported_type: {mime_ext}")
-        return markdown
+        return markdown, {}
 
 
 class FileReader(BaseFunction):
@@ -93,7 +102,11 @@ class FileReader(BaseFunction):
         self.mimetype_mapping: dict[str, str] = {
             "text/x-markdown": ".md"
         }
-        self.convertor: Convertor = Convertor(config.task.office_operator_base_url, config.task.asr)
+        self.convertor: Convertor = Convertor(
+            office_operator_base_url=config.task.office_operator_base_url,
+            asr_config=config.task.asr,
+            pdf_reader_base_url=config.task.pdf_reader_base_url,
+        )
 
     async def download(self, resource_id: str, target: str):
         async with httpx.AsyncClient(base_url=self.base_url) as client:
@@ -127,15 +140,12 @@ class FileReader(BaseFunction):
             mime_ext: str | None = self.guess_extension(mimetype)
 
             try:
-                markdown: str = await self.convertor.convert(local_path, mime_ext, mimetype)
+                markdown, images = await self.convertor.convert(local_path, mime_ext, mimetype)
             except ValueError:
                 return {
                     "message": "unsupported_type",
                     "mime_ext": mime_ext,
                 }
 
-        result_dict: dict = {
-            "title": title,
-            "markdown": markdown
-        }
+        result_dict: dict = {"title": title, "markdown": markdown, "images": images}
         return result_dict

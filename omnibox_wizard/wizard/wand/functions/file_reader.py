@@ -148,6 +148,6 @@ class FileReader(BaseFunction):
                 }
 
         result_dict: dict = {"title": title, "markdown": markdown} | ({"images": [
-            img.model_dump(exclude_none=True) for img in images
+            image.model_dump(exclude_none=True) for image in images
         ]} if images else {})
         return result_dict

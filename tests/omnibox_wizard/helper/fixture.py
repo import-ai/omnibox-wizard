@@ -15,8 +15,9 @@ from tests.omnibox_wizard.helper.backend_client import BackendClient
 from tests.omnibox_wizard.helper.chroma_container import ChromaContainer
 from tests.omnibox_wizard.helper.meilisearch_container import MeiliSearchContainer
 from omnibox_wizard.wizard.api.server import app
-from omnibox_wizard.wizard.config import Config, ENV_PREFIX, WorkerConfig
-from omnibox_wizard.wizard.wand.worker import Worker
+from omnibox_wizard.wizard.config import Config, ENV_PREFIX
+from omnibox_wizard.worker.config import WorkerConfig
+from omnibox_wizard.worker.worker import Worker
 
 logger = get_logger("fixture")
 

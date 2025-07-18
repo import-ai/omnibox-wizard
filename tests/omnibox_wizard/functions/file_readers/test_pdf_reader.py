@@ -4,8 +4,8 @@ import os
 import pytest
 
 from omnibox_wizard.common import project_root
-from omnibox_wizard.wizard.config import WorkerConfig
-from omnibox_wizard.wizard.wand.functions.file_readers.pdf_reader import PDFReader
+from omnibox_wizard.worker.config import WorkerConfig
+from omnibox_wizard.worker.functions.file_readers.pdf_reader import PDFReader
 from tests.omnibox_wizard.helper.fixture import remote_worker_config
 
 input_base_dir: str = project_root.path("tests/omnibox_wizard/resources/files/pdfs")

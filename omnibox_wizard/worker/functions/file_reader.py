@@ -8,10 +8,11 @@ import httpx
 from markitdown import MarkItDown
 
 from omnibox_wizard.common.trace_info import TraceInfo
-from omnibox_wizard.wizard.config import WorkerConfig, OpenAIConfig
-from omnibox_wizard.wizard.entity import Task, Image
-from omnibox_wizard.wizard.wand.functions.base_function import BaseFunction
-from omnibox_wizard.wizard.wand.functions.file_readers.pdf_reader import PDFReader
+from omnibox_wizard.wizard.config import OpenAIConfig
+from omnibox_wizard.worker.config import WorkerConfig
+from omnibox_wizard.worker.entity import Task, Image
+from omnibox_wizard.worker.functions.base_function import BaseFunction
+from omnibox_wizard.worker.functions.file_readers.pdf_reader import PDFReader
 
 
 class OfficeOperatorClient(httpx.AsyncClient):

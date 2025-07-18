@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from pypdf import PdfReader, PdfWriter
 
 from omnibox_wizard.common.utils import remove_continuous_break_lines
-from omnibox_wizard.wizard.entity import Image
+from omnibox_wizard.worker.entity import Image
 
 
 class PageChunk(BaseModel):

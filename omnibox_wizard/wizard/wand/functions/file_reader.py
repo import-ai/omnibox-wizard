@@ -9,7 +9,7 @@ from markitdown import MarkItDown
 
 from omnibox_wizard.common.trace_info import TraceInfo
 from omnibox_wizard.wizard.config import WorkerConfig, OpenAIConfig
-from omnibox_wizard.wizard.entity import Task
+from omnibox_wizard.wizard.entity import Task, Image
 from omnibox_wizard.wizard.wand.functions.base_function import BaseFunction
 from omnibox_wizard.wizard.wand.functions.file_readers.pdf_reader import PDFReader
 
@@ -74,7 +74,7 @@ class Convertor:
         )
         self.pdf_reader: PDFReader = PDFReader(base_url=pdf_reader_base_url)
 
-    async def convert(self, filepath: str, mime_ext: str, mimetype: str) -> tuple[str, dict[str, str]]:
+    async def convert(self, filepath: str, mime_ext: str, mimetype: str) -> tuple[str, list[Image]]:
         if mime_ext in [".pptx", ".docx", ".ppt", ".doc"]:
             path = filepath
             if mime_ext in [".ppt", ".doc"]:
@@ -92,7 +92,7 @@ class Convertor:
             markdown: str = await self.asr_client.transcribe(filepath, mimetype)
         else:
             raise ValueError(f"unsupported_type: {mime_ext}")
-        return markdown, {}
+        return markdown, []
 
 
 class FileReader(BaseFunction):
@@ -147,5 +147,7 @@ class FileReader(BaseFunction):
                     "mime_ext": mime_ext,
                 }
 
-        result_dict: dict = {"title": title, "markdown": markdown} | ({"images": images} if images else {})
+        result_dict: dict = {"title": title, "markdown": markdown} | ({"images": [
+            img.model_dump(exclude_none=True) for img in images
+        ]} if images else {})
         return result_dict

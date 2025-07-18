@@ -9,13 +9,14 @@ from pydantic import BaseModel
 from pypdf import PdfReader, PdfWriter
 
 from omnibox_wizard.common.utils import remove_continuous_break_lines
+from omnibox_wizard.wizard.entity import Image
 
 
 class PageChunk(BaseModel):
     markdown: str
     is_start: bool
     is_end: bool
-    images: dict[str, str]
+    images: list[Image]
     page_no: int
     index: int
 
@@ -38,14 +39,14 @@ class PDFReader:
                 page_bytes: bytes = output_stream.getvalue()
             yield base64.b64encode(page_bytes).decode("ascii")
 
-    def concatenate_pages(self, page_chunks: list[PageChunk]) -> tuple[str, dict[str, str]]:
+    def concatenate_pages(self, page_chunks: list[PageChunk]) -> tuple[str, list[Image]]:
         markdown: str = ""
-        images: dict[str, str] = {}
+        images: list[Image] = []
 
         previous_is_end = True
 
         for page_chunk in page_chunks:
-            images.update(page_chunk.images)
+            images.extend(page_chunk.images)
 
             # Determine whether to add a space or a newline
             if not page_chunk.is_start and not previous_is_end:
@@ -83,13 +84,17 @@ class PDFReader:
 
         for i, res in enumerate(json_response["result"]["layoutParsingResults"]):
             markdown: str = res["markdown"]["text"]
-            mapper: dict[str, str] = {
-                k: shortuuid.uuid() + "." + k.split(".")[-1]
-                for k in res["markdown"]["images"].keys()
-            }
-            images = {mapper[k]: v for k, v in res["markdown"]["images"].items()}
-            for k, v in mapper.items():
-                markdown = markdown.replace(k, v)
+            images: list[dict[str, str]] = [
+                {
+                    "name": k,
+                    "link": shortuuid.uuid() + "." + k.split(".")[-1],
+                    "data": v,
+                    "mimetype": "image/jpeg"
+                }
+                for k, v in res["markdown"]["images"].items()
+            ]
+            for image in images:
+                markdown = markdown.replace(image["name"], image["link"])
 
             page_chunks.append(PageChunk.model_validate({
                 "markdown": markdown,
@@ -105,7 +110,7 @@ class PDFReader:
         async with self.semaphore:
             return await self.get_page_chunk(*args, **kwargs)
 
-    async def convert(self, pdf_path: str) -> tuple[str, dict[str, str]]:
+    async def convert(self, pdf_path: str) -> tuple[str, list[Image]]:
         page_chunks = sum(await asyncio.gather(*[
             self._get_page_chunk(page_data, page_no)
             for page_no, page_data in enumerate(self.get_pages(pdf_path))

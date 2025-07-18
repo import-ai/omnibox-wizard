@@ -26,3 +26,10 @@ class Task(Base):
     started_at: datetime | None = None
     ended_at: datetime | None = None
     canceled_at: datetime | None = None
+
+
+class Image(BaseModel):
+    name: str = Field(default=None)
+    link: str
+    data: str = Field(description="Base64 encoded image data")
+    mimetype: str = Field(examples=["image/jpeg", "image/png", "image/gif"])

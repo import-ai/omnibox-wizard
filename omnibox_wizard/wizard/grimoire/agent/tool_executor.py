@@ -8,8 +8,18 @@ from omnibox_wizard.common.trace_info import TraceInfo
 from omnibox_wizard.wizard.grimoire.entity.api import (
     ChatBaseResponse, ChatEOSResponse, ChatBOSResponse, ChatDeltaResponse, MessageDto
 )
+from omnibox_wizard.wizard.grimoire.entity.chunk import ResourceChunkRetrieval
 from omnibox_wizard.wizard.grimoire.entity.retrieval import BaseRetrieval, retrievals2prompt
 from omnibox_wizard.wizard.grimoire.entity.tools import ToolExecutorConfig
+from omnibox_wizard.wizard.grimoire.retriever.searxng import SearXNGRetrieval
+
+
+def cmp(retrieval: BaseRetrieval) -> tuple[int, str, int, float]:
+    if isinstance(retrieval, ResourceChunkRetrieval):  # GROUP BY resource_id ORDER BY start_index ASC
+        return 0, retrieval.chunk.resource_id, retrieval.chunk.start_index, 0.
+    elif isinstance(retrieval, SearXNGRetrieval):  # ORDER BY score.rerank DESC
+        return 1, '', 0, -retrieval.score.rerank
+    raise ValueError(f"Unknown retrieval type: {type(retrieval)}")
 
 
 def retrieval_wrapper(
@@ -17,6 +27,7 @@ def retrieval_wrapper(
         current_cite_cnt: int,
         retrievals: list[BaseRetrieval]
 ) -> MessageDto:
+    retrievals = sorted(retrievals, key=cmp)
     content: str = retrievals2prompt(retrievals, current_cite_cnt)
     return MessageDto.model_validate({
         "message": {"role": "tool", "tool_call_id": tool_call_id, "content": content},

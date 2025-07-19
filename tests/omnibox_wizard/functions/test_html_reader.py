@@ -6,8 +6,8 @@ import pytest
 from omnibox_wizard.common import project_root
 from omnibox_wizard.common.trace_info import TraceInfo
 from tests.omnibox_wizard.helper.fixture import trace_info
-from omnibox_wizard.wizard.entity import Task
-from omnibox_wizard.wizard.wand.functions import HTMLReaderV2
+from omnibox_wizard.worker.entity import Task
+from omnibox_wizard.worker.functions import HTMLReaderV2
 
 html_reader_base_dir = "tests/resources/files/html_reader_input"
 

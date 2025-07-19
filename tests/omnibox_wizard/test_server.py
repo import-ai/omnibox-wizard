@@ -5,8 +5,8 @@ from uvicorn import Config, Server
 
 from tests.omnibox_wizard.helper.fixture import config, remote_config
 from omnibox_wizard.wizard.api.server import app
-from omnibox_wizard.wizard.config import WorkerConfig
-from omnibox_wizard.wizard.wand.worker import Worker
+from omnibox_wizard.worker.config import WorkerConfig
+from omnibox_wizard.worker.worker import Worker
 
 
 def run_server_in_thread(host: str, port: int):

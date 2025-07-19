@@ -1,5 +1,5 @@
 from omnibox_wizard.common.trace_info import TraceInfo
-from omnibox_wizard.wizard.entity import Task
+from omnibox_wizard.worker.entity import Task
 
 
 class BaseFunction:

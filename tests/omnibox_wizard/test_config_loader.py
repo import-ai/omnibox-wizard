@@ -1,4 +1,5 @@
-from omnibox_wizard.wizard.config import WorkerConfig, Config
+from omnibox_wizard.wizard.config import Config
+from omnibox_wizard.worker.config import WorkerConfig
 
 
 def test_config_loader(remote_worker_config: WorkerConfig, remote_config: Config):

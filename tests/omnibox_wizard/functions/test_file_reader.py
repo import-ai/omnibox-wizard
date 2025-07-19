@@ -9,9 +9,9 @@ from omnibox_wizard.common import project_root
 from tests.omnibox_wizard.helper.backend_client import BackendClient
 from tests.omnibox_wizard.helper.fixture import backend_client
 from omnibox_wizard.wizard.config import OpenAIConfig
-from omnibox_wizard.wizard.entity import Task
-from omnibox_wizard.wizard.wand.functions import Convertor
-from omnibox_wizard.wizard.wand.worker import Worker
+from omnibox_wizard.worker.entity import Task
+from omnibox_wizard.worker.functions import Convertor
+from omnibox_wizard.worker.worker import Worker
 
 load_dotenv()
 

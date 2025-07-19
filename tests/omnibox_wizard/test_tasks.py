@@ -6,8 +6,8 @@ from omnibox_wizard.common.logger import get_logger
 from omnibox_wizard.common.trace_info import TraceInfo
 from tests.omnibox_wizard.helper.fixture import client, worker_config
 from tests.omnibox_wizard.helper.fixture import trace_info
-from omnibox_wizard.wizard.config import WorkerConfig, ENV_PREFIX
-from omnibox_wizard.wizard.wand.worker import Worker
+from omnibox_wizard.worker.config import WorkerConfig, ENV_PREFIX
+from omnibox_wizard.worker.worker import Worker
 
 logger = get_logger("tests")
 

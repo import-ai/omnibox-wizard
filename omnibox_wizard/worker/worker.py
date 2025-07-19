@@ -8,12 +8,12 @@ import httpx
 from omnibox_wizard.common.exception import CommonException
 from omnibox_wizard.common.logger import get_logger
 from omnibox_wizard.common.trace_info import TraceInfo
-from omnibox_wizard.wizard.config import WorkerConfig
-from omnibox_wizard.wizard.entity import Task
-from omnibox_wizard.wizard.wand.functions.base_function import BaseFunction
-from omnibox_wizard.wizard.wand.functions.file_reader import FileReader
-from omnibox_wizard.wizard.wand.functions.html_reader import HTMLReaderV2
-from omnibox_wizard.wizard.wand.functions.index import UpsertIndex, DeleteIndex, UpsertMessageIndex
+from omnibox_wizard.worker.config import WorkerConfig
+from omnibox_wizard.worker.entity import Task
+from omnibox_wizard.worker.functions.base_function import BaseFunction
+from omnibox_wizard.worker.functions.file_reader import FileReader
+from omnibox_wizard.worker.functions.html_reader import HTMLReaderV2
+from omnibox_wizard.worker.functions.index import UpsertIndex, DeleteIndex, UpsertMessageIndex
 
 
 class Worker:

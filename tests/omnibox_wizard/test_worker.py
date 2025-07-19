@@ -2,9 +2,9 @@ import httpx
 import pytest
 
 from omnibox_wizard.common import project_root
-from omnibox_wizard.wizard.config import WorkerConfig
-from omnibox_wizard.wizard.entity import Task
-from omnibox_wizard.wizard.wand.worker import Worker
+from omnibox_wizard.worker.config import WorkerConfig
+from omnibox_wizard.worker.entity import Task
+from omnibox_wizard.worker.worker import Worker
 from tests.omnibox_wizard.helper.backend_client import BackendClient
 from tests.omnibox_wizard.helper.fixture import worker_config, backend_client
 

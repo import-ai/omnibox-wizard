@@ -181,7 +181,7 @@ def get_agent_request(
                 "name": "private_search",
                 "namespace_id": namespace_id,
                 "visible_resources": [
-                    *map(get_resource, resource_ids or []),
+                    *map(get_resource, resource_ids or [i for i, _, _, _ in create_test_case[1]]),
                     *map(get_resource, sum(map(get_resource_ids, parent_ids or []), []))
                 ],
                 "resources": [
@@ -204,7 +204,8 @@ def get_agent_request(
     # ("地球到火星的距离", ["r_id_a0", "r_id_b0"], None, 5),
     # ("下周计划", None, ["p_id_1"], 5),
     # ("下周计划", ["r_id_b0"], ["p_id_0"], 5),
-    ("小红是谁？", ["r_id_a0", "r_id_a1", "r_id_b0", "r_id_c0"], None, 5),
+    # ("小红是谁？", ["r_id_a0", "r_id_a1", "r_id_b0", "r_id_c0"], None, 5),
+    ("小红是谁？", None, None, 5),
 ])
 def test_ask(client: httpx.Client, vector_db_init: bool, namespace_id: str, query: str, expected_messages_length: int,
              enable_thinking: bool, resource_ids: List[str] | None, parent_ids: List[str] | None):

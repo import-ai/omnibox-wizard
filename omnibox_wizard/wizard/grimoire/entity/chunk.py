@@ -4,9 +4,9 @@ from enum import Enum
 from typing import Optional, Literal
 
 import shortuuid
-from pydantic import BaseModel, Field
+from pydantic import Field
 
-from omnibox_wizard.wizard.grimoire.entity.retrieval import BaseRetrieval, Citation, to_prompt
+from omnibox_wizard.wizard.grimoire.entity.retrieval import BaseRetrieval, Citation, to_prompt, Prompt
 from omnibox_wizard.wizard.grimoire.entity.tools import PrivateSearchResourceType
 
 
@@ -21,7 +21,7 @@ def timestamp_to_datetime(timestamp: float, date_format: str = "%Y-%m-%d %H:%M:%
     return datetime.fromtimestamp(timestamp).strftime(date_format)
 
 
-class Chunk(BaseModel):
+class Chunk(Prompt):
     title: str | None = Field(default=None, description="Chunk title, usually the title of the document")
     resource_id: str
     text: str | None = Field(default=None, description="Chunk content")
@@ -40,6 +40,14 @@ class Chunk(BaseModel):
     @property
     def metadata(self) -> dict:
         return self.model_dump(exclude_none=True, exclude={"chunk_id", "text"})
+
+    def to_prompt(self, i: int | None = None) -> str:
+        lines: list[str] = []
+        if self.title:
+            lines.append(f"Title: {self.title}")
+        if self.text:
+            lines.append(f"Snippet:\n{self.text}")
+        return "\n".join(lines)
 
 
 class ResourceChunkRetrieval(BaseRetrieval):

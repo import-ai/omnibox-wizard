@@ -29,6 +29,13 @@ class SearXNGRetrieval(BaseRetrieval):
         )
         return citation
 
+    def __eq__(self, other):
+        if not isinstance(other, SearXNGRetrieval):
+            return False
+        c = self.to_citation()
+        o = other.to_citation()
+        return c.link == o.link and c.title == o.title and c.snippet == o.snippet
+
 
 def format_date(date: str | None) -> str | None:
     if date:

@@ -55,6 +55,9 @@ class BaseRetrieval(Prompt):
     def to_citation(self) -> Citation:
         raise NotImplementedError
 
+    def __eq__(self, other) -> bool:
+        return self.to_prompt() == other.to_prompt() if isinstance(other, self.__class__) else False
+
 
 def retrievals2prompt(retrievals: list[Prompt], current_cite_cnt: int = 0) -> str:
     retrieval_prompt_list: list[str] = []

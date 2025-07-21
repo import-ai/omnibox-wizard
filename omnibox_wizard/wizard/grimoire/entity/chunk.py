@@ -86,3 +86,8 @@ class ResourceChunkRetrieval(BaseRetrieval):
             updated_at=timestamp_to_datetime(self.chunk.updated_at),
             source=self.source,
         )
+
+    def __eq__(self, other):
+        if not isinstance(other, ResourceChunkRetrieval):
+            return False
+        return self.chunk.chunk_id == other.chunk.chunk_id

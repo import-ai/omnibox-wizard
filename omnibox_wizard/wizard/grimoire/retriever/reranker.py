@@ -53,7 +53,11 @@ class Reranker:
             threshold: float | None = None,
             trace_info: TraceInfo | None = None,
     ) -> list[BaseRetrieval]:
-        if not retrievals:
+        unique_retrievals = []
+        for retrieval in retrievals:
+            if retrieval not in unique_retrievals:
+                unique_retrievals.append(retrieval)
+        if not unique_retrievals:
             return []
 
         k = k or self.k
@@ -64,8 +68,8 @@ class Reranker:
                 json={
                     "model": self.config.model,
                     "query": query,
-                    "documents": [retrieval.to_prompt() for retrieval in retrievals],
-                    "top_n": k or len(retrievals),
+                    "documents": [retrieval.to_prompt() for retrieval in unique_retrievals],
+                    "top_n": k or len(unique_retrievals),
                     "return_documents": False
                 },
                 headers={"Authorization": f"Bearer {self.config.api_key}"}
@@ -74,10 +78,12 @@ class Reranker:
             rerank_response: RerankResponse = RerankResponse.model_validate(response.json())
         reranked_results: list[BaseRetrieval] = []
         for item in rerank_response.results:
-            if threshold is None or item.relevance_score > threshold:
-                retrieval: BaseRetrieval = retrievals[item.index]
-                retrieval.score.rerank = item.relevance_score
-                reranked_results.append(retrieval)
+            retrieval: BaseRetrieval = unique_retrievals[item.index]
+            retrieval.score.rerank = item.relevance_score
+            reranked_results.append(retrieval)
+        filtered_results: list[BaseRetrieval] = reranked_results
+        if threshold is not None:
+            filtered_results = [result for result in reranked_results if result.score.rerank >= threshold]
         if trace_info:
             trace_info.debug({
                 "query": query,
@@ -85,10 +91,11 @@ class Reranker:
                 "threshold": threshold,
                 "rerank_response": rerank_response.model_dump(),
                 "len(retrievals)": len(retrievals),
-                "len(rerank_response.results)": len(rerank_response.results),
+                "len(unique_retrievals)": len(unique_retrievals),
                 "len(reranked_results)": len(reranked_results),
+                "len(filtered_results)": len(filtered_results),
             })
-        return reranked_results[:k] if k else reranked_results
+        return filtered_results[:k] if k else filtered_results
 
     def wrap(self, func: SearchFunction, *args, **kwargs) -> SearchFunction:
         async def wrapped(query: str) -> list[BaseRetrieval]:

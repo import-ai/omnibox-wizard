@@ -119,11 +119,17 @@ class MeiliVectorDB:
     async def insert_chunks(self, namespace_id: str, chunk_list: List[Chunk]):
         index = await self.get_index()
         for i in range(0, len(chunk_list), self.batch_size):
-            batch = chunk_list[i: i + self.batch_size]
-            embeddings = await self.openai.embeddings.create(
-                model=self.config.embedding.model,
-                input=[chunk.text or "" for chunk in batch],
-            )
+            raw_batch = chunk_list[i: i + self.batch_size]
+
+            batch: List[Chunk] = []
+            prompts: list[str] = []
+            for x in raw_batch:
+                prompt: str = x.to_prompt()
+                if prompt:
+                    batch.append(x)
+                    prompts.append(prompt)
+
+            embeddings = await self.openai.embeddings.create(model=self.config.embedding.model, input=prompts)
             records = []
             for chunk, embed in zip(batch, embeddings.data):
                 record = IndexRecord(

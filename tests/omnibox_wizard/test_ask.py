@@ -4,6 +4,7 @@ from typing import Iterator, List
 import httpx
 import pytest
 
+from omnibox_wizard.common import project_root
 from omnibox_wizard.wizard.entity import Task
 from omnibox_wizard.wizard.grimoire.agent.agent import UserQueryPreprocessor
 from omnibox_wizard.wizard.grimoire.entity.api import MessageDto
@@ -120,12 +121,25 @@ dir_name: dict[str, str] = {
     "p_id_b": "人物",
 }
 
-create_test_case = ("resource_id, parent_id, title, content", [
-    ("r_id_a0", "p_id_a", "周一计划", "+ 9:00 起床\n+ 10:00 上班"),
-    ("r_id_a1", "p_id_a", "周二计划", "+ 8:00 起床\n+ 9:00 上班"),
-    ("r_id_b0", "p_id_a", "周三计划", "+ 7:00 起床\n+ 8:00 上班"),
-    ("r_id_c0", "p_id_b", "小红", "小红今年 8 岁"),
-])
+
+def get_test_case() -> tuple[str, List[tuple[str, str, str, str]]]:
+    _cases = ("resource_id, parent_id, title, content", [
+        ("r_id_a0", "p_id_a", "周一计划", "+ 9:00 起床\n+ 10:00 上班"),
+        ("r_id_a1", "p_id_a", "周二计划", "+ 8:00 起床\n+ 9:00 上班"),
+        ("r_id_b0", "p_id_a", "周三计划", "+ 7:00 起床\n+ 8:00 上班"),
+        ("r_id_c0", "p_id_b", "小红", "小红今年 8 岁"),
+    ])
+
+    with project_root.open("tests/omnibox_wizard/resources/files/resources/db.json", "r") as f:
+        db: list[dict] = jsonlib.load(f)
+
+    for i, r in enumerate(db):
+        with project_root.open(f"tests/omnibox_wizard/resources/files/resources/{r['file']}", "r") as f:
+            _cases[1].append((f"r_{i}", f"p_{i}", r["title"], f.read().strip()))
+    return _cases
+
+
+create_test_case = get_test_case()
 
 
 @pytest.fixture(scope="function")
@@ -181,7 +195,7 @@ def get_agent_request(
                 "name": "private_search",
                 "namespace_id": namespace_id,
                 "visible_resources": [
-                    *map(get_resource, resource_ids or []),
+                    *map(get_resource, resource_ids or [i for i, _, _, _ in create_test_case[1]]),
                     *map(get_resource, sum(map(get_resource_ids, parent_ids or []), []))
                 ],
                 "resources": [
@@ -204,7 +218,8 @@ def get_agent_request(
     # ("地球到火星的距离", ["r_id_a0", "r_id_b0"], None, 5),
     # ("下周计划", None, ["p_id_1"], 5),
     # ("下周计划", ["r_id_b0"], ["p_id_0"], 5),
-    ("小红是谁？", ["r_id_a0", "r_id_a1", "r_id_b0", "r_id_c0"], None, 5),
+    # ("小红是谁？", ["r_id_a0", "r_id_a1", "r_id_b0", "r_id_c0"], None, 5),
+    ("小红是谁？", None, None, 5),
 ])
 def test_ask(client: httpx.Client, vector_db_init: bool, namespace_id: str, query: str, expected_messages_length: int,
              enable_thinking: bool, resource_ids: List[str] | None, parent_ids: List[str] | None):

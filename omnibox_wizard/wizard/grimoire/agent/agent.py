@@ -62,16 +62,14 @@ class UserQueryPreprocessor:
     ) -> list[str]:
         tools = ToolDict(options.tools or [])
         if tool := tools.get(cls.PRIVATE_SEARCH_TOOL_NAME):
-            prompt_title = "Selected Private Resources" if tool.resources else "System Suggested Private Resources"
+            prompt_title = "selected_private_resources" if tool.resources else "system_suggested_private_resources"
             resources: list[Resource] = tool.resources or tool.related_resources
             if resources:
                 return [
-                    f"# {prompt_title}",
                     "\n".join([
-                        "```json",
-                        json_dumps([resource.model_dump(include={"name", "type"}, exclude_none=True) for resource in
-                                    resources]),
-                        "```"
+                        f"<{prompt_title}>",
+                        json_dumps([{"title": resource.name, "type": resource.type} for resource in resources]),
+                        f"</{prompt_title}>"
                     ])
                 ]
         return []
@@ -80,14 +78,13 @@ class UserQueryPreprocessor:
     def parse_selected_tools(cls, attrs: MessageAttrs) -> list[str]:
         tools = [tool.name for tool in attrs.tools or []]
         return [
-            "# Selected Tools",
             "\n".join([
-                "```json",
+                "<selected_tools>",
                 json_dumps({
                     "selected": tools,
                     "disabled": [t for t in ALL_TOOLS if t not in tools],
                 }),
-                "```"
+                "</selected_tools>"
             ])
         ]
 
@@ -98,8 +95,7 @@ class UserQueryPreprocessor:
             attrs: MessageAttrs,
     ) -> str:
         return remove_continuous_break_lines("\n\n".join([
-            "# Query",
-            query,
+            "\n".join(["<query>", query, "</query>"]),
             *cls.parse_selected_resources(attrs),
             *cls.parse_selected_tools(attrs),
         ]))
@@ -112,6 +108,24 @@ class UserQueryPreprocessor:
                 "content": cls.parse_user_query(message.message["content"], message.attrs)
             }
         return openai_message
+
+    @classmethod
+    def parse_context(cls, attrs: MessageAttrs) -> str:
+        return remove_continuous_break_lines("\n\n".join([
+            *cls.parse_selected_resources(attrs),
+            *cls.parse_selected_tools(attrs),
+        ]))
+
+    @classmethod
+    def message_dtos_to_openai_messages(cls, dtos: list[MessageDto]) -> list[dict[str, str]]:
+        messages: list[dict[str, str]] = []
+
+        for dto in dtos:
+            messages.append(dto.message)
+            if dto.message['role'] == 'user' and dto.attrs:
+                messages.append({"role": "system", "content": cls.parse_context(dto.attrs)})
+
+        return messages
 
 
 class BaseSearchableAgent(BaseStreamable, ABC):
@@ -221,6 +235,7 @@ class Agent(BaseSearchableAgent):
                 model=self.model,
                 messages=messages,
                 stream=True,
+                extra_headers={"X-Trace-ID": trace_info.trace_id} if trace_info else None,
                 **((
                        {
                            "extra_body": {"enable_thinking": enable_thinking}
@@ -337,7 +352,7 @@ class Agent(BaseSearchableAgent):
 
         while messages[-1].message['role'] != 'assistant':
             async for chunk in self.chat(
-                    messages=list(map(UserQueryPreprocessor.parse_message, messages)),
+                    messages=UserQueryPreprocessor.message_dtos_to_openai_messages(messages),
                     enable_thinking=agent_request.enable_thinking,
                     tools=tool_executor.tools,
                     custom_tool_call=self.custom_tool_call,

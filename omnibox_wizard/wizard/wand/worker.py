@@ -99,7 +99,7 @@ class Worker:
                     exclude_none=True, mode="json",
                     include={"id", "exception", "output"},
                 ),
-                headers={"X-Trace-ID": task.id}
+                headers={"X-Request-Id": task.id}
             )
             logging_func: Callable[[dict], None] = trace_info.debug if http_response.is_success else trace_info.error
             logging_func({"status_code": http_response.status_code, "response": http_response.json()})

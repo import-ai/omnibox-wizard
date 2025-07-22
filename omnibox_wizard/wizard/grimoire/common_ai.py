@@ -35,7 +35,7 @@ class CommonAI:
                 {"role": "user", "content": text}
             ],
             extra_body={"enable_thinking": False},
-            extra_headers={"X-Trace-ID": trace_info.trace_id} if trace_info else None
+            extra_headers={"X-Request-Id": trace_info.request_id} if trace_info else None
         )
         str_response: str = openai_response.choices[0].message.content
 

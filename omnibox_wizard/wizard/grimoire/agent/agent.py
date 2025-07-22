@@ -235,7 +235,7 @@ class Agent(BaseSearchableAgent):
                 model=self.model,
                 messages=messages,
                 stream=True,
-                extra_headers={"X-Trace-ID": trace_info.trace_id} if trace_info else None,
+                extra_headers={"X-Request-Id": trace_info.request_id} if trace_info else None,
                 **((
                        {
                            "extra_body": {"enable_thinking": enable_thinking}

@@ -6,12 +6,12 @@ import pytest
 from dotenv import load_dotenv
 
 from omnibox_wizard.common import project_root
-from tests.omnibox_wizard.helper.backend_client import BackendClient
-from tests.omnibox_wizard.helper.fixture import backend_client
 from omnibox_wizard.wizard.config import OpenAIConfig
 from omnibox_wizard.worker.entity import Task
-from omnibox_wizard.worker.functions import Convertor
+from omnibox_wizard.worker.functions.file_reader import Convertor
 from omnibox_wizard.worker.worker import Worker
+from tests.omnibox_wizard.helper.backend_client import BackendClient
+from tests.omnibox_wizard.helper.fixture import backend_client
 
 load_dotenv()
 
@@ -81,17 +81,19 @@ def convertor() -> Convertor:
         asr_config=OpenAIConfig(
             api_key=os.environ["OBW_TASK_ASR_API_KEY"],
             model=os.environ["OBW_TASK_ASR_MODEL"],
-            base_url=os.environ["OBW_TASK_ASR_BASE_URL"]
-        )
+            base_url=os.environ["OBW_TASK_ASR_BASE_URL"],
+        ),
+        pdf_reader_base_url=os.environ["OBW_TASK_PDF_READER_BASE_URL"],
     )
 
 
 @pytest.mark.parametrize("filename", [
     # "example.doc",
-    "test.mp3",
+    # "test.mp3",
+    "test.docx",
 ])
 async def test_convertor(convertor: Convertor, filename):
-    filepath: str = project_root.path(os.path.join("tests/resources/files", filename))
+    filepath: str = project_root.path(os.path.join("tests/omnibox_wizard/resources/files", filename))
     mimetype, _ = mimetypes.guess_type(filepath)
-    markdown: str = await convertor.convert(filepath, os.path.splitext(filepath)[1], mimetype)
+    markdown, images = await convertor.convert(filepath, os.path.splitext(filepath)[1], mimetype)
     print(markdown)

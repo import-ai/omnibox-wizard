@@ -1,4 +1,6 @@
+import base64
 from datetime import datetime
+from typing import BinaryIO
 
 from pydantic import BaseModel, Field
 
@@ -33,3 +35,9 @@ class Image(BaseModel):
     link: str
     data: str = Field(description="Base64 encoded image data")
     mimetype: str = Field(examples=["image/jpeg", "image/png", "image/gif"])
+
+    def dumps(self) -> str:
+        return f"data:{self.mimetype};base64,{self.data}"
+
+    def dump(self, f: BinaryIO) -> None:
+        f.write(base64.b64decode(self.data))

@@ -1,18 +1,18 @@
 import io
-import mimetypes
 import os
 import tempfile
 
 import httpcore
 import httpx
-from markitdown import MarkItDown
 
 from omnibox_wizard.common.trace_info import TraceInfo
 from omnibox_wizard.wizard.config import OpenAIConfig
 from omnibox_wizard.worker.config import WorkerConfig
 from omnibox_wizard.worker.entity import Task, Image
 from omnibox_wizard.worker.functions.base_function import BaseFunction
+from omnibox_wizard.worker.functions.file_readers.office_reader import OfficeReader
 from omnibox_wizard.worker.functions.file_readers.pdf_reader import PDFReader
+from omnibox_wizard.worker.functions.file_readers.utils import guess_extension
 
 
 class OfficeOperatorClient(httpx.AsyncClient):
@@ -66,7 +66,7 @@ class Convertor:
             asr_config: OpenAIConfig,
             pdf_reader_base_url: str,
     ):
-        self.markitdown: MarkItDown = MarkItDown()
+        self.office_reader: OfficeReader = OfficeReader()
         self.office_operator_base_url: str = office_operator_base_url
         self.asr_client: ASRClient = ASRClient(
             model=asr_config.model,
@@ -82,8 +82,7 @@ class Convertor:
                 path: str = filepath + "x"
                 async with OfficeOperatorClient(base_url=self.office_operator_base_url) as client:
                     await client.migrate(filepath, mime_ext, path, mimetype)
-            result = self.markitdown.convert(path)
-            markdown: str = result.text_content
+            return self.office_reader.convert(path)
         elif mime_ext in [".pdf"]:
             return await self.pdf_reader.convert(filepath)
         elif mime_ext in [".md", ".txt"]:
@@ -100,9 +99,6 @@ class FileReader(BaseFunction):
     def __init__(self, config: WorkerConfig):
         self.base_url: str = config.backend.base_url
 
-        self.mimetype_mapping: dict[str, str] = {
-            "text/x-markdown": ".md"
-        }
         self.convertor: Convertor = Convertor(
             office_operator_base_url=config.task.office_operator_base_url,
             asr_config=config.task.asr,
@@ -117,15 +113,6 @@ class FileReader(BaseFunction):
                     async for chunk in response.aiter_bytes():
                         f.write(chunk)
 
-    def guess_extension(self, mimetype: str) -> str | None:
-        if mime_ext := mimetypes.guess_extension(mimetype):
-            return mime_ext
-        if mime_ext := self.mimetype_mapping.get(mimetype, None):
-            return mime_ext
-        if mimetype.startswith("text/"):
-            return ".txt"
-        return None
-
     async def run(self, task: Task, trace_info: TraceInfo) -> dict:
         task_input: dict = task.input
 
@@ -138,7 +125,7 @@ class FileReader(BaseFunction):
             local_path: str = os.path.join(temp_dir, filename)
             await self.download(resource_id, local_path)
 
-            mime_ext: str | None = self.guess_extension(mimetype)
+            mime_ext: str | None = guess_extension(mimetype)
 
             try:
                 markdown, images = await self.convertor.convert(local_path, mime_ext, mimetype)

@@ -4,8 +4,8 @@ from html2text import html2text
 from readability import Document
 
 from omnibox_wizard.common.trace_info import TraceInfo
-from omnibox_wizard.wizard.entity import Task
-from omnibox_wizard.wizard.wand.functions.base_function import BaseFunction
+from omnibox_wizard.worker.entity import Task
+from omnibox_wizard.worker.functions.base_function import BaseFunction
 
 
 class HTMLReaderV2(BaseFunction):

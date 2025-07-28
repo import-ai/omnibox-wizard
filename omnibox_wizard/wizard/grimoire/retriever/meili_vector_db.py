@@ -80,6 +80,7 @@ class MeiliVectorDB:
             "chunk.parent_id",
             "chunk.created_at",
             "chunk.updated_at",
+            "message.conversation_id",
         ]
         comparison_filters = [
             "chunk.created_at",
@@ -167,6 +168,18 @@ class MeiliVectorDB:
             },
         )
         await index.add_documents([record.model_dump(by_alias=True)], primary_key="id")
+
+
+    async def remove_conversation(self, namespace_id: str, conversation_id: str):
+        index = await self.get_index()
+        await index.delete_documents_by_filter(
+            filter=[
+                "type = {}".format(IndexRecordType.message.value),
+                "namespace_id = {}".format(namespace_id),
+                "message.conversation_id = {}".format(conversation_id),
+            ]
+        )
+
 
     async def remove_chunks(self, namespace_id: str, resource_id: str):
         index = await self.get_index()

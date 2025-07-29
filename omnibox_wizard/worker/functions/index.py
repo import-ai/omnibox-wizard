@@ -70,4 +70,17 @@ class UpsertMessageIndex(BaseFunction):
         return {"success": True}
 
 
-__all__ = ["DeleteIndex", "UpsertIndex", "UpsertMessageIndex"]
+class DeleteConversation(BaseFunction):
+    def __init__(self, config: WorkerConfig):
+        super().__init__()
+        self.vector_db: MeiliVectorDB = MeiliVectorDB(config.vector)
+
+    async def run(self, task: Task, trace_info: TraceInfo) -> dict:
+        conversation_id: str = task.input.get("conversation_id", "")
+        if conversation_id == "":
+            return {"success": False, "error": "conversation_id is required"}
+        await self.vector_db.remove_conversation(task.namespace_id, conversation_id)
+        return {"success": True}
+
+
+__all__ = ["DeleteIndex", "UpsertIndex", "UpsertMessageIndex", "DeleteConversation"]

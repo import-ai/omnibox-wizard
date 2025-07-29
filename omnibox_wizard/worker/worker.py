@@ -13,7 +13,7 @@ from omnibox_wizard.worker.entity import Task
 from omnibox_wizard.worker.functions.base_function import BaseFunction
 from omnibox_wizard.worker.functions.file_reader import FileReader
 from omnibox_wizard.worker.functions.html_reader import HTMLReaderV2
-from omnibox_wizard.worker.functions.index import UpsertIndex, DeleteIndex, UpsertMessageIndex
+from omnibox_wizard.worker.functions.index import DeleteConversation, UpsertIndex, DeleteIndex, UpsertMessageIndex
 
 
 class Worker:
@@ -28,6 +28,7 @@ class Worker:
             "delete_index": DeleteIndex(config),
             "file_reader": FileReader(config),
             "upsert_message_index": UpsertMessageIndex(config),
+            "delete_conversation": DeleteConversation(config),
         }
 
         self.logger = get_logger(f"worker_{self.worker_id}")

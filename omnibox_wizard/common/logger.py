@@ -42,7 +42,7 @@ class CustomFormatter(logging.Formatter):
                 "traceback": ''.join(traceback.format_list(traceback.extract_stack()))
             }
             str_log = json.dumps(log)
-        if "traceback" in log:  # 方便本地 DEBUG
+        if env.is_local() and "traceback" in log:  # 方便本地 DEBUG
             str_log += "\n" + log["traceback"]
         return str_log
 

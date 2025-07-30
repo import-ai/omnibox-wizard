@@ -15,12 +15,13 @@ class SearXNGRetrieval(BaseRetrieval):
     result: dict
     source: Literal["web"] = "web"
 
-    def to_prompt(self, i: int | None = None) -> str:
+    def to_prompt(self, exclude_id: bool = False) -> str:
         citation = self.to_citation()
-        return citation.to_prompt(i)
+        return citation.to_prompt(exclude_id)
 
     def to_citation(self) -> Citation:
         citation: Citation = Citation(
+            id=self.id,
             link=self.result['url'],
             title=self.result['title'],
             snippet=self.result['content'],

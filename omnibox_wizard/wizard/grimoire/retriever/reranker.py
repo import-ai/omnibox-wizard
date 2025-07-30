@@ -68,7 +68,7 @@ class Reranker:
                 json={
                     "model": self.config.model,
                     "query": query,
-                    "documents": [retrieval.to_prompt() for retrieval in unique_retrievals],
+                    "documents": [retrieval.to_prompt(exclude_id=True) for retrieval in unique_retrievals],
                     "top_n": k or len(unique_retrievals),
                     "return_documents": False
                 },

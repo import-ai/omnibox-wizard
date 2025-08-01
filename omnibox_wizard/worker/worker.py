@@ -54,6 +54,11 @@ class Worker:
         while True:
             try:
                 await self.run_once()
+            except httpx.ConnectError as e:
+                self.logger.warning({
+                    "message": "Failed to connect to backend",
+                    "error": CommonException.parse_exception(e)
+                })
             except Exception as e:
                 self.logger.exception({
                     "error": CommonException.parse_exception(e)

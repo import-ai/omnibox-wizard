@@ -322,6 +322,8 @@ class Agent(BaseSearchableAgent):
         :param agent_request: The request containing the user's query and tools to be used.
         :return: An async iterable of ChatResponse objects.
         """
+        trace_info.info({"request": agent_request.model_dump(exclude_none=True)})
+
         tool_executor = self.get_tool_executor(agent_request, trace_info=trace_info)
         messages: list[MessageDto] = agent_request.messages or []
 

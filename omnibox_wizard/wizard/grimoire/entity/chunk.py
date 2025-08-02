@@ -6,7 +6,7 @@ from typing import Optional, Literal
 import shortuuid
 from pydantic import Field
 
-from omnibox_wizard.wizard.grimoire.entity.retrieval import BaseRetrieval, Citation, to_prompt, Prompt
+from omnibox_wizard.wizard.grimoire.entity.retrieval import BaseRetrieval, Citation, to_prompt, PromptContext
 from omnibox_wizard.wizard.grimoire.entity.tools import PrivateSearchResourceType
 
 
@@ -21,7 +21,7 @@ def timestamp_to_datetime(timestamp: float, date_format: str = "%Y-%m-%d %H:%M:%
     return datetime.fromtimestamp(timestamp).strftime(date_format)
 
 
-class Chunk(Prompt):
+class Chunk(PromptContext):
     title: str | None = Field(default=None, description="Chunk title, usually the title of the document")
     resource_id: str
     text: str | None = Field(default=None, description="Chunk content")
@@ -41,7 +41,7 @@ class Chunk(Prompt):
     def metadata(self) -> dict:
         return self.model_dump(exclude_none=True, exclude={"chunk_id", "text"})
 
-    def to_prompt(self, i: int | None = None) -> str:
+    def to_prompt(self) -> str:
         lines: list[str] = []
         if self.title:
             lines.append(f"Title: {self.title}")
@@ -56,7 +56,7 @@ class ResourceChunkRetrieval(BaseRetrieval):
     chunk: Chunk
     source: Literal["private"] = "private"
 
-    def to_prompt(self, i: int | None = None) -> str:
+    def to_prompt(self, exclude_id: bool = False) -> str:
         citation = self.to_citation()
 
         tag_attrs: dict = {"source": self.source}
@@ -76,10 +76,11 @@ class ResourceChunkRetrieval(BaseRetrieval):
             tag_attrs["start_index"] = str(self.chunk.start_index)
         if self.chunk.end_index is not None:
             tag_attrs["end_index"] = str(self.chunk.end_index)
-        return to_prompt(tag_attrs, body_attrs, i=i)
+        return to_prompt(tag_attrs, body_attrs, i=None if exclude_id else self.id)
 
     def to_citation(self) -> Citation:
         return Citation(
+            id=self.id,
             title=self.chunk.title,
             snippet=self.chunk.text,
             link=self.chunk.resource_id,

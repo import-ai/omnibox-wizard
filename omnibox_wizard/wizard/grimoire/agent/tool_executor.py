@@ -24,11 +24,10 @@ def cmp(retrieval: BaseRetrieval) -> tuple[int, str, int, float]:
 
 def retrieval_wrapper(
         tool_call_id: str,
-        current_cite_cnt: int,
         retrievals: list[BaseRetrieval]
 ) -> MessageDto:
     retrievals = sorted(retrievals, key=cmp)
-    content: str = retrievals2prompt(retrievals, current_cite_cnt)
+    content: str = retrievals2prompt(retrievals)
     return MessageDto.model_validate({
         "message": {"role": "tool", "tool_call_id": tool_call_id, "content": content},
         "attrs": {"citations": [retrieval.to_citation() for retrieval in retrievals]}
@@ -72,11 +71,13 @@ class ToolExecutor:
                     raise ValueError(f"Unknown function: {function_name}")
 
                 if function_name.endswith("search"):
-                    message_dto: MessageDto = retrieval_wrapper(
-                        tool_call_id=tool_call_id,
-                        current_cite_cnt=get_citation_cnt(message_dtos),
-                        retrievals=result
-                    )
+                    current_cite_cnt: int = get_citation_cnt(message_dtos)
+                    assert isinstance(result, list), f"Expected list of retrievals, got {type(result)}"
+                    assert all(isinstance(r, BaseRetrieval) for r in result), \
+                        f"Expected all items to be BaseRetrieval, got {[type(r) for r in result]}"
+                    for i, r in enumerate(result):
+                        r.id = current_cite_cnt + i + 1
+                    message_dto: MessageDto = retrieval_wrapper(tool_call_id=tool_call_id, retrievals=result)
                 else:
                     raise ValueError(f"Unknown function: {function_name}")
 

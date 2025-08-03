@@ -62,7 +62,7 @@ class Reranker:
 
         k = k or self.k
         threshold = threshold or self.threshold
-        async with httpx.AsyncClient(base_url=self.config.base_url) as client:
+        async with httpx.AsyncClient(base_url=self.config.base_url, timeout=300) as client:
             response = await client.post(
                 "/rerank",
                 json={

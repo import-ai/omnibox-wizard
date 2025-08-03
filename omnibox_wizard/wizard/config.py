@@ -1,6 +1,6 @@
 from typing import Literal
 
-from openai import AsyncOpenAI, AsyncStream
+from openai import AsyncOpenAI, AsyncStream, NOT_GIVEN, NotGiven
 from openai.types.chat import ChatCompletion, ChatCompletionChunk
 from pydantic import BaseModel, Field
 
@@ -24,30 +24,32 @@ class VectorConfig(BaseModel):
     max_results: int = Field(default=10)
 
 
-GrimoireOpenAIConfigKey = Literal["mini", "default", "large", "large_thinking"]
+GrimoireOpenAIConfigKey = Literal["mini", "default", "large"]
 
 
 class GrimoireOpenAIConfig(BaseModel):
     mini: OpenAIConfig = Field(default_factory=OpenAIConfig)
+    mini_thinking: OpenAIConfig = Field(default=None)
     default: OpenAIConfig
+    default_thinking: OpenAIConfig = Field(default=None)
     large: OpenAIConfig = Field(default_factory=OpenAIConfig)
     large_thinking: OpenAIConfig = Field(default=None)
 
-    def __getitem__(self, key: GrimoireOpenAIConfigKey) -> OpenAIConfig:
-        openai_config: OpenAIConfig = getattr(self, key, None)
-        if openai_config is None:
-            raise KeyError(f"OpenAIConfig for key '{key}' not found.")
+    def get_config(
+            self,
+            key: GrimoireOpenAIConfigKey,
+            thinking: bool = False,
+            default: OpenAIConfig | None | NotGiven = NOT_GIVEN
+    ) -> OpenAIConfig | None:
+        k = key if not thinking else f"{key}_thinking"
+        openai_config: OpenAIConfig = getattr(self, k, None)
+        if openai_config is None and isinstance(default, NotGiven):
+            raise KeyError(f"OpenAIConfig for key '{k}' not found.")
         return OpenAIConfig(
             base_url=openai_config.base_url or self.default.base_url,
             api_key=openai_config.api_key or self.default.api_key,
             model=openai_config.model or self.default.model
         )
-
-    def get(self, key: GrimoireOpenAIConfigKey, default: OpenAIConfig | None = None) -> OpenAIConfig | None:
-        try:
-            return self[key]
-        except KeyError:
-            return default
 
 
 class GrimoireConfig(BaseModel):

@@ -230,9 +230,9 @@ class Agent(BaseSearchableAgent):
                 })
 
             kwargs: dict = {}
-            openai = self.openai["large"]
+            openai = self.openai.get_config("large", default=self.openai.default)
             if enable_thinking is not None:
-                if large_thinking := self.openai.get("large_thinking", None):
+                if large_thinking := self.openai.get_config("large", thinking=True, default=None):
                     if enable_thinking:
                         openai = large_thinking
                 else:

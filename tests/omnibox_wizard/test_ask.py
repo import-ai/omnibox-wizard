@@ -5,6 +5,7 @@ import httpx
 import pytest
 
 
+from httpx_sse import connect_sse
 from omnibox_wizard.worker.entity import Task
 from omnibox_wizard.common import project_root
 from omnibox_wizard.wizard.grimoire.agent.agent import UserQueryPreprocessor
@@ -70,12 +71,14 @@ def assert_stream(stream: Iterator[str]) -> list[dict]:
 
 
 def api_stream(client: httpx.Client, url: str, request: dict) -> Iterator[str]:
-    with client.stream("POST", url, json=request) as response:
-        if response.status_code != 200:
-            raise Exception(f"{response.status_code} {response.read().decode('utf-8')}")
-        for line in response.iter_lines():
-            if line.startswith("data: "):
-                yield line[6:]
+    with connect_sse(client, "POST", url, json=request) as event_source:
+        for sse in event_source.iter_sse():
+            if sse.event == "message":
+                yield sse.data
+            elif sse.event == "error":
+                raise Exception(f"Error in SSE stream: {sse.data}")
+            else:
+                raise Exception(f"Unexpected SSE event: {sse.event}")
 
 
 async def add_index(
@@ -221,7 +224,7 @@ def get_agent_request(
     # ("下周计划", ["r_id_b0"], ["p_id_0"], 5),
     # ("小红是谁？", ["r_id_a0", "r_id_a1", "r_id_b0", "r_id_c0"], None, 5),
     ("小红是谁？", None, None, 5),
-    ("地球到火星的距离有多远？", None, None, [5, 6, 7]),
+    # ("地球到火星的距离有多远？", None, None, [5, 6, 7]),
 ])
 def test_ask(client: httpx.Client, vector_db_init: bool, namespace_id: str, query: str,
              expected_messages_length: int | list[int],

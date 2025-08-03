@@ -3,8 +3,8 @@ from json import dumps as lib_dumps
 from typing import AsyncIterator
 
 from fastapi import APIRouter, Depends
-from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+from sse_starlette import EventSourceResponse
 
 from omnibox_wizard.common.config_loader import Loader
 from omnibox_wizard.common.trace_info import TraceInfo
@@ -62,11 +62,20 @@ async def sse_format(iterator: AsyncIterator[dict]) -> AsyncIterator[str]:
         yield f"data: {dumps(item)}\n\n"
 
 
+async def sse_dumps(iterator: AsyncIterator[dict]) -> AsyncIterator[str]:
+    async for item in iterator:
+        yield dumps(item)
+
+
+def streaming_response(iterator: AsyncIterator[dict]) -> EventSourceResponse:
+    return EventSourceResponse(sse_dumps(iterator))
+
+
 @wizard_router.post("/ask", tags=["LLM"], response_model=ChatResponse)
 async def api_ask(request: AgentRequest, trace_info: TraceInfo = Depends(get_trace_info)):
-    return StreamingResponse(sse_format(call_stream(ask, request, trace_info)), media_type="text/event-stream")
+    return streaming_response(call_stream(ask, request, trace_info))
 
 
 @wizard_router.post("/write", tags=["LLM"], response_model=ChatResponse)
 async def api_write(request: AgentRequest, trace_info: TraceInfo = Depends(get_trace_info)):
-    return StreamingResponse(sse_format(call_stream(write, request, trace_info)), media_type="text/event-stream")
+    return streaming_response(call_stream(write, request, trace_info))

@@ -29,12 +29,11 @@ class CommonAI:
             "lang": "简体中文"
         })
 
-        openai_response: ChatCompletion = await self.config[model_size].chat(
+        openai_response: ChatCompletion = await self.config.get_config(model_size).chat(
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": text}
             ],
-            extra_body={"enable_thinking": False},
             extra_headers={"X-Request-Id": trace_info.request_id} if trace_info else None
         )
         str_response: str = openai_response.choices[0].message.content

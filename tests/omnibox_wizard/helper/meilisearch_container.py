@@ -1,7 +1,7 @@
 import time
+import tomllib
 
 import httpx
-import yaml
 from testcontainers.core.container import DockerContainer
 
 from omnibox_wizard.common import project_root
@@ -9,14 +9,14 @@ from omnibox_wizard.common import project_root
 
 class MeiliSearchContainer(DockerContainer):
 
-    @staticmethod
-    def get_image_from_compose():
-        with project_root.open("compose.yaml", "r") as f:
-            compose = yaml.safe_load(f)
-        return compose['services']['meilisearch']['image']
+    @classmethod
+    def get_image_from_pyproject(cls):
+        with project_root.open("pyproject.toml", "rb") as f:
+            project_info = tomllib.load(f)
+        return project_info["tool"]["compose"]["deps"]["meilisearch"]["image"]
 
     def __init__(self, image=None, port=7700, master_key="meili_master_key"):
-        image = image or self.get_image_from_compose()
+        image = image or self.get_image_from_pyproject()
         super().__init__(image=image)
         self.port_to_expose = port
         self.master_key = master_key

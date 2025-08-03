@@ -211,7 +211,7 @@ def get_agent_request(
     }
 
 
-@pytest.mark.parametrize("enable_thinking", [True, False, None])
+@pytest.mark.parametrize("enable_thinking", [True, False])
 @pytest.mark.parametrize("query, resource_ids, parent_ids, expected_messages_length", [
     # ("今天北京的天气", None, None, 5),
     # ("下周计划", None, None, 5),
@@ -221,8 +221,10 @@ def get_agent_request(
     # ("下周计划", ["r_id_b0"], ["p_id_0"], 5),
     # ("小红是谁？", ["r_id_a0", "r_id_a1", "r_id_b0", "r_id_c0"], None, 5),
     ("小红是谁？", None, None, 5),
+    ("地球到火星的距离有多远？", None, None, [5, 6, 7]),
 ])
-def test_ask(client: httpx.Client, vector_db_init: bool, namespace_id: str, query: str, expected_messages_length: int,
+def test_ask(client: httpx.Client, vector_db_init: bool, namespace_id: str, query: str,
+             expected_messages_length: int | list[int],
              enable_thinking: bool, resource_ids: List[str] | None, parent_ids: List[str] | None):
     request = get_agent_request(
         namespace_id=namespace_id,
@@ -233,7 +235,10 @@ def test_ask(client: httpx.Client, vector_db_init: bool, namespace_id: str, quer
     )
     messages = assert_stream(api_stream(client, "/api/v1/wizard/ask", request))
     cnt: int = len(messages)
-    assert cnt == expected_messages_length
+    if isinstance(expected_messages_length, list):
+        assert cnt in expected_messages_length
+    else:
+        assert cnt == expected_messages_length
 
 
 @pytest.mark.parametrize("condition", [

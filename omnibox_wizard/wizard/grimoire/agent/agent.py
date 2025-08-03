@@ -4,7 +4,7 @@ from functools import partial
 from typing import AsyncIterable, Literal, Iterable
 from uuid import uuid4
 
-from openai import AsyncOpenAI, AsyncStream
+from openai import AsyncStream
 from openai.types.chat import ChatCompletionChunk
 from openai.types.chat.chat_completion_chunk import ChoiceDeltaToolCall
 
@@ -12,7 +12,7 @@ from omnibox_wizard.common import project_root
 from omnibox_wizard.common.template_parser import TemplateParser
 from omnibox_wizard.common.trace_info import TraceInfo
 from omnibox_wizard.common.utils import remove_continuous_break_lines
-from omnibox_wizard.wizard.config import OpenAIConfig, Config
+from omnibox_wizard.wizard.config import Config
 from omnibox_wizard.wizard.grimoire.agent.stream_parser import StreamParser, DeltaOperation
 from omnibox_wizard.wizard.grimoire.agent.tool_executor import ToolExecutor
 from omnibox_wizard.wizard.grimoire.base_streamable import BaseStreamable, ChatResponse
@@ -172,10 +172,7 @@ class BaseSearchableAgent(BaseStreamable, ABC):
 class Agent(BaseSearchableAgent):
     def __init__(self, config: Config, system_prompt_template_name: str):
         super().__init__(config)
-        openai_config: OpenAIConfig = config.grimoire.openai["large"]
-
-        self.client = AsyncOpenAI(api_key=openai_config.api_key, base_url=openai_config.base_url)
-        self.model = openai_config.model
+        self.openai = config.grimoire.openai
 
         self.template_parser = TemplateParser(base_dir=project_root.path("omnibox_wizard/resources/prompt_templates"))
         self.system_prompt_template = self.template_parser.get_template(system_prompt_template_name)
@@ -231,20 +228,23 @@ class Agent(BaseSearchableAgent):
                     "custom_tool_call": custom_tool_call,
                     "force_private_search_option": force_private_search_option
                 })
-            openai_response: AsyncStream[ChatCompletionChunk] = await self.client.chat.completions.create(
-                model=self.model,
+
+            kwargs: dict = {}
+            openai = self.openai["large"]
+            if enable_thinking is not None:
+                if large_thinking := self.openai.get("large_thinking", None):
+                    if enable_thinking:
+                        openai = large_thinking
+                else:
+                    kwargs["extra_body"] = {"enable_thinking": enable_thinking}
+            if tools and not custom_tool_call:
+                kwargs["tools"] = tools
+
+            openai_response: AsyncStream[ChatCompletionChunk] = await openai.chat(
                 messages=messages,
                 stream=True,
                 extra_headers={"X-Request-Id": trace_info.request_id} if trace_info else None,
-                **((
-                       {
-                           "extra_body": {"enable_thinking": enable_thinking}
-                       } if enable_thinking is not None else {}
-                   ) | (
-                       {
-                           "tools": tools
-                       } if (tools and not custom_tool_call) else {}
-                   ))
+                **kwargs
             )
 
             yield ChatBOSResponse(role="assistant")

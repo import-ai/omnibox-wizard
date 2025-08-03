@@ -24,31 +24,35 @@ class VectorConfig(BaseModel):
     max_results: int = Field(default=10)
 
 
+GrimoireOpenAIConfigKey = Literal["mini", "default", "large", "large_thinking"]
+
+
 class GrimoireOpenAIConfig(BaseModel):
     mini: OpenAIConfig = Field(default_factory=OpenAIConfig)
     default: OpenAIConfig
     large: OpenAIConfig = Field(default_factory=OpenAIConfig)
+    large_thinking: OpenAIConfig = Field(default=None)
 
-    def __getitem__(self, key: Literal["mini", "default", "large"]) -> OpenAIConfig:
-        if key == "mini":
-            return OpenAIConfig(
-                base_url=self.mini.base_url or self.default.base_url,
-                api_key=self.mini.api_key or self.default.api_key,
-                model=self.mini.model or self.default.model
-            )
-        elif key == "large":
-            return OpenAIConfig(
-                base_url=self.large.base_url or self.default.base_url,
-                api_key=self.large.api_key or self.default.api_key,
-                model=self.large.model or self.default.model
-            )
-        else:
-            return self.default
+    def __getitem__(self, key: GrimoireOpenAIConfigKey) -> OpenAIConfig:
+        openai_config: OpenAIConfig = getattr(self, key, None)
+        if openai_config is None:
+            raise KeyError(f"OpenAIConfig for key '{key}' not found.")
+        return OpenAIConfig(
+            base_url=openai_config.base_url or self.default.base_url,
+            api_key=openai_config.api_key or self.default.api_key,
+            model=openai_config.model or self.default.model
+        )
+
+    def get(self, key: GrimoireOpenAIConfigKey, default: OpenAIConfig | None = None) -> OpenAIConfig | None:
+        try:
+            return self[key]
+        except KeyError:
+            return default
 
 
 class GrimoireConfig(BaseModel):
     openai: GrimoireOpenAIConfig = Field(default=None)
-    custom_tool_call: bool | None = Field(default=None)
+    custom_tool_call: bool = Field(default=True)
 
 
 class RerankerConfig(BaseModel):

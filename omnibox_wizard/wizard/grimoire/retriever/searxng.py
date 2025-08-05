@@ -5,6 +5,7 @@ from typing import Literal
 
 import httpx
 
+from omnibox_wizard.common.exception import CommonException
 from omnibox_wizard.common.trace_info import TraceInfo
 from omnibox_wizard.wizard.grimoire.entity.retrieval import Citation, BaseRetrieval
 from omnibox_wizard.wizard.grimoire.entity.tools import BaseTool
@@ -49,17 +50,9 @@ class SearXNG(BaseRetriever):
         self.base_url: str = base_url
         self.engines: str | None = engines
 
-    async def search(
-            self,
-            query: str,
-            *,
-            page_number: int = 1,
-            k: int | None = None,
-            retry_cnt: int = 2,  # First time may fail due to cold start, retry a few times
-            retry_sleep: float = 1,
-            trace_info: TraceInfo | None = None,
-    ) -> list[SearXNGRetrieval]:
-        for i in range(retry_cnt + 1):
+    async def search_once(self, query: str, *, page_number: int = 1,
+                          trace_info: TraceInfo | None = None) -> list[SearXNGRetrieval]:
+        try:
             async with httpx.AsyncClient(base_url=self.base_url) as c:
                 httpx_response: httpx.Response = await c.get(
                     "/search", params={"q": query, "pageno": page_number, "format": "json"} | (
@@ -70,8 +63,29 @@ class SearXNG(BaseRetriever):
             search_result: dict = httpx_response.json()
             results: list[dict] = search_result['results']
             retrievals: list[SearXNGRetrieval] = [SearXNGRetrieval(result=result) for result in results]
-            if trace_info:
-                trace_info.debug({"len(retrievals)": len(retrievals)})
+        except Exception as e:
+            retrievals: list[SearXNGRetrieval] = []
+            trace_info.exception({
+                "query": query,
+                "page_number": page_number,
+                "error": CommonException.parse_exception(e),
+            }) if trace_info else None
+        trace_info.debug({"len(retrievals)": len(retrievals)}) if trace_info else None
+        return retrievals
+
+    async def search(
+            self,
+            query: str,
+            *,
+            page_number: int = 1,
+            k: int | None = None,
+            retry_cnt: int = 3,  # First time may fail due to cold start, retry a few times
+            retry_sleep: float = 1,
+            trace_info: TraceInfo | None = None,
+    ) -> list[SearXNGRetrieval]:
+        for i in range(retry_cnt or 1):
+            retrievals: list[SearXNGRetrieval] = await self.search_once(
+                query, page_number=page_number, trace_info=trace_info)
             if retrievals:
                 return retrievals[:k] if k else retrievals
             if trace_info:

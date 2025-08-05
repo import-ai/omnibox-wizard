@@ -65,7 +65,7 @@ class SearXNG(BaseRetriever):
             retrievals: list[SearXNGRetrieval] = [SearXNGRetrieval(result=result) for result in results]
         except Exception as e:
             retrievals: list[SearXNGRetrieval] = []
-            trace_info.exception({
+            trace_info.warning({
                 "query": query,
                 "page_number": page_number,
                 "error": CommonException.parse_exception(e),

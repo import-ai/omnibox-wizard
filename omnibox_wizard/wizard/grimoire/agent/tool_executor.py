@@ -47,7 +47,7 @@ class ToolExecutor:
             self,
             message_dtos: list[MessageDto],
             trace_info: TraceInfo,
-    ) -> AsyncIterable[ChatBaseResponse]:
+    ) -> AsyncIterable[ChatBaseResponse | MessageDto]:
         message: ChatCompletionAssistantMessageParam = message_dtos[-1].message
         if tool_calls := message.get('tool_calls', []):
             for tool_call in tool_calls:

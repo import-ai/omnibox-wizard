@@ -201,7 +201,7 @@ class Agent(BaseSearchableAgent):
             force_private_search_option: Literal["disable", "enable", "auto"] = "auto",
             *,
             trace_info: TraceInfo | None = None
-    ) -> AsyncIterable[ChatResponse | dict]:
+    ) -> AsyncIterable[ChatResponse | MessageDto]:
         assistant_message: dict = {'role': 'assistant'}
 
         force_private_search: bool = (force_private_search_option == "enable" or (

@@ -43,9 +43,10 @@ class GrimoireOpenAIConfig(BaseModel):
     ) -> OpenAIConfig | None:
         k = key if not thinking else f"{key}_thinking"
         openai_config: OpenAIConfig = getattr(self, k, None)
-        if openai_config is None and isinstance(default, NotGiven):
-            raise KeyError(f"OpenAIConfig for key '{k}' not found.")
-        openai_config = OpenAIConfig()
+        if openai_config is None:
+            if isinstance(default, NotGiven):
+                raise KeyError(f"OpenAIConfig for key '{k}' not found.")
+            return default
         return OpenAIConfig(
             base_url=openai_config.base_url or self.default.base_url,
             api_key=openai_config.api_key or self.default.api_key,

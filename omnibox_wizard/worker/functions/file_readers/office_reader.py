@@ -1,5 +1,8 @@
+import io
 import re
 
+import httpcore
+import httpx
 import shortuuid
 from markitdown import MarkItDown
 
@@ -26,3 +29,23 @@ class OfficeReader:
             images.append(Image(data=base64_data, mimetype=mimetype, link=link, name=link))
             markdown = markdown.replace(match.group(0), link)
         return remove_continuous_break_lines(markdown), images
+
+
+class OfficeOperatorClient(httpx.AsyncClient):
+
+    async def migrate(self, src_path: str, src_ext: str, dest_path: str, mimetype: str, retry_cnt: int = 3):
+        with open(src_path, "rb") as f:
+            bytes_content: bytes = f.read()
+
+        for i in range(retry_cnt):
+            try:
+                response: httpx.Response = await self.post(
+                    f"/api/v1/migrate/{src_ext.lstrip('.')}",
+                    files={"file": (src_path, io.BytesIO(bytes_content), mimetype)},
+                )
+                assert response.is_success, response.text
+                with open(dest_path, "wb") as f:
+                    f.write(response.content)
+            except (TimeoutError, httpcore.ReadTimeout, httpx.ReadTimeout):
+                continue
+            break

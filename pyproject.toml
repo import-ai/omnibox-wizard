@@ -25,6 +25,7 @@ dependencies = [
     "jinja2 (>=3.1.6,<4.0.0)",
     "pypdf (>=5.8.0,<6.0.0)",
     "sse-starlette (>=3.0.2,<4.0.0)",
+    "pydub (>=0.25.1,<0.26.0)",
 ]
 
 [tool.poetry]

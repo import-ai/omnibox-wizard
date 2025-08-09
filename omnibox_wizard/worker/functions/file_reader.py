@@ -1,8 +1,6 @@
-import io
 import os
 import tempfile
 
-import httpcore
 import httpx
 
 from omnibox_wizard.common.trace_info import TraceInfo
@@ -10,53 +8,10 @@ from omnibox_wizard.wizard.config import OpenAIConfig
 from omnibox_wizard.worker.config import WorkerConfig
 from omnibox_wizard.worker.entity import Task, Image
 from omnibox_wizard.worker.functions.base_function import BaseFunction
-from omnibox_wizard.worker.functions.file_readers.office_reader import OfficeReader
+from omnibox_wizard.worker.functions.file_readers.audio_reader import ASRClient, M4AConvertor
+from omnibox_wizard.worker.functions.file_readers.office_reader import OfficeReader, OfficeOperatorClient
 from omnibox_wizard.worker.functions.file_readers.pdf_reader import PDFReader
 from omnibox_wizard.worker.functions.file_readers.utils import guess_extension
-
-
-class OfficeOperatorClient(httpx.AsyncClient):
-
-    async def migrate(self, src_path: str, src_ext: str, dest_path: str, mimetype: str, retry_cnt: int = 3):
-        with open(src_path, "rb") as f:
-            bytes_content: bytes = f.read()
-
-        for i in range(retry_cnt):
-            try:
-                response: httpx.Response = await self.post(
-                    f"/api/v1/migrate/{src_ext.lstrip('.')}",
-                    files={"file": (src_path, io.BytesIO(bytes_content), mimetype)},
-                )
-                assert response.is_success, response.text
-                with open(dest_path, "wb") as f:
-                    f.write(response.content)
-            except (TimeoutError, httpcore.ReadTimeout, httpx.ReadTimeout):
-                continue
-            break
-
-
-class ASRClient(httpx.AsyncClient):
-
-    def __init__(self, model: str, *args, **kwargs):
-        self.model: str = model
-        super().__init__(*args, **kwargs)
-
-    async def transcribe(self, file_path: str, mimetype: str, retry_cnt: int = 3) -> str:
-        with open(file_path, "rb") as f:
-            bytes_content: bytes = f.read()
-
-        for i in range(retry_cnt):
-            try:
-                response: httpx.Response = await self.post(
-                    "/audio/transcriptions",
-                    files={"file": (file_path, io.BytesIO(bytes_content), mimetype)},
-                    data={"model": self.model}
-                )
-                assert response.is_success, response.text
-                return response.json()["text"]
-            except (TimeoutError, httpcore.ReadTimeout, httpx.ReadTimeout):
-                continue
-        raise RuntimeError("ASR transcription failed after retries")
 
 
 class Convertor:
@@ -74,6 +29,7 @@ class Convertor:
             headers={"Authorization": f"Bearer {asr_config.api_key}"},
         )
         self.pdf_reader: PDFReader = PDFReader(base_url=pdf_reader_base_url)
+        self.m4a_convertor: M4AConvertor = M4AConvertor()
 
     async def convert(self, filepath: str, mime_ext: str, mimetype: str) -> tuple[str, list[Image]]:
         if mime_ext in [".pptx", ".docx", ".ppt", ".doc"]:
@@ -85,10 +41,12 @@ class Convertor:
             return self.office_reader.convert(path)
         elif mime_ext in [".pdf"]:
             return await self.pdf_reader.convert(filepath)
-        elif mime_ext in [".md", ".txt"]:
+        elif mime_ext in [".md", ".plain"]:
             with open(filepath, 'r') as f:
                 markdown: str = f.read()
-        elif mime_ext in [".wav", ".mp3", ".pcm", ".opus", ".webm"]:
+        elif mime_ext in [".wav", ".mp3", ".pcm", ".opus", ".webm", ".m4a"]:
+            if mime_ext == ".m4a":
+                filepath = self.m4a_convertor.convert(filepath)
             markdown: str = await self.asr_client.transcribe(filepath, mimetype)
         else:
             raise ValueError(f"unsupported_type: {mime_ext}")
@@ -133,6 +91,7 @@ class FileReader(BaseFunction):
                 return {
                     "message": "unsupported_type",
                     "mime_ext": mime_ext,
+                    "mimetype": mimetype,
                 }
 
         result_dict: dict = {"title": title, "markdown": markdown} | ({"images": [

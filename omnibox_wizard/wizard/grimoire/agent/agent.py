@@ -68,7 +68,7 @@ class UserQueryPreprocessor:
                 return [
                     "\n".join([
                         f"<{prompt_title}>",
-                        json_dumps([{"title": resource.name, "type": resource.type} for resource in resources]),
+                        json_dumps([{"title": resource.name or None, "type": resource.type} for resource in resources]),
                         f"</{prompt_title}>"
                     ])
                 ]

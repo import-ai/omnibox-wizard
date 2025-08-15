@@ -15,6 +15,7 @@ from omnibox_wizard.worker.functions.file_reader import FileReader
 from omnibox_wizard.worker.functions.html_reader import HTMLReaderV2
 from omnibox_wizard.worker.functions.index import DeleteConversation, UpsertIndex, DeleteIndex, UpsertMessageIndex
 from omnibox_wizard.worker.functions.tag_extractor import TagExtractor
+from omnibox_wizard.worker.functions.title_generator import TitleGenerator
 
 
 class Worker:
@@ -31,6 +32,7 @@ class Worker:
             "upsert_message_index": UpsertMessageIndex(config),
             "delete_conversation": DeleteConversation(config),
             "extract_tags": TagExtractor(config),
+            "generate_title": TitleGenerator(config),
         }
 
         self.logger = get_logger(f"worker_{self.worker_id}")

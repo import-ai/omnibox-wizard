@@ -45,7 +45,7 @@ class Worker:
         })
 
     async def run_once(self):
-        task: Task = await self.fetch_task()
+        task: Task | None = await self.fetch_task()
         if task:
             trace_info: TraceInfo = self.get_trace_info(task)
             trace_info.info({"message": "fetch_task"} | task.model_dump(include={"created_at", "started_at"}))

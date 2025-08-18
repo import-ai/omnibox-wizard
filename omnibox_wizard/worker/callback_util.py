@@ -73,12 +73,13 @@ class CallbackUtil:
     def _chunk_payload(self, payload: dict) -> list[str]:
         serialized = json.dumps(payload, ensure_ascii=False)
         data_bytes = serialized.encode('utf-8')
-        encoded_data = base64.b64encode(data_bytes).decode('ascii')
 
         chunks = []
-        for i in range(0, len(encoded_data), self.chunk_size):
-            chunk = encoded_data[i:i + self.chunk_size]
-            chunks.append(chunk)
+        # Chunk the raw bytes first, then encode each chunk
+        for i in range(0, len(data_bytes), self.chunk_size):
+            chunk_bytes = data_bytes[i:i + self.chunk_size]
+            encoded_chunk = base64.b64encode(chunk_bytes).decode('ascii')
+            chunks.append(encoded_chunk)
 
         return chunks
 

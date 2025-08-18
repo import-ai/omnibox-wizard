@@ -59,7 +59,7 @@ async def call_stream(s: BaseStreamable, request: BaseChatRequest, trace_info: T
         "agent.type": agent_type,
         "agent.model": getattr(request, 'model', 'unknown'),
         "agent.conversation_id": getattr(request, 'conversation_id', None),
-        "agent.message_count": len(getattr(request, 'messages', [])),
+        "agent.message_count": len(getattr(request, 'messages', []) or []),
     }) as span:
 
         # Add more span attributes
@@ -108,7 +108,7 @@ async def api_ask(request: AgentRequest, trace_info: TraceInfo = Depends(get_tra
         endpoint="ask",
         operation="agent_ask",
         conversation_id=getattr(request, 'conversation_id', None),
-        message_count=len(getattr(request, 'messages', [])),
+        message_count=len(request.messages or []),
     )
 
     trace_info.info({"message": "Starting ask request", "conversation_id": getattr(request, 'conversation_id', None)})
@@ -123,7 +123,7 @@ async def api_write(request: AgentRequest, trace_info: TraceInfo = Depends(get_t
         endpoint="write",
         operation="agent_write",
         conversation_id=getattr(request, 'conversation_id', None),
-        message_count=len(getattr(request, 'messages', [])),
+        message_count=len(request.messages or []),
     )
 
     trace_info.info({"message": "Starting write request", "conversation_id": getattr(request, 'conversation_id', None)})

@@ -5,12 +5,12 @@ from typing import Optional
 
 from opentelemetry import trace
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
-from opentelemetry.instrumentation.fastapi import FastAPIInstrumentation
-from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentation
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
-from opentelemetry.sdk.trace.sampling import TraceIdRatioBased, AlwaysOff, AlwaysOn
+from opentelemetry.sdk.trace.sampling import TraceIdRatioBased, ALWAYS_OFF, ALWAYS_ON
 from opentelemetry.semconv.resource import ResourceAttributes
 
 
@@ -68,9 +68,9 @@ class TelemetryService:
 
             # Create tracer provider
             if self.config.sampling_rate <= 0:
-                sampler = AlwaysOff()
+                sampler = ALWAYS_OFF
             elif self.config.sampling_rate >= 1:
-                sampler = AlwaysOn()
+                sampler = ALWAYS_ON
             else:
                 sampler = TraceIdRatioBased(self.config.sampling_rate)
 
@@ -95,8 +95,8 @@ class TelemetryService:
             self._tracer = trace.get_tracer("omnibox-wizard")
 
             # Auto-instrument FastAPI and HTTPX
-            FastAPIInstrumentation().instrument()
-            HTTPXClientInstrumentation().instrument()
+            FastAPIInstrumentor().instrument()
+            HTTPXClientInstrumentor().instrument()
 
             self._initialized = True
             print(
@@ -104,6 +104,8 @@ class TelemetryService:
 
         except Exception as e:
             print(f"Failed to initialize OpenTelemetry: {e}")
+            # Continue without telemetry rather than failing
+            self._initialized = False
 
     def get_tracer(self):
         """Get the OpenTelemetry tracer"""

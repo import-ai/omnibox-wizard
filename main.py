@@ -5,6 +5,7 @@ from argparse import Namespace, ArgumentParser
 from omnibox_wizard.common import project_root
 from omnibox_wizard.common.config_loader import Loader
 from omnibox_wizard.common.logger import get_logger
+from omnibox_wizard.common.telemetry import init_telemetry
 from omnibox_wizard.worker.config import WorkerConfig, ENV_PREFIX
 from omnibox_wizard.worker.worker import Worker
 
@@ -20,6 +21,9 @@ def get_args() -> Namespace:
 
 
 async def main():
+    # Initialize telemetry before starting workers
+    init_telemetry()
+
     args = get_args()
     get_logger("main").info(f"Starting Wizard {version} with {args.workers} workers")
     loader = Loader(WorkerConfig, env_prefix=ENV_PREFIX)

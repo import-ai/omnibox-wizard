@@ -52,9 +52,39 @@ async def stream_wrapper(
 
 
 async def call_stream(s: BaseStreamable, request: BaseChatRequest, trace_info: TraceInfo) -> AsyncIterator[dict]:
-    stream = s.astream(trace_info.get_child("agent"), request)
-    async for delta in stream_wrapper(request, stream, trace_info):  # noqa
-        yield delta
+    # Create a span for the agent call
+    agent_type = type(s).__name__.lower()  # 'ask' or 'write'
+
+    with trace_info.with_span(f"omnibox.wizard.agent.{agent_type}", {
+        "agent.type": agent_type,
+        "agent.model": getattr(request, 'model', 'unknown'),
+        "agent.conversation_id": getattr(request, 'conversation_id', None),
+        "agent.message_count": len(getattr(request, 'messages', [])),
+    }) as span:
+
+        # Add more span attributes
+        if span:
+            span.set_attributes({
+                "request.type": "streaming",
+                "service": "wizard",
+            })
+
+        stream = s.astream(trace_info.get_child("agent"), request)
+
+        response_count = 0
+        try:
+            async for delta in stream_wrapper(request, stream, trace_info):
+                response_count += 1
+                yield delta
+        finally:
+            # Add final metrics to span
+            if span:
+                span.set_attributes({
+                    "response.chunk_count": response_count,
+                })
+                span.add_event("agent.call.completed", {
+                    "response.chunk_count": response_count,
+                })
 
 
 async def sse_format(iterator: AsyncIterator[dict]) -> AsyncIterator[str]:
@@ -73,9 +103,29 @@ def streaming_response(iterator: AsyncIterator[dict]) -> EventSourceResponse:
 
 @wizard_router.post("/ask", tags=["LLM"], response_model=ChatResponse)
 async def api_ask(request: AgentRequest, trace_info: TraceInfo = Depends(get_trace_info)):
+    # Add endpoint-specific attributes to trace
+    trace_info = trace_info.bind(
+        endpoint="ask",
+        operation="agent_ask",
+        conversation_id=getattr(request, 'conversation_id', None),
+        message_count=len(getattr(request, 'messages', [])),
+    )
+
+    trace_info.info({"message": "Starting ask request", "conversation_id": getattr(request, 'conversation_id', None)})
+
     return streaming_response(call_stream(ask, request, trace_info))
 
 
 @wizard_router.post("/write", tags=["LLM"], response_model=ChatResponse)
 async def api_write(request: AgentRequest, trace_info: TraceInfo = Depends(get_trace_info)):
+    # Add endpoint-specific attributes to trace
+    trace_info = trace_info.bind(
+        endpoint="write",
+        operation="agent_write",
+        conversation_id=getattr(request, 'conversation_id', None),
+        message_count=len(getattr(request, 'messages', [])),
+    )
+
+    trace_info.info({"message": "Starting write request", "conversation_id": getattr(request, 'conversation_id', None)})
+
     return streaming_response(call_stream(write, request, trace_info))

@@ -10,8 +10,8 @@ mimetype_mapping: dict[str, str] = {
 def guess_extension(mimetype: str) -> str | None:
     if mime_ext := mimetype_mapping.get(mimetype, None):
         return mime_ext
+    if mimetype.startswith("text/") or mimetype.startswith("plain/"):
+        return ".plain"
     if mime_ext := mimetypes.guess_extension(mimetype):
         return mime_ext
-    if mimetype.startswith("text/"):
-        return ".plain"
     return None

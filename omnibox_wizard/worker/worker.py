@@ -114,6 +114,27 @@ class Worker:
             logging_func: Callable[[dict], None] = trace_info.debug if http_response.is_success else trace_info.error
             logging_func({"status_code": http_response.status_code, "response": http_response.json()})
 
+        if not http_response.is_success:
+            if http_response.status_code == 413:
+                message = "Callback content too large"
+            else:
+                message = "Unknown error"
+            async with httpx.AsyncClient(base_url=self.config.backend.base_url) as client:
+                await client.post(
+                    f"/internal/api/v1/wizard/callback",
+                    json=task.model_dump(exclude_none=True, mode="json", include={"id"}) | {
+                        "exception": {
+                            "message": message,
+                            "task": {
+                                "has_exception": bool(task.exception),
+                                "has_output": bool(task.output),
+                            },
+                            "http_response": http_response.json()
+                        }
+                    },
+                    headers={"X-Request-Id": task.id}
+                )
+
     async def worker_router(self, task: Task, trace_info: TraceInfo) -> dict:
         worker = self.worker_dict[task.function]
         return await worker.run(task, trace_info)

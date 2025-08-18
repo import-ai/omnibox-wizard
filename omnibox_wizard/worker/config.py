@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field
 
-from omnibox_wizard.wizard.config import OpenAIConfig, VectorConfig
+from omnibox_wizard.wizard.config import OpenAIConfig, VectorConfig, GrimoireConfig
 
 
 class BackendConfig(BaseModel):
@@ -23,6 +23,7 @@ class WorkerConfig(BaseModel):
     vector: VectorConfig
     task: TaskConfig
     backend: BackendConfig
+    grimoire: GrimoireConfig = Field(default=None)
 
 
 ENV_PREFIX: str = "OBW"

@@ -14,6 +14,8 @@ from omnibox_wizard.worker.functions.base_function import BaseFunction
 from omnibox_wizard.worker.functions.file_reader import FileReader
 from omnibox_wizard.worker.functions.html_reader import HTMLReaderV2
 from omnibox_wizard.worker.functions.index import DeleteConversation, UpsertIndex, DeleteIndex, UpsertMessageIndex
+from omnibox_wizard.worker.functions.tag_extractor import TagExtractor
+from omnibox_wizard.worker.functions.title_generator import TitleGenerator
 
 
 class Worker:
@@ -29,6 +31,8 @@ class Worker:
             "file_reader": FileReader(config),
             "upsert_message_index": UpsertMessageIndex(config),
             "delete_conversation": DeleteConversation(config),
+            "extract_tags": TagExtractor(config),
+            "generate_title": TitleGenerator(config),
         }
 
         self.logger = get_logger(f"worker_{self.worker_id}")
@@ -41,7 +45,7 @@ class Worker:
         })
 
     async def run_once(self):
-        task: Task = await self.fetch_task()
+        task: Task | None = await self.fetch_task()
         if task:
             trace_info: TraceInfo = self.get_trace_info(task)
             trace_info.info({"message": "fetch_task"} | task.model_dump(include={"created_at", "started_at"}))

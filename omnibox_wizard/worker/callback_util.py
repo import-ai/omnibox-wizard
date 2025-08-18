@@ -24,7 +24,16 @@ class CallbackUtil:
         )
 
         if self.use_chunked_callback and self._should_use_chunks(payload):
-            await self._send_chunked_callback(payload, task.id, trace_info)
+            try:
+                await self._send_chunked_callback(payload, task.id, trace_info)
+            except Exception as e:
+                trace_info.error({
+                    "message": "Chunked callback failed, sending regular callback with exception",
+                    "error": CommonException.parse_exception(e),
+                    "task_id": task.id
+                })
+                # Send regular callback with exception details
+                await self._send_chunked_callback_failure(payload, task.id, trace_info, e)
         else:
             await self._send_regular_callback(payload, task.id, trace_info)
 
@@ -126,3 +135,30 @@ class CallbackUtil:
 
         raise Exception(
             f"Failed to send chunk {chunk_payload['chunk_index'] + 1}/{chunk_payload['total_chunks']} after {retry_count} attempts")
+
+    async def _send_chunked_callback_failure(self, original_payload: dict, task_id: str, trace_info: TraceInfo, failure_exception: Exception):
+        """Send a regular callback with exception details when chunked callback fails"""
+        error_payload = {
+            "id": task_id,
+            "exception": {
+                "message": "Chunked callback failed",
+                "chunked_callback_error": CommonException.parse_exception(failure_exception),
+                "task": {
+                    "has_exception": bool(original_payload.get("exception")),
+                    "has_output": bool(original_payload.get("output")),
+                }
+            }
+        }
+        
+        async with httpx.AsyncClient(base_url=self.config.backend.base_url) as client:
+            http_response: httpx.Response = await client.post(
+                f"/internal/api/v1/wizard/callback",
+                json=error_payload,
+                headers={"X-Request-Id": task_id}
+            )
+            logging_func: Callable[[dict], None] = trace_info.debug if http_response.is_success else trace_info.error
+            logging_func({
+                "message": "Sent chunked callback failure notification",
+                "status_code": http_response.status_code,
+                "response": http_response.json()
+            })

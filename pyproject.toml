@@ -1,6 +1,6 @@
 [project]
 name = "omnibox-wizard"
-version = "0.1.3"
+version = "0.1.4"
 description = "OmniBox Wizard"
 authors = [
     { name = "Lucien Shui", email = "lucien@lucien.ink" }

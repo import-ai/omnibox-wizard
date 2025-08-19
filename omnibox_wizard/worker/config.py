@@ -12,6 +12,11 @@ class SpliterConfig(BaseModel):
     chunk_overlap: int = Field(default=128)
 
 
+class CallbackConfig(BaseModel):
+    chunk_size: int = Field(default=5242880, description="Chunk size for large callback payloads (default: 5MB)")
+    use_chunked: bool = Field(default=True, description="Enable chunked callback for large payloads")
+
+
 class TaskConfig(BaseModel):
     spliter: SpliterConfig = Field(default_factory=SpliterConfig)
     office_operator_base_url: str = Field(default=None)
@@ -23,6 +28,7 @@ class WorkerConfig(BaseModel):
     vector: VectorConfig
     task: TaskConfig
     backend: BackendConfig
+    callback: CallbackConfig = Field(default_factory=CallbackConfig)
     grimoire: GrimoireConfig = Field(default=None)
 
 

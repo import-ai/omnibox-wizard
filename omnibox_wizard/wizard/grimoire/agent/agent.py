@@ -1,4 +1,5 @@
 import json as jsonlib
+import time
 from abc import ABC
 from functools import partial
 from typing import AsyncIterable, Literal, Iterable
@@ -7,6 +8,7 @@ from uuid import uuid4
 from openai import AsyncStream
 from openai.types.chat import ChatCompletionChunk
 from openai.types.chat.chat_completion_chunk import ChoiceDeltaToolCall
+from opentelemetry import trace
 
 from omnibox_wizard.common import project_root
 from omnibox_wizard.common.template_parser import TemplateParser
@@ -29,12 +31,14 @@ from omnibox_wizard.wizard.grimoire.retriever.searxng import SearXNG
 
 DEFAULT_TOOL_NAME: str = "private_search"
 json_dumps = partial(jsonlib.dumps, ensure_ascii=False, separators=(",", ":"))
+tracer = trace.get_tracer(__name__)
 
 
 class UserQueryPreprocessor:
     PRIVATE_SEARCH_TOOL_NAME: str = "private_search"
 
     @classmethod
+    @tracer.start_as_current_span("UserQueryPreprocessor.with_related_resources_")
     async def with_related_resources_(
             cls,
             message: MessageDto,
@@ -53,6 +57,10 @@ class UserQueryPreprocessor:
                         "type": r.type,
                     }))
             tool.related_resources = related_resources
+            span = trace.get_current_span()
+            span.set_attributes({
+                "related_resources": json_dumps([r.model_dump(exclude_none=True) for r in related_resources])
+            })
         return message
 
     @classmethod
@@ -202,111 +210,125 @@ class Agent(BaseSearchableAgent):
             *,
             trace_info: TraceInfo | None = None
     ) -> AsyncIterable[ChatResponse | MessageDto]:
-        assistant_message: dict = {'role': 'assistant'}
+        with tracer.start_as_current_span("agent.chat") as span:
+            assistant_message: dict = {'role': 'assistant'}
 
-        force_private_search: bool = (force_private_search_option == "enable" or (
-                force_private_search_option == "auto" and not enable_thinking)) and len(
-            messages) == 2 and self.has_function(tools, DEFAULT_TOOL_NAME)
-        if force_private_search:
-            assert messages[0]['role'] == 'system' and messages[1]['role'] == 'user'
-            assistant_message.setdefault('tool_calls', []).append({
-                "id": str(uuid4()).replace('-', ''),
-                "type": "function",
-                "function": {
-                    "name": DEFAULT_TOOL_NAME,
-                    "arguments": json_dumps({"query": messages[1]['content']})
-                }
-            })
-            for r in self.yield_complete_message(assistant_message):
-                yield r
-        else:
-            if trace_info:
-                trace_info.debug({
-                    "messages": messages,
-                    "enable_thinking": enable_thinking,
-                    "tools": tools,
-                    "custom_tool_call": custom_tool_call,
-                    "force_private_search_option": force_private_search_option
+            force_private_search: bool = (force_private_search_option == "enable" or (
+                    force_private_search_option == "auto" and not enable_thinking)) and len(
+                messages) == 2 and self.has_function(tools, DEFAULT_TOOL_NAME)
+            if force_private_search:
+                assert messages[0]['role'] == 'system' and messages[1]['role'] == 'user'
+                assistant_message.setdefault('tool_calls', []).append({
+                    "id": str(uuid4()).replace('-', ''),
+                    "type": "function",
+                    "function": {
+                        "name": DEFAULT_TOOL_NAME,
+                        "arguments": json_dumps({"query": messages[1]['content']})
+                    }
                 })
+                for r in self.yield_complete_message(assistant_message):
+                    yield r
+            else:
+                if trace_info:
+                    trace_info.debug({
+                        "messages": messages,
+                        "enable_thinking": enable_thinking,
+                        "tools": tools,
+                        "custom_tool_call": custom_tool_call,
+                        "force_private_search_option": force_private_search_option
+                    })
 
-            kwargs: dict = {}
-            openai = self.openai.get_config("large", default=self.openai.default)
-            if enable_thinking is not None:
-                if large_thinking := self.openai.get_config("large", thinking=True, default=None):
-                    if enable_thinking:
-                        openai = large_thinking
-                else:
-                    kwargs["extra_body"] = {"enable_thinking": enable_thinking}
-            if tools and not custom_tool_call:
-                kwargs["tools"] = tools
+                kwargs: dict = {}
+                openai = self.openai.get_config("large", default=self.openai.default)
+                if enable_thinking is not None:
+                    if large_thinking := self.openai.get_config("large", thinking=True, default=None):
+                        if enable_thinking:
+                            openai = large_thinking
+                    else:
+                        kwargs["extra_body"] = {"enable_thinking": enable_thinking}
+                if tools and not custom_tool_call:
+                    kwargs["tools"] = tools
 
-            openai_response: AsyncStream[ChatCompletionChunk] = await openai.chat(
-                messages=messages,
-                stream=True,
-                extra_headers={"X-Request-Id": trace_info.request_id} if trace_info else None,
-                **kwargs
-            )
+                with tracer.start_as_current_span("agent.chat.openai") as openai_span:
+                    start_time: float = time.time()
+                    ttft: float = -1.0
+                    openai_response: AsyncStream[ChatCompletionChunk] = await openai.chat(
+                        messages=messages,
+                        stream=True,
+                        extra_headers={"X-Request-Id": trace_info.request_id} if trace_info else None,
+                        **kwargs
+                    )
 
-            yield ChatBOSResponse(role="assistant")
-            tool_calls_buffer: str = ""
-            stream_parser: StreamParser = StreamParser()
+                    yield ChatBOSResponse(role="assistant")
+                    tool_calls_buffer: str = ""
+                    stream_parser: StreamParser = StreamParser()
 
-            async for chunk in openai_response:
-                delta = chunk.choices[0].delta
+                    async for chunk in openai_response:
+                        delta = chunk.choices[0].delta
+                        if ttft < 0:
+                            ttft = time.time() - start_time
+                            openai_span.set_attribute("ttft", ttft)
 
-                if delta.tool_calls:
-                    tool_call: ChoiceDeltaToolCall = delta.tool_calls[0]
-                    if tool_call.index + 1 > len(assistant_message.get('tool_calls', [])):
-                        assistant_message.setdefault('tool_calls', []).append({})
-                    if tool_call.id:
-                        assistant_message['tool_calls'][tool_call.index]['id'] = tool_call.id
-                    if tool_call.type:
-                        assistant_message['tool_calls'][tool_call.index]['type'] = tool_call.type
-                    if tool_call.function:
-                        function = tool_call.function
-                        function_dict: dict = assistant_message['tool_calls'][tool_call.index].setdefault('function',
-                                                                                                          {})
-                        if function.name:
-                            function_dict['name'] = function_dict.get('name', '') + function.name
-                        if function.arguments:
-                            function_dict['arguments'] = function_dict.get('arguments', '') + function.arguments
+                        if delta.tool_calls:
+                            tool_call: ChoiceDeltaToolCall = delta.tool_calls[0]
+                            if tool_call.index + 1 > len(assistant_message.get('tool_calls', [])):
+                                assistant_message.setdefault('tool_calls', []).append({})
+                            if tool_call.id:
+                                assistant_message['tool_calls'][tool_call.index]['id'] = tool_call.id
+                            if tool_call.type:
+                                assistant_message['tool_calls'][tool_call.index]['type'] = tool_call.type
+                            if tool_call.function:
+                                function = tool_call.function
+                                function_dict: dict = assistant_message['tool_calls'][tool_call.index].setdefault(
+                                    'function',
+                                    {})
+                                if function.name:
+                                    function_dict['name'] = function_dict.get('name', '') + function.name
+                                if function.arguments:
+                                    function_dict['arguments'] = function_dict.get('arguments', '') + function.arguments
 
-                for key in ['content', 'reasoning_content']:
-                    if hasattr(delta, key) and (v := getattr(delta, key)):
-                        if key == 'content':
-                            normal_content: str = ''
-                            operations: list[DeltaOperation] = stream_parser.parse(v)
-                            for operation in operations:
-                                if operation['tag'] == 'think':
-                                    raise ValueError('Unexpected think operation in content delta.')
-                                elif operation['tag'] == 'tool_call':
-                                    tool_calls_buffer += operation['delta']
+                        for key in ['content', 'reasoning_content']:
+                            if hasattr(delta, key) and (v := getattr(delta, key)):
+                                if key == 'content':
+                                    normal_content: str = ''
+                                    operations: list[DeltaOperation] = stream_parser.parse(v)
+                                    for operation in operations:
+                                        if operation['tag'] == 'think':
+                                            raise ValueError('Unexpected think operation in content delta.')
+                                        elif operation['tag'] == 'tool_call':
+                                            tool_calls_buffer += operation['delta']
+                                        else:
+                                            normal_content += operation['delta']
+                                    if normal_content:
+                                        assistant_message[key] = assistant_message.get(key, '') + normal_content
+                                        yield ChatDeltaResponse.model_validate({"message": {key: normal_content}})
                                 else:
-                                    normal_content += operation['delta']
-                            if normal_content:
-                                assistant_message[key] = assistant_message.get(key, '') + normal_content
-                                yield ChatDeltaResponse.model_validate({"message": {key: normal_content}})
-                        else:
-                            assistant_message[key] = assistant_message.get(key, '') + v
-                            yield ChatDeltaResponse.model_validate({"message": {key: v}})
-            if tool_calls_buffer:
-                for line in tool_calls_buffer.splitlines():
-                    if json_str := line.strip():
-                        try:
-                            tool_call_json: dict = jsonlib.loads(json_str)
-                            tool_call_json['arguments'] = json_dumps(tool_call_json['arguments'])
-                            assistant_message.setdefault('tool_calls', []).append({
-                                "id": str(uuid4()).replace('-', ''),
-                                "type": "function",
-                                "function": tool_call_json
-                            })
-                        except jsonlib.JSONDecodeError:
-                            continue
-            if tool_calls := assistant_message.get('tool_calls'):
-                yield ChatDeltaResponse.model_validate({"message": {"tool_calls": tool_calls}})
+                                    assistant_message[key] = assistant_message.get(key, '') + v
+                                    yield ChatDeltaResponse.model_validate({"message": {key: v}})
 
-            yield ChatEOSResponse()
-        yield MessageDto.model_validate({"message": assistant_message})
+                if tool_calls_buffer:
+                    for line in tool_calls_buffer.splitlines():
+                        if json_str := line.strip():
+                            try:
+                                tool_call_json: dict = jsonlib.loads(json_str)
+                                tool_call_json['arguments'] = json_dumps(tool_call_json['arguments'])
+                                assistant_message.setdefault('tool_calls', []).append({
+                                    "id": str(uuid4()).replace('-', ''),
+                                    "type": "function",
+                                    "function": tool_call_json
+                                })
+                            except jsonlib.JSONDecodeError:
+                                continue
+                if tool_calls := assistant_message.get('tool_calls'):
+                    yield ChatDeltaResponse.model_validate({"message": {"tool_calls": tool_calls}})
+
+                yield ChatEOSResponse()
+                span.set_attributes({
+                    "model": openai.model,
+                    "messages": json_dumps(messages),
+                    "assistant_message": json_dumps(assistant_message),
+                })
+            yield MessageDto.model_validate({"message": assistant_message})
 
     async def astream(self, trace_info: TraceInfo, agent_request: AgentRequest) -> AsyncIterable[ChatResponse]:
         """
@@ -322,56 +344,65 @@ class Agent(BaseSearchableAgent):
         :param agent_request: The request containing the user's query and tools to be used.
         :return: An async iterable of ChatResponse objects.
         """
-        trace_info.info({"request": agent_request.model_dump(exclude_none=True)})
+        with tracer.start_as_current_span("agent.astream") as span:
+            span.set_attributes({
+                "conversation_id": agent_request.conversation_id,
+                "agent_request": json_dumps(agent_request.model_dump(
+                    exclude_none=True, exclude={"conversation_id"}
+                )),
+            })
+            trace_info.info({"request": agent_request.model_dump(exclude_none=True)})
 
-        tool_executor = self.get_tool_executor(agent_request, trace_info=trace_info)
-        messages: list[MessageDto] = agent_request.messages or []
+            tool_executor = self.get_tool_executor(agent_request, trace_info=trace_info)
+            messages: list[MessageDto] = agent_request.messages or []
 
-        if not messages:
-            all_tools = self.all_tools
-            if agent_request.merge_search:
-                all_tools = [BaseRetriever.generate_schema("search", get_merged_description(all_tools))]
+            if not messages:
+                all_tools = self.all_tools
+                if agent_request.merge_search:
+                    all_tools = [BaseRetriever.generate_schema("search", get_merged_description(all_tools))]
 
-            prompt: str = self.template_parser.render_template(
-                self.system_prompt_template,
-                lang=agent_request.lang or "简体中文",
-                tools="\n".join(json_dumps(tool) for tool in all_tools) if self.custom_tool_call and all_tools else None
-            )
-            system_message: dict = {"role": "system", "content": prompt}
-            for r in self.yield_complete_message(system_message):
+                prompt: str = self.template_parser.render_template(
+                    self.system_prompt_template,
+                    lang=agent_request.lang or "简体中文",
+                    tools="\n".join(
+                        json_dumps(tool) for tool in all_tools) if self.custom_tool_call and all_tools else None
+                )
+                system_message: dict = {"role": "system", "content": prompt}
+                for r in self.yield_complete_message(system_message):
+                    yield r
+                messages.append(MessageDto.model_validate({"message": system_message}))
+
+            user_message: MessageDto = MessageDto.model_validate({
+                "message": {"role": "user", "content": agent_request.query},
+                "attrs": agent_request.model_dump(exclude_none=True),
+            })
+            user_message = await UserQueryPreprocessor.with_related_resources_(user_message, tool_executor.config)
+
+            messages.append(user_message)
+            for r in self.yield_complete_message(user_message.message, user_message.attrs):
                 yield r
-            messages.append(MessageDto.model_validate({"message": system_message}))
 
-        user_message: MessageDto = MessageDto.model_validate({
-            "message": {"role": "user", "content": agent_request.query},
-            "attrs": agent_request.model_dump(exclude_none=True),
-        })
-        user_message = await UserQueryPreprocessor.with_related_resources_(user_message, tool_executor.config)
-
-        messages.append(user_message)
-        for r in self.yield_complete_message(user_message.message, user_message.attrs):
-            yield r
-
-        while messages[-1].message['role'] != 'assistant':
-            async for chunk in self.chat(
-                    messages=UserQueryPreprocessor.message_dtos_to_openai_messages(messages),
-                    enable_thinking=agent_request.enable_thinking,
-                    tools=tool_executor.tools,
-                    custom_tool_call=self.custom_tool_call,
-                    force_private_search_option="disable",
-                    trace_info=trace_info,
-            ):
-                if isinstance(chunk, MessageDto):
-                    messages.append(chunk)
-                elif isinstance(chunk, ChatBaseResponse):
-                    yield chunk
-                else:
-                    raise ValueError(f"Unexpected chunk type: {type(chunk)}")
-            if messages[-1].message.get('tool_calls', []):
-                async for chunk in tool_executor.astream(messages, trace_info=trace_info.get_child("tool_executor")):
+            while messages[-1].message['role'] != 'assistant':
+                async for chunk in self.chat(
+                        messages=UserQueryPreprocessor.message_dtos_to_openai_messages(messages),
+                        enable_thinking=agent_request.enable_thinking,
+                        tools=tool_executor.tools,
+                        custom_tool_call=self.custom_tool_call,
+                        force_private_search_option="disable",
+                        trace_info=trace_info,
+                ):
                     if isinstance(chunk, MessageDto):
                         messages.append(chunk)
                     elif isinstance(chunk, ChatBaseResponse):
                         yield chunk
                     else:
                         raise ValueError(f"Unexpected chunk type: {type(chunk)}")
+                if messages[-1].message.get('tool_calls', []):
+                    async for chunk in tool_executor.astream(messages,
+                                                             trace_info=trace_info.get_child("tool_executor")):
+                        if isinstance(chunk, MessageDto):
+                            messages.append(chunk)
+                        elif isinstance(chunk, ChatBaseResponse):
+                            yield chunk
+                        else:
+                            raise ValueError(f"Unexpected chunk type: {type(chunk)}")

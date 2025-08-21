@@ -2,6 +2,7 @@ import json as jsonlib
 from typing import AsyncIterable
 
 from openai.types.chat import ChatCompletionAssistantMessageParam
+from opentelemetry import trace
 
 from omnibox_wizard.common.model_dump import model_dump
 from omnibox_wizard.common.trace_info import TraceInfo
@@ -12,6 +13,8 @@ from omnibox_wizard.wizard.grimoire.entity.chunk import ResourceChunkRetrieval
 from omnibox_wizard.wizard.grimoire.entity.retrieval import BaseRetrieval, retrievals2prompt
 from omnibox_wizard.wizard.grimoire.entity.tools import ToolExecutorConfig
 from omnibox_wizard.wizard.grimoire.retriever.searxng import SearXNGRetrieval
+
+tracer = trace.get_tracer(__name__)
 
 
 def cmp(retrieval: BaseRetrieval) -> tuple[int, str, int, float]:
@@ -48,39 +51,46 @@ class ToolExecutor:
             message_dtos: list[MessageDto],
             trace_info: TraceInfo,
     ) -> AsyncIterable[ChatBaseResponse | MessageDto]:
-        message: ChatCompletionAssistantMessageParam = message_dtos[-1].message
-        if tool_calls := message.get('tool_calls', []):
-            for tool_call in tool_calls:
-                function = tool_call['function']
-                tool_call_id: str = str(tool_call['id'])
-                function_args = jsonlib.loads(function['arguments'])
-                function_name = function['name']
-                logger = trace_info.get_child(addition_payload={
-                    "tool_call_id": tool_call_id,
-                    "function_name": function_name,
-                    "function_args": function_args,
-                })
+        with tracer.start_as_current_span("tool_executor.astream"):
+            message: ChatCompletionAssistantMessageParam = message_dtos[-1].message
+            if tool_calls := message.get('tool_calls', []):
+                for tool_call in tool_calls:
+                    function = tool_call['function']
+                    tool_call_id: str = str(tool_call['id'])
+                    function_args = jsonlib.loads(function['arguments'])
+                    function_name = function['name']
+                    logger = trace_info.get_child(addition_payload={
+                        "tool_call_id": tool_call_id,
+                        "function_name": function_name,
+                        "function_args": function_args,
+                    })
 
-                yield ChatBOSResponse(role="tool")
-                if function_name in self.config:
-                    func = self.config[function_name]['func']
-                    result = await func(**function_args)
-                    logger.info({"result": model_dump(result)})
-                else:
-                    logger.error({"message": "Unknown function"})
-                    raise ValueError(f"Unknown function: {function_name}")
+                    yield ChatBOSResponse(role="tool")
+                    if function_name in self.config:
+                        with tracer.start_as_current_span(f"tool_executor.astream.{function_name}") as func_span:
+                            func_span.set_attributes({
+                                "tool_call_id": tool_call_id,
+                                "function_name": function_name,
+                                "function_args": jsonlib.dumps(function_args, ensure_ascii=False, separators=(",", ":"))
+                            })
+                            func = self.config[function_name]['func']
+                            result = await func(**function_args)
+                            logger.info({"result": model_dump(result)})
+                    else:
+                        logger.error({"message": "Unknown function"})
+                        raise ValueError(f"Unknown function: {function_name}")
 
-                if function_name.endswith("search"):
-                    current_cite_cnt: int = get_citation_cnt(message_dtos)
-                    assert isinstance(result, list), f"Expected list of retrievals, got {type(result)}"
-                    assert all(isinstance(r, BaseRetrieval) for r in result), \
-                        f"Expected all items to be BaseRetrieval, got {[type(r) for r in result]}"
-                    for i, r in enumerate(result):
-                        r.id = current_cite_cnt + i + 1
-                    message_dto: MessageDto = retrieval_wrapper(tool_call_id=tool_call_id, retrievals=result)
-                else:
-                    raise ValueError(f"Unknown function: {function_name}")
+                    if function_name.endswith("search"):
+                        current_cite_cnt: int = get_citation_cnt(message_dtos)
+                        assert isinstance(result, list), f"Expected list of retrievals, got {type(result)}"
+                        assert all(isinstance(r, BaseRetrieval) for r in result), \
+                            f"Expected all items to be BaseRetrieval, got {[type(r) for r in result]}"
+                        for i, r in enumerate(result):
+                            r.id = current_cite_cnt + i + 1
+                        message_dto: MessageDto = retrieval_wrapper(tool_call_id=tool_call_id, retrievals=result)
+                    else:
+                        raise ValueError(f"Unknown function: {function_name}")
 
-                yield ChatDeltaResponse.model_validate(message_dto.model_dump(exclude_none=True))
-                yield message_dto
-                yield ChatEOSResponse()
+                    yield ChatDeltaResponse.model_validate(message_dto.model_dump(exclude_none=True))
+                    yield message_dto
+                    yield ChatEOSResponse()

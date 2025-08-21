@@ -26,6 +26,7 @@ dependencies = [
     "pypdf (>=5.8.0,<6.0.0)",
     "sse-starlette (>=3.0.2,<4.0.0)",
     "pydub (>=0.25.1,<0.26.0)",
+    "docling (>=2.15.0,<3.0.0)",
 ]
 
 [tool.poetry]

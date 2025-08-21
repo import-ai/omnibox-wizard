@@ -38,15 +38,25 @@ async def title(
     request: CommonAITextRequest, trace_info: TraceInfo = Depends(get_trace_info)
 ):
     return TitleResponse(
-        title=await common_ai.title(request.text, trace_info=trace_info)
+        title=await common_ai.title(
+            request.text, 
+            lang=request.lang, 
+            trace_info=trace_info
+        )
     )
 
 
-@internal_router.get("/tags", tags=["LLM"], response_model=TagsResponse)
+@internal_router.post("/tags", tags=["LLM"], response_model=TagsResponse)
 async def tags(
     request: CommonAITextRequest, trace_info: TraceInfo = Depends(get_trace_info)
 ):
-    return TagsResponse(tags=await common_ai.tags(request.text, trace_info=trace_info))
+    return TagsResponse(
+        tags=await common_ai.tags(
+            request.text, 
+            lang=request.lang, 
+            trace_info=trace_info
+        )
+    )
 
 
 @internal_router.post("/search", tags=[], response_model=SearchResponse)

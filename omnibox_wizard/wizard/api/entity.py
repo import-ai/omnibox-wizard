@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 from omnibox_wizard.wizard.grimoire.entity.index_record import IndexRecord, IndexRecordType
@@ -5,6 +7,7 @@ from omnibox_wizard.wizard.grimoire.entity.index_record import IndexRecord, Inde
 
 class CommonAITextRequest(BaseModel):
     text: str = Field(description="text to title")
+    lang: Literal["简体中文", "English"] = Field(default="简体中文", description="Language of the response.")
 
 
 class TitleResponse(BaseModel):

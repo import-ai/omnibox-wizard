@@ -213,18 +213,27 @@ def get_agent_request(
         ]
     }
 
-
-@pytest.mark.parametrize("enable_thinking", [True, False])
+@pytest.mark.parametrize("enable_thinking", [True, False], ids=["thinking_enabled", "thinking_disabled"])
 @pytest.mark.parametrize("query, resource_ids, parent_ids, expected_messages_length", [
-    # ("今天北京的天气", None, None, 5),
+    ("今天北京的天气", None, None, 5),
     # ("下周计划", None, None, 5),
     # ("我下周的计划", ["r_id_a0", "r_id_b0"], None, 5),
     # ("地球到火星的距离", ["r_id_a0", "r_id_b0"], None, 5),
     # ("下周计划", None, ["p_id_1"], 5),
     # ("下周计划", ["r_id_b0"], ["p_id_0"], 5),
     # ("小红是谁？", ["r_id_a0", "r_id_a1", "r_id_b0", "r_id_c0"], None, 5),
-    ("小红是谁？", None, None, 5),
+    # ("小红是谁？", None, None, 5),
     # ("地球到火星的距离有多远？", None, None, [5, 6, 7]),
+], ids=[
+    "weather_query",
+    # "weekly_plan",
+    # "my_weekly_plan_with_resources",
+    # "earth_mars_distance_with_resources",
+    # "weekly_plan_with_parent",
+    # "weekly_plan_with_resource_and_parent",
+    # "who_is_xiaohong_with_resources",
+    # "who_is_xiaohong_no_resources",
+    # "earth_mars_distance_detailed",
 ])
 def test_ask(client: httpx.Client, vector_db_init: bool, namespace_id: str, query: str,
              expected_messages_length: int | list[int],

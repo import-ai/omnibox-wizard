@@ -8,7 +8,7 @@ from uuid import uuid4
 from openai import AsyncStream
 from openai.types.chat import ChatCompletionChunk
 from openai.types.chat.chat_completion_chunk import ChoiceDeltaToolCall
-from opentelemetry import trace
+from opentelemetry import propagate, trace
 
 from omnibox_wizard.common import project_root
 from omnibox_wizard.common.template_parser import TemplateParser
@@ -252,10 +252,16 @@ class Agent(BaseSearchableAgent):
                 with tracer.start_as_current_span("agent.chat.openai") as openai_span:
                     start_time: float = time.time()
                     ttft: float = -1.0
+
+                    headers = {}
+                    propagate.inject(headers)
+                    if trace_info:
+                        headers = headers | {"X-Request-Id": trace_info.request_id}
+
                     openai_response: AsyncStream[ChatCompletionChunk] = await openai.chat(
                         messages=messages,
                         stream=True,
-                        extra_headers={"X-Request-Id": trace_info.request_id} if trace_info else None,
+                        extra_headers=headers if headers else None,
                         **kwargs
                     )
 

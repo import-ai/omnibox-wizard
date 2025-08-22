@@ -30,6 +30,7 @@ dependencies = [
     "opentelemetry-sdk (>=1.36.0,<2.0.0)",
     "opentelemetry-instrumentation-fastapi (>=0.57b0,<0.58)",
     "opentelemetry-exporter-otlp (>=1.36.0,<2.0.0)",
+    "docling (>=2.46.0,<3.0.0)",
 ]
 
 [tool.poetry]

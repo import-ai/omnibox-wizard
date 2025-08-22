@@ -17,13 +17,15 @@ from omnibox_wizard.worker.functions.html_reader import HTMLReaderV2
 from omnibox_wizard.worker.functions.index import DeleteConversation, UpsertIndex, DeleteIndex, UpsertMessageIndex
 from omnibox_wizard.worker.functions.tag_extractor import TagExtractor
 from omnibox_wizard.worker.functions.title_generator import TitleGenerator
+from omnibox_wizard.worker.health_tracker import HealthTracker
 
 
 class Worker:
-    def __init__(self, config: WorkerConfig, worker_id: int):
+    def __init__(self, config: WorkerConfig, worker_id: int, health_tracker: HealthTracker = None):
         self.config: WorkerConfig = config
         self.worker_id = worker_id
         self.callback_util = CallbackUtil(config)
+        self.health_tracker = health_tracker
 
         self.worker_dict: dict[str, BaseFunction] = {
             "collect": HTMLReaderV2(),
@@ -38,6 +40,9 @@ class Worker:
 
         self.logger = get_logger(f"worker_{self.worker_id}")
 
+        if self.health_tracker:
+            self.health_tracker.register_worker(self.worker_id)
+
     def get_trace_info(self, task: Task) -> TraceInfo:
         return TraceInfo(task.id, self.logger, payload={
             "task_id": task.id,
@@ -48,11 +53,19 @@ class Worker:
     async def run_once(self):
         task: Task | None = await self.fetch_task()
         if task:
+            if self.health_tracker:
+                self.health_tracker.update_worker_status(self.worker_id, "running")
+
             trace_info: TraceInfo = self.get_trace_info(task)
             trace_info.info({"message": "fetch_task"} | task.model_dump(include={"created_at", "started_at"}))
             processed_task: Task = await self.process_task(task, trace_info)
             await self.callback_util.send_callback(processed_task, trace_info)
+
+            if self.health_tracker:
+                self.health_tracker.update_worker_status(self.worker_id, "idle", datetime.now())
         else:
+            if self.health_tracker:
+                self.health_tracker.update_worker_status(self.worker_id, "idle")
             self.logger.debug({"message": "No available task, waiting..."})
 
     async def run(self):
@@ -65,6 +78,9 @@ class Worker:
                     "error": CommonException.parse_exception(e)
                 })
             except Exception as e:
+                if self.health_tracker:
+                    self.health_tracker.increment_error_count(self.worker_id)
+                    self.health_tracker.update_worker_status(self.worker_id, "error")
                 self.logger.exception({
                     "error": CommonException.parse_exception(e)
                 })

@@ -2,12 +2,15 @@ from datetime import datetime
 from typing import Literal
 
 from openai.types.chat import ChatCompletion
+from opentelemetry import propagate, trace
 
 from omnibox_wizard.common import project_root
 from omnibox_wizard.common.json_parser import parse_json
 from omnibox_wizard.common.template_render import render_template
 from omnibox_wizard.common.trace_info import TraceInfo
 from omnibox_wizard.wizard.config import GrimoireOpenAIConfig
+
+tracer = trace.get_tracer(__name__)
 
 
 class CommonAI:
@@ -30,12 +33,17 @@ class CommonAI:
             "lang": lang
         })
 
+        headers = {}
+        propagate.inject(headers)
+        if trace_info:
+            headers = headers | {"X-Request-Id": trace_info.request_id}
+
         openai_response: ChatCompletion = await self.config.get_config(model_size).chat(
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": text}
             ],
-            extra_headers={"X-Request-Id": trace_info.request_id} if trace_info else None
+            extra_headers=headers if headers else None
         )
         str_response: str = openai_response.choices[0].message.content
 

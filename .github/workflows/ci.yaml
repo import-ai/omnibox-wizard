@@ -73,7 +73,6 @@ jobs:
           labels: ${{ steps.meta_runtime.outputs.labels }}
           platforms: |
             linux/amd64
-            linux/arm64
 
       - name: Set output
         id: set_output
@@ -122,7 +121,6 @@ jobs:
           labels: ${{ steps.meta_app.outputs.labels }}
           platforms: |
             linux/amd64
-            linux/arm64
 
   webhook:
     runs-on: ubuntu-latest

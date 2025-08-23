@@ -25,12 +25,18 @@ class TaskConfig(BaseModel):
     use_docling: bool = Field(default=True, description="Use Docling instead of MarkItDown for office document conversion")
 
 
+class HealthConfig(BaseModel):
+    enabled: bool = Field(default=True, description="Enable health check server")
+    port: int = Field(default=8000, description="Port for health check server")
+
+
 class WorkerConfig(BaseModel):
     vector: VectorConfig
     task: TaskConfig
     backend: BackendConfig
     callback: CallbackConfig = Field(default_factory=CallbackConfig)
     grimoire: GrimoireConfig = Field(default=None)
+    health: HealthConfig = Field(default_factory=HealthConfig)
 
 
 ENV_PREFIX: str = "OBW"

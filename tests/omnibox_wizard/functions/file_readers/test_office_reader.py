@@ -1,14 +1,18 @@
+import mimetypes
 import os
 
 import pytest
+from dotenv import load_dotenv
 
 from omnibox_wizard.common import project_root
 from omnibox_wizard.worker.functions.file_readers.office_reader import OfficeReader
 
+load_dotenv()
+
 
 @pytest.fixture(scope="session")
 def office_reader() -> OfficeReader:
-    return OfficeReader()
+    return OfficeReader(base_url=os.environ["OBW_TASK_DOCLING_BASE_URL"])
 
 
 @pytest.mark.parametrize("filename", [
@@ -16,7 +20,8 @@ def office_reader() -> OfficeReader:
 ])
 async def test_convertor(office_reader: OfficeReader, filename):
     filepath: str = project_root.path(os.path.join("tests/omnibox_wizard/resources/files", filename))
-    markdown, images = office_reader.convert(filepath)
+    mimetype: str = mimetypes.guess_type(filepath)[0] or "application/octet-stream"
+    markdown, images = await office_reader.convert(filepath, "." + filename.split(".")[-1], mimetype)
     print(markdown)
     output_dir: str = os.path.join(
         project_root.path("tests/omnibox_wizard/resources/files/office_reader_output"),

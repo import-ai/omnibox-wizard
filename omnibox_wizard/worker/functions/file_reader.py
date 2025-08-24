@@ -9,7 +9,7 @@ from omnibox_wizard.worker.config import WorkerConfig
 from omnibox_wizard.worker.entity import Task, Image
 from omnibox_wizard.worker.functions.base_function import BaseFunction
 from omnibox_wizard.worker.functions.file_readers.audio_reader import ASRClient, M4AConvertor
-from omnibox_wizard.worker.functions.file_readers.office_reader import OfficeReader, OfficeOperatorClient, ConversionEngine
+from omnibox_wizard.worker.functions.file_readers.office_reader import OfficeReader, OfficeOperatorClient
 from omnibox_wizard.worker.functions.file_readers.pdf_reader import PDFReader
 from omnibox_wizard.worker.functions.file_readers.utils import guess_extension
 
@@ -20,13 +20,9 @@ class Convertor:
             office_operator_base_url: str,
             asr_config: OpenAIConfig,
             pdf_reader_base_url: str,
-            use_docling: bool = False,
+            docling_base_url: str,
     ):
-        # 根据配置选择使用MarkItDown或Docling
-        engine = ConversionEngine.DOCLING if use_docling else ConversionEngine.MARKITDOWN
-        self.office_reader: OfficeReader = OfficeReader(engine=engine)
-        
-        self.use_docling: bool = use_docling
+        self.office_reader: OfficeReader = OfficeReader(base_url=docling_base_url)
         self.office_operator_base_url: str = office_operator_base_url
         self.asr_client: ASRClient = ASRClient(
             model=asr_config.model,
@@ -39,11 +35,13 @@ class Convertor:
     async def convert(self, filepath: str, mime_ext: str, mimetype: str) -> tuple[str, list[Image]]:
         if mime_ext in [".pptx", ".docx", ".ppt", ".doc"]:
             path = filepath
+            ext = mime_ext
             if mime_ext in [".ppt", ".doc"]:
                 path: str = filepath + "x"
+                ext = mime_ext + "x"
                 async with OfficeOperatorClient(base_url=self.office_operator_base_url) as client:
                     await client.migrate(filepath, mime_ext, path, mimetype)
-            return self.office_reader.convert(path)
+            return await self.office_reader.convert(path, ext, mimetype)
         elif mime_ext in [".pdf"]:
             return await self.pdf_reader.convert(filepath)
         elif mime_ext in [".md", ".plain"]:
@@ -66,7 +64,7 @@ class FileReader(BaseFunction):
             office_operator_base_url=config.task.office_operator_base_url,
             asr_config=config.task.asr,
             pdf_reader_base_url=config.task.pdf_reader_base_url,
-            use_docling=config.task.use_docling,
+            docling_base_url=config.task.docling_base_url,
         )
 
     async def download(self, resource_id: str, target: str):

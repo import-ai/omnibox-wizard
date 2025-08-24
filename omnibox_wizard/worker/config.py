@@ -21,8 +21,8 @@ class TaskConfig(BaseModel):
     spliter: SpliterConfig = Field(default_factory=SpliterConfig)
     office_operator_base_url: str = Field(default=None)
     asr: OpenAIConfig = Field(default=None)
-    pdf_reader_base_url: str
-    use_docling: bool = Field(default=True, description="Use Docling instead of MarkItDown for office document conversion")
+    pdf_reader_base_url: str = Field(default=None)
+    docling_base_url: str = Field(default=None)
 
 
 class HealthConfig(BaseModel):

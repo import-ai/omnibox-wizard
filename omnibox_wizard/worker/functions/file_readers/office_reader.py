@@ -1,67 +1,43 @@
 import io
 import re
-import base64
-from pathlib import Path
-from typing import Optional
-from enum import Enum
 
 import httpcore
 import httpx
 import shortuuid
-from markitdown import MarkItDown
-from docling.document_converter import DocumentConverter
-from docling.datamodel.base_models import ConversionStatus
-from docling_core.types.doc.base import ImageRefMode
+
 from omnibox_wizard.common.utils import remove_continuous_break_lines
 from omnibox_wizard.worker.entity import Image
 from omnibox_wizard.worker.functions.file_readers.utils import guess_extension
 
 
-class ConversionEngine(Enum):
-    MARKITDOWN = "markitdown"
-    DOCLING = "docling"
-
-
-class OfficeReader:
+class OfficeReader(httpx.AsyncClient):
     """Unified Office Document Reader supporting both MarkItDown and Docling conversion engines."""
-    
-    def __init__(self, engine: ConversionEngine = ConversionEngine.DOCLING):
-        self.engine = engine
-        self.base64_img_pattern: re.Pattern = re.compile(r"data:image/[^;]+;base64,([^\"')]+)")
-        
-        if engine == ConversionEngine.MARKITDOWN:
-            self.markitdown: MarkItDown = MarkItDown()
-        elif engine == ConversionEngine.DOCLING:
-            self.converter = DocumentConverter()
+    base64_img_pattern: re.Pattern = re.compile(r"data:image/[^;]+;base64,([^\"')]+)")
 
-    def convert(self, file_path: str) -> tuple[str, list[Image]]:
-        """
-        Convert Office document to Markdown format and extract images.
+    async def convert(self, file_path: str, ext: str, mimetype: str, retry_cnt: int = 3) -> tuple[str, list[Image]]:
+        with open(file_path, "rb") as f:
+            bytes_content: bytes = f.read()
 
-        Args:
-            file_path: The path to the Office document file.
-            
-        Returns:
-            tuple[str, list[Image]]: A tuple containing the converted Markdown content and a list of extracted images.
-        """
-        if self.engine == ConversionEngine.MARKITDOWN:
-            return self._convert_with_markitdown(file_path)
-        elif self.engine == ConversionEngine.DOCLING:
-            return self._convert_with_docling(file_path)
-        else:
-            raise ValueError(f"Unsupported conversion engine: {self.engine}")
-    
-    def _convert_with_markitdown(self, file_path: str) -> tuple[str, list[Image]]:
-        result = self.markitdown.convert(file_path, keep_data_uris=True)
-        markdown: str = result.text_content
-        return self._extract_images_from_markdown(markdown)
-    
-    def _convert_with_docling(self, file_path: str) -> tuple[str, list[Image]]:
-        source = Path(file_path)
-        result = self.converter.convert(source)
-        markdown = result.document.export_to_markdown(image_mode=ImageRefMode.EMBEDDED)
-        return self._extract_images_from_markdown(markdown)
-    
+        for i in range(retry_cnt):
+            try:
+                response: httpx.Response = await self.post(
+                    "/v1/convert/file",
+                    data={
+                        "from_formats": [ext.lstrip('.')],
+                        "to_formats": ["md"],
+                        "image_export_mode": "embedded",
+                    },
+                    files={"files": (file_path, io.BytesIO(bytes_content), mimetype)},
+                    timeout=7 * 24 * 3600,
+                )
+                assert response.is_success, response.text
+                json_response: dict = response.json()
+                markdown: str = json_response["document"]["md_content"]
+                return self._extract_images_from_markdown(markdown)
+            except (TimeoutError, httpcore.ReadTimeout, httpx.ReadTimeout):
+                continue
+        raise Exception("Failed to convert file after retries")
+
     def _extract_images_from_markdown(self, markdown: str) -> tuple[str, list[Image]]:
         images: list[Image] = []
         for match in self.base64_img_pattern.finditer(markdown):
@@ -73,6 +49,7 @@ class OfficeReader:
             images.append(Image(data=base64_data, mimetype=mimetype, link=link, name=link))
             markdown = markdown.replace(match.group(0), link)
         return remove_continuous_break_lines(markdown), images
+
 
 class OfficeOperatorClient(httpx.AsyncClient):
 

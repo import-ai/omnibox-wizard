@@ -28,7 +28,7 @@ class Worker:
         self.health_tracker = health_tracker
 
         self.worker_dict: dict[str, BaseFunction] = {
-            "collect": HTMLReaderV2(),
+            "collect": HTMLReaderV2(config),
             "upsert_index": UpsertIndex(config),
             "delete_index": DeleteIndex(config),
             "file_reader": FileReader(config),

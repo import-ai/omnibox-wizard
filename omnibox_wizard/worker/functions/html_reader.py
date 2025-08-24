@@ -4,11 +4,16 @@ from html2text import html2text
 from readability import Document
 
 from omnibox_wizard.common.trace_info import TraceInfo
+from omnibox_wizard.worker.agent.html_title_extractor import HTMLTitleExtractor
+from omnibox_wizard.worker.config import WorkerConfig
 from omnibox_wizard.worker.entity import Task
 from omnibox_wizard.worker.functions.base_function import BaseFunction
 
 
 class HTMLReaderV2(BaseFunction):
+    def __init__(self, config: WorkerConfig):
+        self.html_title_extractor = HTMLTitleExtractor(config.grimoire.openai.get_config("mini"))
+
     async def run(self, task: Task, trace_info: TraceInfo, stream: bool = False) -> dict:
         input_dict = task.input
         html = input_dict["html"]
@@ -17,10 +22,15 @@ class HTMLReaderV2(BaseFunction):
         domain: str = urlparse(url).netloc
         trace_info = trace_info.bind(domain=domain)
 
+        result_dict: dict = await self.convert(html, trace_info)
+        trace_info.info({k: v for k, v in result_dict.items() if k != "markdown"})
+        return result_dict
+
+    async def convert(self, html: str, trace_info: TraceInfo):
         html_doc = Document(html)
 
-        title = html_doc.title()
-        html_summary = html_doc.summary().strip()
+        raw_title: str = html_doc.title()
+        html_summary: str = html_doc.summary().strip()
         markdown: str = html2text(html_summary).strip()
 
         trace_info.info({
@@ -30,6 +40,8 @@ class HTMLReaderV2(BaseFunction):
             "len(markdown)": len(markdown),
         })
 
-        result_dict: dict = {"title": title, "markdown": markdown}
-        trace_info.info({k: v for k, v in result_dict.items() if k != "markdown"})
-        return result_dict
+        snippet: str = "\n".join(list(filter(bool, markdown.splitlines()))[:3])
+
+        extraction = await self.html_title_extractor.ainvoke({"title": raw_title, "snippet": snippet}, trace_info)
+
+        return {"title": extraction.title, "markdown": markdown}

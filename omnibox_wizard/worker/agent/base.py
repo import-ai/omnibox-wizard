@@ -5,6 +5,7 @@ from typing import Type, TypeVar, Generic, AsyncIterator
 from jinja2 import Template
 from openai import AsyncStream
 from openai.types.chat import ChatCompletionChunk
+from opentelemetry import propagate
 from pydantic import BaseModel
 
 from omnibox_wizard.common import project_root
@@ -178,9 +179,14 @@ class BaseAgent(Generic[InputType, OutputType]):
     async def astream(self, context: dict | InputType, trace_info: TraceInfo) -> AsyncIterator[str]:
         response: str = ''
         messages: list[dict[str, str]] = self.prepare_messages(self.prepare_context(context))
+        headers = {}
+        propagate.inject(headers)
+        if trace_info:
+            headers = headers | {"X-Request-Id": trace_info.request_id}
         openai_async_stream_response: AsyncStream[ChatCompletionChunk] = await self.openai_config.chat(
             messages=messages,
-            stream=True
+            stream=True,
+            extra_headers=headers if headers else None,
         )
         async for chunk in openai_async_stream_response:
             if delta := chunk.choices[0].delta.content:

@@ -4,6 +4,8 @@ from datetime import datetime
 from typing import Optional, Callable
 
 import httpx
+from opentelemetry import trace, propagate
+from opentelemetry.trace import Status, StatusCode
 
 from omnibox_wizard.common.exception import CommonException
 from omnibox_wizard.common.logger import get_logger
@@ -18,6 +20,8 @@ from omnibox_wizard.worker.functions.index import DeleteConversation, UpsertInde
 from omnibox_wizard.worker.functions.tag_extractor import TagExtractor
 from omnibox_wizard.worker.functions.title_generator import TitleGenerator
 from omnibox_wizard.worker.health_tracker import HealthTracker
+
+tracer = trace.get_tracer(__name__)
 
 
 class Worker:
@@ -58,8 +62,23 @@ class Worker:
 
             trace_info: TraceInfo = self.get_trace_info(task)
             trace_info.info({"message": "fetch_task"} | task.model_dump(include={"created_at", "started_at"}))
-            processed_task: Task = await self.process_task(task, trace_info)
-            await self.callback_util.send_callback(processed_task, trace_info)
+            trace_headers = task.payload.get("trace_headers", {}) if task.payload else {}
+            parent_context = propagate.extract(trace_headers)
+
+            with tracer.start_as_current_span(
+                    f"worker.process_task.{task.function}",
+                    context=parent_context,
+                    attributes={
+                        "task.id": task.id,
+                        "task.function": task.function,
+                        "task.namespace_id": task.namespace_id,
+                        "task.user_id": task.user_id,
+                        "task.priority": task.priority,
+                        "worker.id": str(self.worker_id),
+                    }
+            ):
+                processed_task: Task = await self.process_task(task, trace_info)
+                await self.callback_util.send_callback(processed_task, trace_info)
 
             if self.health_tracker:
                 self.health_tracker.update_worker_status(self.worker_id, "idle", datetime.now())
@@ -104,14 +123,23 @@ class Worker:
 
     async def process_task(self, task: Task, trace_info: TraceInfo) -> Task:
         logging_func: Callable[[dict], None] = trace_info.info
+        span = trace.get_current_span()
 
         try:
             output = await self.worker_router(task, trace_info)
+            span.set_status(Status(StatusCode.OK))
         except Exception as e:
             task.exception = {"error": CommonException.parse_exception(e), "traceback": traceback.format_exc()}
             logging_func = trace_info.bind(error=CommonException.parse_exception(e)).exception
+
+            # Record exception in span
+            span.record_exception(e)
+            span.set_status(Status(StatusCode.ERROR, str(e)))
+            span.set_attribute("error.message", str(e))
+            span.set_attribute("error.type", type(e).__name__)
         else:
             task.output = output
+            span.set_attribute("task.output_size", len(str(output)) if output else 0)
 
         task.updated_at = task.ended_at = datetime.now()
         logging_func(task.model_dump(include={"created_at", "started_at", "ended_at"}))

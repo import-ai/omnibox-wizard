@@ -1,6 +1,7 @@
 import json as jsonlib
 import os
 
+import pandas as pd
 import pytest
 
 from omnibox_wizard.common import project_root
@@ -9,7 +10,33 @@ from omnibox_wizard.worker.entity import Task
 from omnibox_wizard.worker.functions.html_reader import HTMLReaderV2
 from tests.omnibox_wizard.helper.fixture import trace_info, remote_worker_config
 
+
+def get_tasks() -> list[Task]:
+    csv_path: str = "tests/omnibox_wizard/resources/files/tasks.csv"
+    df = pd.read_csv(project_root.path(csv_path))
+    tasks = []
+    for _, row in df.iterrows():
+        task = Task(
+            id=row['id'],
+            priority=5,
+            namespace_id='test',
+            user_id='test',
+            function="collect",
+            input=jsonlib.loads(row['input'])
+        )
+        tasks.append(task)
+    return tasks
+
+
 html_reader_base_dir = "tests/omnibox_wizard/resources/files/html_reader_input"
+
+
+async def process_task(task: Task, trace_info: TraceInfo, remote_worker_config):
+    c = HTMLReaderV2(remote_worker_config)
+    print(task.input['url'])
+    result = await c.run(task, trace_info)
+    print(jsonlib.dumps(result, ensure_ascii=False, separators=(",", ":")))
+    return result
 
 
 @pytest.mark.parametrize("filename", filter(
@@ -26,9 +53,13 @@ async def test_html_reader_v2(filename: str, trace_info: TraceInfo, remote_worke
             function="collect",
             input=jsonlib.load(f)
         )
-    c = HTMLReaderV2(remote_worker_config)
-    print(task.input['url'])
-    result = await c.run(task, trace_info)
-    print(jsonlib.dumps(result, ensure_ascii=False, separators=(",", ":")))
-    with project_root.open(os.path.join(html_reader_base_dir, filename.replace(".json", ".md")), "w") as f:
-        f.write("# " + result["title"] + "\n\n" + result["markdown"])
+    result = await process_task(task, trace_info, remote_worker_config)
+    print("=" * 32)
+    print("# " + result["title"] + "\n\n" + result["markdown"])
+
+
+@pytest.mark.parametrize("task", get_tasks())
+async def test_html_reader_by_csv(task: Task, trace_info: TraceInfo, remote_worker_config):
+    result = await process_task(task, trace_info, remote_worker_config)
+    print("=" * 32)
+    print("# " + result["title"] + "\n\n" + result["markdown"])

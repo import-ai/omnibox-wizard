@@ -4,11 +4,15 @@ import json
 from typing import Callable
 
 import httpx
+from opentelemetry import propagate, trace
+from opentelemetry.trace import Status, StatusCode
 
 from omnibox_wizard.common.exception import CommonException
 from omnibox_wizard.common.trace_info import TraceInfo
 from omnibox_wizard.worker.config import WorkerConfig
 from omnibox_wizard.worker.entity import Task
+
+tracer = trace.get_tracer(__name__)
 
 
 class CallbackUtil:
@@ -17,7 +21,15 @@ class CallbackUtil:
         self.chunk_size = config.callback.chunk_size
         self.use_chunked_callback = config.callback.use_chunked
 
+    @classmethod
+    def inject_trace(cls, headers: dict | None) -> dict:
+        headers = headers or {}
+        propagate.inject(headers)
+        return headers
+
+    @tracer.start_as_current_span("CallbackUtil.send_callback")
     async def send_callback(self, task: Task, trace_info: TraceInfo):
+        span = trace.get_current_span()
         payload = task.model_dump(
             exclude_none=True, mode="json",
             include={"id", "exception", "output"},
@@ -27,6 +39,10 @@ class CallbackUtil:
             try:
                 await self._send_chunked_callback(payload, task.id, trace_info)
             except Exception as e:
+                span.record_exception(e)
+                span.set_status(Status(StatusCode.ERROR, str(e)))
+                span.set_attribute("error.message", str(e))
+                span.set_attribute("error.type", type(e).__name__)
                 trace_info.error({
                     "message": "Chunked callback failed, sending regular callback with exception",
                     "error": CommonException.parse_exception(e),
@@ -42,7 +58,7 @@ class CallbackUtil:
             http_response: httpx.Response = await client.post(
                 f"/internal/api/v1/wizard/callback",
                 json=payload,
-                headers={"X-Request-Id": task_id}
+                headers=self.inject_trace({"X-Request-Id": task_id}),
             )
             logging_func: Callable[[dict], None] = trace_info.debug if http_response.is_success else trace_info.error
             logging_func({"status_code": http_response.status_code, "response": http_response.json()})
@@ -63,7 +79,7 @@ class CallbackUtil:
                         },
                         "http_response": http_response.json()
                     }},
-                    headers={"X-Request-Id": task_id}
+                    headers=self.inject_trace({"X-Request-Id": task_id}),
                 )
 
     def _should_use_chunks(self, payload: dict) -> bool:
@@ -84,8 +100,13 @@ class CallbackUtil:
         return chunks
 
     async def _send_chunked_callback(self, payload: dict, task_id: str, trace_info: TraceInfo):
+        span = trace.get_current_span()
         chunks = self._chunk_payload(payload)
         trace_info.info({"message": f"Sending callback in {len(chunks)} chunks", "task_id": task_id})
+        span.set_attributes({
+            "callback.chunked": True,
+            "callback.total_chunks": len(chunks),
+        })
 
         for i, chunk_data in enumerate(chunks):
             is_final_chunk = i == len(chunks) - 1
@@ -106,7 +127,7 @@ class CallbackUtil:
                     http_response: httpx.Response = await client.post(
                         f"/internal/api/v1/wizard/callback/chunk",
                         json=chunk_payload,
-                        headers={"X-Request-Id": chunk_payload["id"]}
+                        headers=self.inject_trace({"X-Request-Id": chunk_payload["id"]}),
                     )
 
                     if http_response.is_success:
@@ -137,7 +158,8 @@ class CallbackUtil:
         raise Exception(
             f"Failed to send chunk {chunk_payload['chunk_index'] + 1}/{chunk_payload['total_chunks']} after {retry_count} attempts")
 
-    async def _send_chunked_callback_failure(self, original_payload: dict, task_id: str, trace_info: TraceInfo, failure_exception: Exception):
+    async def _send_chunked_callback_failure(self, original_payload: dict, task_id: str, trace_info: TraceInfo,
+                                             failure_exception: Exception):
         """Send a regular callback with exception details when chunked callback fails"""
         error_payload = {
             "id": task_id,
@@ -150,12 +172,12 @@ class CallbackUtil:
                 }
             }
         }
-        
+
         async with httpx.AsyncClient(base_url=self.config.backend.base_url) as client:
             http_response: httpx.Response = await client.post(
                 f"/internal/api/v1/wizard/callback",
                 json=error_payload,
-                headers={"X-Request-Id": task_id}
+                headers=self.inject_trace({"X-Request-Id": task_id})
             )
             logging_func: Callable[[dict], None] = trace_info.debug if http_response.is_success else trace_info.error
             logging_func({

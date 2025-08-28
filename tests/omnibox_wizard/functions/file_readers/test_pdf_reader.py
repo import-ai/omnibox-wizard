@@ -25,3 +25,10 @@ async def test_pdf_reader(remote_worker_config: WorkerConfig, filename: str):
         img_path = os.path.join(output_dir, img_name)
         with open(img_path, "wb") as img_file:
             img_file.write(base64.b64decode(img_data))
+
+
+@pytest.mark.parametrize("filename", os.listdir(input_base_dir))
+async def test_get_pages(filename: str):
+    pages = PDFReader.get_pages(os.path.join(input_base_dir, filename))
+    for i, page in enumerate(pages):
+        _ = page

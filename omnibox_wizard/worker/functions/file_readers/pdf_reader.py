@@ -2,6 +2,7 @@ import asyncio
 import base64
 import io
 import re
+from typing import Any, Generator
 
 import httpx
 import shortuuid
@@ -28,9 +29,24 @@ class PDFReader:
         self.chinese_char_pattern = re.compile(r"[\u4e00-\u9fff]")
 
     @classmethod
-    def get_pages(cls, filepath: str) -> list[str]:
-        reader = PdfReader(filepath)
-        for page in reader.pages:
+    def pdf_reader(cls, filepath: str) -> PdfReader:
+        # Handle PDFs that may have wrapper data before the actual PDF content
+        with open(filepath, 'rb') as f:
+            data = f.read()
+
+        # Find the PDF header position
+        pdf_start = data.find(b'%PDF')
+        if pdf_start == -1:
+            raise ValueError(f"No PDF header found in {filepath}")
+
+        # Extract the actual PDF data
+        pdf_data = data[pdf_start:]
+
+        return PdfReader(io.BytesIO(pdf_data))
+
+    @classmethod
+    def get_pages(cls, filepath: str) -> Generator[str, Any, None]:
+        for page in cls.pdf_reader(filepath).pages:
             writer = PdfWriter()
             writer.add_page(page)
 

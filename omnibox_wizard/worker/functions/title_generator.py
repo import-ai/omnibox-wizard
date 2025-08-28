@@ -13,6 +13,7 @@ class TitleGenerator(BaseFunction):
     async def run(self, task: Task, trace_info: TraceInfo) -> dict:
         input_dict = task.input
         text = input_dict.get("text", "")
+        lang = input_dict.get("lang", None)
 
         if not text:
             raise ValueError("Text input is required for title generation")
@@ -21,7 +22,7 @@ class TitleGenerator(BaseFunction):
         trace_info.info({"message": "Starting title generation"})
 
         try:
-            title = await self.common_ai.title(text, trace_info=trace_info)
+            title = await self.common_ai.title(text, trace_info=trace_info, lang=lang)
 
             result_dict = {"title": title}
             trace_info.info({"generated_title": title, "message": "Title generation completed"})

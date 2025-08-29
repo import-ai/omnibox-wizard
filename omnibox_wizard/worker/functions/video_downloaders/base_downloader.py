@@ -1,11 +1,9 @@
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
 from typing import Optional
+from pydantic import BaseModel
 
 
-@dataclass
-class VideoInfo:
-    """视频信息"""
+class VideoInfo(BaseModel):
     title: str
     duration: float
     video_id: str
@@ -17,9 +15,7 @@ class VideoInfo:
     thumbnail_url: str = ""
 
 
-@dataclass
-class DownloadResult:
-    """下载结果"""
+class DownloadResult(BaseModel):
     audio_path: str
     video_path: Optional[str]
     video_info: VideoInfo

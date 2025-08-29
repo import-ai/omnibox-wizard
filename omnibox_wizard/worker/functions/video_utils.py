@@ -372,7 +372,7 @@ class VideoProcessor:
                 
                 # time_display = f"{timestamp//60}:{timestamp%60:02d}"
                 # img_markdown = f"{time_display}\n\n{filename}"
-                img_markdown = f"\n{filename}\n"
+                img_markdown = f"\n![]({filename})\n"
                 processed_markdown = processed_markdown.replace(marker, img_markdown, 1)
                 
                 logger.info(f"Extract screenshot: {marker} -> Image object")

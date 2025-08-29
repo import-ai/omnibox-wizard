@@ -68,4 +68,4 @@ class OfficeOperatorClient(httpx.AsyncClient):
                     f.write(response.content)
             except (TimeoutError, httpcore.ReadTimeout, httpx.ReadTimeout):
                 continue
-            break
+            break# print(images)

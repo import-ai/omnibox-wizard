@@ -12,8 +12,8 @@ from omnibox_wizard.worker.functions.file_readers.audio_reader import ASRClient,
 from omnibox_wizard.worker.functions.file_readers.md_reader import MDReader
 from omnibox_wizard.worker.functions.file_readers.office_reader import OfficeReader, OfficeOperatorClient
 from omnibox_wizard.worker.functions.file_readers.pdf_reader import PDFReader
-from omnibox_wizard.worker.functions.file_readers.video_reader import VideoReader
 from omnibox_wizard.worker.functions.file_readers.utils import guess_extension
+from omnibox_wizard.worker.functions.file_readers.video_reader import VideoReader
 
 
 class Convertor:
@@ -37,7 +37,8 @@ class Convertor:
         self.video_reader: VideoReader = VideoReader(worker_config)
         self.md_reader: MDReader = MDReader()
 
-    async def convert(self, filepath: str, mime_ext: str, mimetype: str, trace_info: TraceInfo, **kwargs) -> tuple[str, list[Image], dict]:
+    async def convert(self, filepath: str, mime_ext: str, mimetype: str, trace_info: TraceInfo, **kwargs) -> tuple[
+        str, list[Image], dict]:
         if mime_ext in [".pptx", ".docx", ".ppt", ".doc"]:
             path = filepath
             ext = mime_ext
@@ -115,8 +116,8 @@ class FileReader(BaseFunction):
                     'include_screenshots': include_screenshots,
                     'include_links': include_links
                 }
-                markdown, images = await self.convertor.convert(local_path, mime_ext, mimetype, trace_info, **convert_params)
-                markdown, images, metadata = await self.convertor.convert(local_path, mime_ext, mimetype)
+                markdown, images, metadata = await self.convertor.convert(
+                    local_path, mime_ext, mimetype, trace_info, **convert_params)
             except ValueError:
                 return {
                     "message": "unsupported_type",

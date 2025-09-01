@@ -49,6 +49,10 @@ class HTMLReaderV2(BaseFunction):
         "www.xiaohongshu.com": {
             "name": "div",
             "class_": "note-content"
+        },
+        "x.com": {
+            "name": "div",
+            "attrs": {"data-testid": "tweetText"}
         }
     }
 

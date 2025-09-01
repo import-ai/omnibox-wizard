@@ -9,10 +9,11 @@ from omnibox_wizard.worker.config import WorkerConfig
 from omnibox_wizard.worker.entity import Task, Image
 from omnibox_wizard.worker.functions.base_function import BaseFunction
 from omnibox_wizard.worker.functions.file_readers.audio_reader import ASRClient, M4AConvertor
+from omnibox_wizard.worker.functions.file_readers.md_reader import MDReader
 from omnibox_wizard.worker.functions.file_readers.office_reader import OfficeReader, OfficeOperatorClient
 from omnibox_wizard.worker.functions.file_readers.pdf_reader import PDFReader
-from omnibox_wizard.worker.functions.file_readers.video_reader import VideoReader
 from omnibox_wizard.worker.functions.file_readers.utils import guess_extension
+from omnibox_wizard.worker.functions.file_readers.video_reader import VideoReader
 
 
 class Convertor:
@@ -34,8 +35,10 @@ class Convertor:
         self.pdf_reader: PDFReader = PDFReader(base_url=pdf_reader_base_url)
         self.m4a_convertor: M4AConvertor = M4AConvertor()
         self.video_reader: VideoReader = VideoReader(worker_config)
+        self.md_reader: MDReader = MDReader()
 
-    async def convert(self, filepath: str, mime_ext: str, mimetype: str, trace_info: TraceInfo, **kwargs) -> tuple[str, list[Image]]:
+    async def convert(self, filepath: str, mime_ext: str, mimetype: str, trace_info: TraceInfo, **kwargs) -> tuple[
+        str, list[Image], dict]:
         if mime_ext in [".pptx", ".docx", ".ppt", ".doc"]:
             path = filepath
             ext = mime_ext
@@ -44,10 +47,14 @@ class Convertor:
                 ext = mime_ext + "x"
                 async with OfficeOperatorClient(base_url=self.office_operator_base_url) as client:
                     await client.migrate(filepath, mime_ext, path, mimetype)
-            return await self.office_reader.convert(path, ext, mimetype)
+            markdown, images = await self.office_reader.convert(path, ext, mimetype)
+            return markdown, images, {}
         elif mime_ext in [".pdf"]:
-            return await self.pdf_reader.convert(filepath)
-        elif mime_ext in [".md", ".plain"]:
+            markdown, images = await self.pdf_reader.convert(filepath)
+            return markdown, images, {}
+        elif mime_ext == ".md":
+            return self.md_reader.convert(filepath)
+        elif mime_ext == ".plain":
             with open(filepath, 'r') as f:
                 markdown: str = f.read()
         elif mime_ext in [".wav", ".mp3", ".pcm", ".opus", ".webm", ".m4a"]:
@@ -58,7 +65,7 @@ class Convertor:
             return await self.video_reader.convert(filepath, trace_info, **kwargs)
         else:
             raise ValueError(f"unsupported_type: {mime_ext}")
-        return markdown, []
+        return markdown, [], {}
 
 
 class FileReader(BaseFunction):
@@ -88,7 +95,7 @@ class FileReader(BaseFunction):
         filename: str = task_input.get('filename', task_input['original_name'])
         resource_id: str = task_input['resource_id']
         mimetype: str = task_input['mimetype']
-        
+
         # Extract additional parameters for video processing
         language: str = task_input.get('language', 'zh')
         style: str = task_input.get('style', 'Concise Style')
@@ -109,7 +116,8 @@ class FileReader(BaseFunction):
                     'include_screenshots': include_screenshots,
                     'include_links': include_links
                 }
-                markdown, images = await self.convertor.convert(local_path, mime_ext, mimetype, trace_info, **convert_params)
+                markdown, images, metadata = await self.convertor.convert(
+                    local_path, mime_ext, mimetype, trace_info, **convert_params)
             except ValueError:
                 return {
                     "message": "unsupported_type",
@@ -117,7 +125,9 @@ class FileReader(BaseFunction):
                     "mimetype": mimetype,
                 }
 
-        result_dict: dict = {"title": title, "markdown": markdown} | ({"images": [
-            image.model_dump(exclude_none=True) for image in images
-        ]} if images else {})
+        result_dict: dict = {"title": (metadata or {}).pop("title", None) or title, "markdown": markdown}
+        if images:
+            result_dict['images'] = [image.model_dump(exclude_none=True) for image in images]
+        if metadata:
+            result_dict['metadata'] = metadata
         return result_dict

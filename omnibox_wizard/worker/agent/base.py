@@ -116,7 +116,7 @@ class BaseAgent(Generic[InputType, OutputType]):
         )
         system_prompt: str = self.template_parser.render_template(
             self.system_prompt_template,
-            lang="简体中文",
+            lang=getattr(context, "lang", None) or "简体中文",
             output_format=output_format,
             **context.model_dump()
         )

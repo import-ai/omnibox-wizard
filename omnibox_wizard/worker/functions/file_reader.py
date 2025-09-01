@@ -12,6 +12,7 @@ from omnibox_wizard.worker.functions.file_readers.audio_reader import ASRClient,
 from omnibox_wizard.worker.functions.file_readers.md_reader import MDReader
 from omnibox_wizard.worker.functions.file_readers.office_reader import OfficeReader, OfficeOperatorClient
 from omnibox_wizard.worker.functions.file_readers.pdf_reader import PDFReader
+from omnibox_wizard.worker.functions.file_readers.video_reader import VideoReader
 from omnibox_wizard.worker.functions.file_readers.utils import guess_extension
 
 
@@ -22,6 +23,7 @@ class Convertor:
             asr_config: OpenAIConfig,
             pdf_reader_base_url: str,
             docling_base_url: str,
+            worker_config: WorkerConfig,
     ):
         self.office_reader: OfficeReader = OfficeReader(base_url=docling_base_url)
         self.office_operator_base_url: str = office_operator_base_url
@@ -32,9 +34,10 @@ class Convertor:
         )
         self.pdf_reader: PDFReader = PDFReader(base_url=pdf_reader_base_url)
         self.m4a_convertor: M4AConvertor = M4AConvertor()
+        self.video_reader: VideoReader = VideoReader(worker_config)
         self.md_reader: MDReader = MDReader()
 
-    async def convert(self, filepath: str, mime_ext: str, mimetype: str) -> tuple[str, list[Image], dict]:
+    async def convert(self, filepath: str, mime_ext: str, mimetype: str, trace_info: TraceInfo, **kwargs) -> tuple[str, list[Image], dict]:
         if mime_ext in [".pptx", ".docx", ".ppt", ".doc"]:
             path = filepath
             ext = mime_ext
@@ -57,6 +60,8 @@ class Convertor:
             if mime_ext == ".m4a":
                 filepath = self.m4a_convertor.convert(filepath)
             markdown: str = await self.asr_client.transcribe(filepath, mimetype)
+        elif mime_ext in [".mp4", ".avi", ".mov", ".mkv", ".flv", ".wmv", ".webm"]:
+            return await self.video_reader.convert(filepath, trace_info, **kwargs)
         else:
             raise ValueError(f"unsupported_type: {mime_ext}")
         return markdown, [], {}
@@ -71,6 +76,7 @@ class FileReader(BaseFunction):
             asr_config=config.task.asr,
             pdf_reader_base_url=config.task.pdf_reader_base_url,
             docling_base_url=config.task.docling_base_url,
+            worker_config=config,
         )
 
     async def download(self, resource_id: str, target: str):
@@ -89,6 +95,12 @@ class FileReader(BaseFunction):
         resource_id: str = task_input['resource_id']
         mimetype: str = task_input['mimetype']
 
+        # Extract additional parameters for video processing
+        language: str = task_input.get('language', 'zh')
+        style: str = task_input.get('style', 'Concise Style')
+        include_screenshots: bool = task_input.get('include_screenshots', True)
+        include_links: bool = task_input.get('include_links', False)
+
         with tempfile.TemporaryDirectory() as temp_dir:
             local_path: str = os.path.join(temp_dir, filename)
             await self.download(resource_id, local_path)
@@ -96,6 +108,14 @@ class FileReader(BaseFunction):
             mime_ext: str | None = guess_extension(mimetype)
 
             try:
+                # Pass additional parameters for video processing
+                convert_params = {
+                    'language': language,
+                    'style': style,
+                    'include_screenshots': include_screenshots,
+                    'include_links': include_links
+                }
+                markdown, images = await self.convertor.convert(local_path, mime_ext, mimetype, trace_info, **convert_params)
                 markdown, images, metadata = await self.convertor.convert(local_path, mime_ext, mimetype)
             except ValueError:
                 return {

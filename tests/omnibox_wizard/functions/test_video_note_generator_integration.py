@@ -80,7 +80,8 @@ class TestVideoNoteGeneratorIntegration:
                 "style": "Concise Style",
                 "include_screenshots": True,
                 "include_links": False,
-                "language": "English"
+                "language": "English",
+                "generate_thumbnail": True
             }
         )
         

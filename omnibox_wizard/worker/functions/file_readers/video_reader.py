@@ -33,8 +33,7 @@ class VideoReader:
                 language = kwargs.get("language", "简体中文")
             )
             
-            # Extract markdown and images from VideoNoteResult  
-            return result.markdown, result.images
+            return result.markdown, result.screenshots
             
         except Exception as e:
             trace_info.error({"error": str(e), "message": "Video processing failed"})

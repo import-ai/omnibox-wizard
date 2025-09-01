@@ -175,7 +175,8 @@ class VideoProcessor:
         self, 
         video_path: str, 
         interval: int = 30,
-        max_frames: int = 100
+        max_frames: int = 100,
+        start_offset: int = 1
     ) -> List[str]:
         """
         Extract video frames for thumbnail grid at specified intervals
@@ -184,6 +185,7 @@ class VideoProcessor:
             video_path: Video file path
             interval: Frame extraction interval (seconds)
             max_frames: Maximum number of frames
+            start_offset: Start time offset to skip black screen at beginning (seconds)
             
         Returns:
             Extracted frame file path list
@@ -195,9 +197,9 @@ class VideoProcessor:
         if duration <= 0:
             raise ValueError("Cannot get video duration")
         
-        # Calculate timestamps
+        # Calculate timestamps, starting from start_offset to avoid black screen
         timestamps = []
-        current = 0
+        current = start_offset
         while current < duration and len(timestamps) < max_frames:
             timestamps.append(current)
             current += interval
@@ -233,22 +235,25 @@ class VideoProcessor:
         self,
         video_path: str,
         grid_size: Tuple[int, int] = (3, 3),
-        frame_interval: int = 30,
+        frame_interval: int = None,
         unit_width: int = 320,
-        unit_height: int = 180
+        unit_height: int = 180,
+        start_offset: int = 1
     ) -> List[str]:
         """
         Create video thumbnail grid
+        Fixed logic: One video generates exactly one thumbnail grid with 9 images
         
         Args:
             video_path: Video file path
-            grid_size: Grid size (number of columns, number of rows)
-            frame_interval: Frame extraction interval (seconds)
+            grid_size: Grid size (fixed at 3x3)
+            frame_interval: Frame extraction interval (auto-calculated if None)
             unit_width: Width of each thumbnail
             unit_height: Height of each thumbnail
+            start_offset: Start time offset to skip black screen at beginning (seconds)
             
         Returns:
-            List of generated grid image paths (base64 encoded)
+            List containing single base64 encoded grid image
         """
         try:
             from PIL import Image, ImageDraw, ImageFont
@@ -256,67 +261,106 @@ class VideoProcessor:
             logger.error("PIL is not installed, cannot create thumbnail grid")
             return []
         
-        # Extract frames
-        frame_paths = self.extract_frames_for_grid(video_path, frame_interval)
+        # Fixed 3x3 grid
+        cols, rows = 3, 3
+        target_frames = 9
+        
+        # Get video duration and calculate frame interval
+        duration = self.get_video_duration(video_path)
+        if duration <= 0:
+            logger.error("Cannot get video duration")
+            return []
+        
+        if frame_interval is None:
+            # Auto-calculate interval to get exactly 9 frames evenly distributed
+            available_duration = duration - start_offset
+            if available_duration <= 0:
+                frame_interval = 1
+            else:
+                frame_interval = max(1, int(available_duration / target_frames))
+        
+        # Extract exactly 9 frames
+        frame_paths = []
+        for i in range(target_frames):
+            timestamp = start_offset + i * frame_interval
+            if timestamp >= duration:
+                break
+            
+            time_label = f"{int(timestamp//60):02d}_{int(timestamp%60):02d}"
+            output_path = self.frame_dir / f"frame_{time_label}_{i:03d}.jpg"
+            
+            cmd = [
+                "ffmpeg",
+                "-ss", str(timestamp),
+                "-i", str(video_path),
+                "-frames:v", "1",
+                "-q:v", "2",
+                str(output_path),
+                "-y",
+                "-hide_banner",
+                "-loglevel", "error"
+            ]
+            
+            try:
+                subprocess.run(cmd, check=True)
+                frame_paths.append(str(output_path))
+                logger.debug(f"Extract frame: {output_path}")
+            except subprocess.CalledProcessError as e:
+                logger.error(f"Extract frame failed (ts={timestamp}): {e}")
+        
         if not frame_paths:
             logger.warning("No frames extracted")
             return []
         
-        # Group
-        cols, rows = grid_size
-        group_size = cols * rows
-        groups = [frame_paths[i:i + group_size] for i in range(0, len(frame_paths), group_size)]
+        logger.info(f"Extracted {len(frame_paths)} frames for 3x3 grid")
         
-        grid_images = []
+        # Create single grid image
+        grid_img = Image.new("RGB", (unit_width * cols, unit_height * rows), (0, 0, 0))
         
-        for group_idx, group in enumerate(groups):
-            if len(group) < group_size:
-                logger.warning(f"Group {group_idx + 1} has less than {group_size} images, skipping")
-                continue
-            
-            # Create grid image
-            grid_img = Image.new("RGB", (unit_width * cols, unit_height * rows), (0, 0, 0))
-            
-            # Load font (try system font)
-            font = None
+        # Load font (try system font)
+        font = None
+        try:
+            font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 16)
+        except:
             try:
-                font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 16)
+                font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 16)
             except:
                 font = ImageFont.load_default()
-            
-            for idx, frame_path in enumerate(group):
-                # Open and resize image
-                img = Image.open(frame_path).convert("RGB")
-                img = img.resize((unit_width, unit_height), Image.Resampling.LANCZOS)
-                
-                # Add timestamp label
-                draw = ImageDraw.Draw(img)
-                
-                # Extract time from file name
-                match = re.search(r"frame_(\d{2})_(\d{2})", Path(frame_path).name)
-                if match:
-                    time_text = f"{match.group(1)}:{match.group(2)}"
-                    # Add black background for better readability
-                    bbox = draw.textbbox((10, 10), time_text, font=font)
-                    draw.rectangle([bbox[0]-2, bbox[1]-2, bbox[2]+2, bbox[3]+2], fill="black")
-                    draw.text((10, 10), time_text, fill="yellow", font=font)
-                
-                # Place in grid
-                x = (idx % cols) * unit_width
-                y = (idx // cols) * unit_height
-                grid_img.paste(img, (x, y))
-            
-            # Save grid image
-            grid_path = self.grid_dir / f"grid_{group_idx + 1:03d}.jpg"
-            grid_img.save(grid_path, quality=85)
-            logger.info(f"Create grid image: {grid_path}")
-            
-            # Convert to base64
-            with open(grid_path, "rb") as f:
-                encoded = base64.b64encode(f.read()).decode("utf-8")
-                grid_images.append(f"data:image/jpeg;base64,{encoded}")
         
-        return grid_images
+        for idx, frame_path in enumerate(frame_paths):
+            if idx >= target_frames:
+                break
+                
+            # Open and resize image
+            img = Image.open(frame_path).convert("RGB")
+            img = img.resize((unit_width, unit_height), Image.Resampling.LANCZOS)
+            
+            # Add timestamp label
+            draw = ImageDraw.Draw(img)
+            
+            # Extract time from file name
+            match = re.search(r"frame_(\d{2})_(\d{2})", Path(frame_path).name)
+            if match:
+                time_text = f"{match.group(1)}:{match.group(2)}"
+                # Add black background for better readability
+                bbox = draw.textbbox((10, 10), time_text, font=font)
+                draw.rectangle([bbox[0]-2, bbox[1]-2, bbox[2]+2, bbox[3]+2], fill="black")
+                draw.text((10, 10), time_text, fill="yellow", font=font)
+            
+            # Place in grid
+            x = (idx % cols) * unit_width
+            y = (idx // cols) * unit_height
+            grid_img.paste(img, (x, y))
+        
+        # Save grid image
+        grid_path = self.grid_dir / "grid.jpg"
+        grid_img.save(grid_path, quality=85)
+        logger.info(f"Created single 3x3 grid image: {grid_path}")
+        
+        # Convert to base64
+        with open(grid_path, "rb") as f:
+            encoded = base64.b64encode(f.read()).decode("utf-8")
+            return [f"data:image/jpeg;base64,{encoded}"]
     
     def extract_screenshots_as_images(
         self, 
@@ -386,22 +430,25 @@ class VideoProcessor:
         self,
         video_path: str,
         grid_size: Tuple[int, int] = (3, 3),
-        frame_interval: int = 30,
+        frame_interval: int = None,
         unit_width: int = 320,
-        unit_height: int = 180
+        unit_height: int = 180,
+        start_offset: int = 1
     ) -> List:
         """
         Create video thumbnail grid and return Image object list
+        Fixed logic: One video generates exactly one thumbnail grid with 9 images
         
         Args:
             video_path: Video file path
-            grid_size: Grid size (number of columns, number of rows)
-            frame_interval: Frame extraction interval (seconds)
+            grid_size: Grid size (fixed at 3x3)
+            frame_interval: Frame extraction interval (auto-calculated if None)
             unit_width: Width of each thumbnail
             unit_height: Height of each thumbnail
+            start_offset: Start time offset to skip black screen at beginning (seconds)
             
         Returns:
-            Image object list
+            Image object list (always contains exactly one grid image)
         """
         from omnibox_wizard.worker.entity import Image
         
@@ -411,77 +458,116 @@ class VideoProcessor:
             logger.error("PIL is not installed, cannot create thumbnail grid")
             return []
         
-        # Extract frames
-        frame_paths = self.extract_frames_for_grid(video_path, frame_interval)
+        # Fixed 3x3 grid
+        cols, rows = 3, 3
+        target_frames = 9
+        
+        # Get video duration and calculate frame interval
+        duration = self.get_video_duration(video_path)
+        if duration <= 0:
+            logger.error("Cannot get video duration")
+            return []
+        
+        if frame_interval is None:
+            # Auto-calculate interval to get exactly 9 frames evenly distributed
+            available_duration = duration - start_offset
+            if available_duration <= 0:
+                frame_interval = 1
+            else:
+                frame_interval = max(1, int(available_duration / target_frames))
+        
+        # Extract exactly 9 frames
+        frame_paths = []
+        for i in range(target_frames):
+            timestamp = start_offset + i * frame_interval
+            if timestamp >= duration:
+                break
+            
+            time_label = f"{int(timestamp//60):02d}_{int(timestamp%60):02d}"
+            output_path = self.frame_dir / f"frame_{time_label}_{i:03d}.jpg"
+            
+            cmd = [
+                "ffmpeg",
+                "-ss", str(timestamp),
+                "-i", str(video_path),
+                "-frames:v", "1",
+                "-q:v", "2",
+                str(output_path),
+                "-y",
+                "-hide_banner",
+                "-loglevel", "error"
+            ]
+            
+            try:
+                subprocess.run(cmd, check=True)
+                frame_paths.append(str(output_path))
+                logger.debug(f"Extract frame: {output_path}")
+            except subprocess.CalledProcessError as e:
+                logger.error(f"Extract frame failed (ts={timestamp}): {e}")
+        
         if not frame_paths:
             logger.warning("No frames extracted")
             return []
         
-        # Group
-        cols, rows = grid_size
-        group_size = cols * rows
-        groups = [frame_paths[i:i + group_size] for i in range(0, len(frame_paths), group_size)]
+        logger.info(f"Extracted {len(frame_paths)} frames for 3x3 grid")
         
-        thumbnail_images = []
+        # Create single grid image
+        grid_img = PILImage.new("RGB", (unit_width * cols, unit_height * rows), (0, 0, 0))
         
-        for group_idx, group in enumerate(groups):
-            if len(group) < group_size:
-                logger.warning(f"Group {group_idx + 1} has less than {group_size} images, skipping")
-                continue
-            
-            # Create grid image
-            grid_img = PILImage.new("RGB", (unit_width * cols, unit_height * rows), (0, 0, 0))
-            
-            # Load font (try system font)
-            font = None
+        # Load font (try system font)
+        font = None
+        try:
+            font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 16)
+        except:
             try:
                 font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 16)
             except:
                 font = ImageFont.load_default()
-            
-            for idx, frame_path in enumerate(group):
-                # Open and resize image
-                img = PILImage.open(frame_path).convert("RGB")
-                img = img.resize((unit_width, unit_height), PILImage.Resampling.LANCZOS)
-                
-                # Add timestamp label
-                draw = ImageDraw.Draw(img)
-                
-                # Extract time from file name
-                match = re.search(r"frame_(\d{2})_(\d{2})", Path(frame_path).name)
-                if match:
-                    time_text = f"{match.group(1)}:{match.group(2)}"
-                    # Add black background for better readability
-                    bbox = draw.textbbox((10, 10), time_text, font=font)
-                    draw.rectangle([bbox[0]-2, bbox[1]-2, bbox[2]+2, bbox[3]+2], fill="black")
-                    draw.text((10, 10), time_text, fill="yellow", font=font)
-                
-                # Place in grid
-                x = (idx % cols) * unit_width
-                y = (idx // cols) * unit_height
-                grid_img.paste(img, (x, y))
-            
-            # Save to memory buffer
-            import io
-            buffer = io.BytesIO()
-            grid_img.save(buffer, format='JPEG', quality=85)
-            buffer.seek(0)
-            
-            # Convert to base64
-            image_data = base64.b64encode(buffer.read()).decode('utf-8')
-            
-            # Create Image object
-            thumbnail_image = Image(
-                name=f"Video Thumbnail Grid {group_idx + 1}",
-                link=f"/thumbnails/grid_{group_idx + 1:03d}.jpg",
-                data=image_data,
-                mimetype="image/jpeg"
-            )
-            
-            thumbnail_images.append(thumbnail_image)
-            logger.info(f"Create grid thumbnail image: {group_idx + 1}")
         
-        return thumbnail_images
+        for idx, frame_path in enumerate(frame_paths):
+            if idx >= target_frames:
+                break
+                
+            # Open and resize image
+            img = PILImage.open(frame_path).convert("RGB")
+            img = img.resize((unit_width, unit_height), PILImage.Resampling.LANCZOS)
+            
+            # Add timestamp label
+            draw = ImageDraw.Draw(img)
+            
+            # Extract time from file name
+            match = re.search(r"frame_(\d{2})_(\d{2})", Path(frame_path).name)
+            if match:
+                time_text = f"{match.group(1)}:{match.group(2)}"
+                # Add black background for better readability
+                bbox = draw.textbbox((10, 10), time_text, font=font)
+                draw.rectangle([bbox[0]-2, bbox[1]-2, bbox[2]+2, bbox[3]+2], fill="black")
+                draw.text((10, 10), time_text, fill="yellow", font=font)
+            
+            # Place in grid
+            x = (idx % cols) * unit_width
+            y = (idx // cols) * unit_height
+            grid_img.paste(img, (x, y))
+        
+        # Save to memory buffer
+        import io
+        buffer = io.BytesIO()
+        grid_img.save(buffer, format='JPEG', quality=85)
+        buffer.seek(0)
+        
+        # Convert to base64
+        image_data = base64.b64encode(buffer.read()).decode('utf-8')
+        
+        # Create Image object
+        thumbnail_image = Image(
+            name="Video Thumbnail Grid",
+            link="/thumbnails/grid.jpg",
+            data=image_data,
+            mimetype="image/jpeg"
+        )
+        
+        logger.info("Created single 3x3 grid thumbnail image")
+        return thumbnail_image
 
     def cleanup(self):
         """Clean up temporary files"""

@@ -26,11 +26,12 @@ logger = logging.getLogger(__name__)
 
 class VideoNoteResult:
     """Video note generation result"""
-    def __init__(self, markdown: str, transcript: Dict[str, Any], video_info: VideoInfo, images: List[Image] = None):
+    def __init__(self, markdown: str, transcript: Dict[str, Any], video_info: VideoInfo, screenshots: List[Image] = None, thumbnail_image: Image = None):
         self.markdown = markdown
         self.transcript = transcript
         self.video_info = video_info
-        self.images = images or []  # Image list, consistent with office_reader.py
+        self.screenshots = screenshots or []
+        self.thumbnail_image = thumbnail_image or None
 
 
 class VideoNoteGenerator(BaseFunction):
@@ -125,7 +126,8 @@ class VideoNoteGenerator(BaseFunction):
                         "uploader": result.video_info.uploader,
                         "upload_date": result.video_info.upload_date
                     },
-                    "screenshots": [img.model_dump() for img in result.images]  # Image object list to dict
+                    "screenshots": [img.model_dump() for img in result.screenshots],
+                    "thumbnail_image": result.thumbnail_image.model_dump()
                 }
                 
             except Exception as e:
@@ -245,23 +247,22 @@ class VideoNoteGenerator(BaseFunction):
         
         if generate_thumbnail and video_path:
             trace_info.info({"message": "Generating video thumbnail grid"})
-            thumbnail_images = video_processor.create_thumbnail_grid_as_images(
+            thumbnail_image = video_processor.create_thumbnail_grid_as_images(
                 video_path,
                 grid_size=tuple(thumbnail_grid_size),
                 frame_interval=thumbnail_interval
             )
             trace_info.info({
-                "thumbnail_count": len(thumbnail_images), 
                 "message": "Thumbnail grid generation completed"
             })
         
         # 4. Build result
-        all_images = extracted_screenshots + thumbnail_images
         return VideoNoteResult(
             markdown=remove_continuous_break_lines(markdown),
             transcript=transcript_dict,
             video_info=video_info,
-            images=all_images
+            screenshots=extracted_screenshots,
+            thumbnail_image=thumbnail_image
         )
     
     async def process_local_video(self, file_path: str, **kwargs) -> VideoNoteResult:

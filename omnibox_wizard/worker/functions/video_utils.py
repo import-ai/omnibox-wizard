@@ -34,6 +34,39 @@ class VideoProcessor:
             logger.warning("ffmpeg is not installed, screenshot generation will be disabled")
             return False
     
+    def has_audio_stream(self, video_path: str) -> bool:
+        """
+        Check if video file has audio stream
+        
+        Args:
+            video_path: Video file path
+            
+        Returns:
+            True if video has audio stream, False otherwise
+        """
+        if not self.check_ffmpeg():
+            logger.warning("ffmpeg is not available, cannot check audio stream")
+            return False
+        
+        cmd = [
+            "ffprobe",
+            "-v", "error",
+            "-select_streams", "a:0",
+            "-show_entries", "stream=codec_type",
+            "-of", "csv=p=0",
+            str(video_path)
+        ]
+        
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+            # If there's output, it means audio stream exists
+            has_audio = bool(result.stdout.strip())
+            logger.info(f"Video {video_path} has audio stream: {has_audio}")
+            return has_audio
+        except subprocess.CalledProcessError as e:
+            logger.warning(f"Failed to check audio stream: {e.stderr}")
+            return False
+    
     def extract_audio(self, video_path: str, output_format: str = "wav") -> str:
         """
         Extract audio from video file
@@ -44,9 +77,16 @@ class VideoProcessor:
             
         Returns:
             Extracted audio file path
+            
+        Raises:
+            RuntimeError: If video has no audio stream or extraction fails
         """
         if not self.check_ffmpeg():
             raise RuntimeError("ffmpeg is not installed, cannot extract audio")
+        
+        # Check if video has audio stream first
+        if not self.has_audio_stream(video_path):
+            raise RuntimeError("Video file has no audio stream")
         
         video_name = Path(video_path).stem
         audio_filename = f"{video_name}_audio.{output_format}"

@@ -150,6 +150,33 @@ class VideoNoteGenerator(BaseFunction):
             trace_info.error({"error": str(e), "message": "Fail to transcribe audio"})
             raise
     
+    def _generate_fallback_markdown(
+        self,
+        video_info: VideoInfo,
+        include_screenshots: bool,
+        include_links: bool,
+        language: str
+    ) -> str:
+
+        
+        markdown_parts = []
+        if include_screenshots:
+            # Add screenshot placeholders
+            total_screenshots = 5
+            duration_seconds = video_info.duration
+
+            if duration_seconds > 0:
+                interval = duration_seconds / (total_screenshots + 1) 
+                
+                for i in range(1, total_screenshots + 1):
+                    timestamp_seconds = int(interval * i)
+                    minutes = timestamp_seconds // 60
+                    seconds = timestamp_seconds % 60
+                    markdown_parts.append(f"*Screenshot-{minutes}:{seconds:02d}")
+                    markdown_parts.append("")
+        
+        return "\n".join(markdown_parts)
+    
     async def _generate_markdown(
         self,
         video_info: VideoInfo,
@@ -160,6 +187,16 @@ class VideoNoteGenerator(BaseFunction):
         language: str,
         trace_info: TraceInfo
     ) -> str:
+        # Check if we have transcript content
+        transcript_text = transcript.get('full_text', '').strip()
+        
+        if not transcript_text:
+            # No audio content, use fallback template without LLM call
+            trace_info.info({"message": "No transcript available, generating fallback markdown without LLM"})
+            return self._generate_fallback_markdown(
+                video_info, include_screenshots, include_links, language
+            )
+        
         # Use Jinja2 template with proper conditional rendering
         template = self.template_parser.get_template("video_note_generation.md")
         prompt = self.template_parser.render_template(
@@ -167,7 +204,7 @@ class VideoNoteGenerator(BaseFunction):
             video_title=video_info.title,
             video_platform=video_info.platform,
             video_duration=f"{video_info.duration/60:.1f}",
-            transcript_text=transcript.get('full_text', ''),
+            transcript_text=transcript_text,
             note_style=style,
             include_screenshots=include_screenshots,
             include_links=include_links,
@@ -201,7 +238,7 @@ class VideoNoteGenerator(BaseFunction):
     
     async def _process_video_content(
         self,
-        audio_path: str,
+        audio_path: Optional[str],
         video_path: str,
         video_info: VideoInfo,
         style: str,
@@ -216,10 +253,26 @@ class VideoNoteGenerator(BaseFunction):
     ) -> VideoNoteResult:
         """Common video processing logic used by both URL and local file processing"""
         
-        # 1. Audio transcription
-        trace_info.info({"message": "Starting audio transcription"})
-        transcript_dict = await self._transcribe_audio(audio_path, trace_info)
-        trace_info.info({"transcript_length": len(transcript_dict.get("full_text", "")), "message": "Audio transcription completed"})
+        # 1. Audio transcription (only if audio_path is provided)
+        transcript_dict = {"full_text": "", "segments": []}
+        has_audio_content = False
+        
+        if audio_path:
+            trace_info.info({"message": "Starting audio transcription"})
+            try:
+                transcript_dict = await self._transcribe_audio(audio_path, trace_info)
+                has_audio_content = bool(transcript_dict.get("full_text", "").strip())
+                trace_info.info({"transcript_length": len(transcript_dict.get("full_text", "")), "message": "Audio transcription completed"})
+            except Exception as e:
+                trace_info.warning({"error": str(e), "message": "Audio transcription failed, continuing with empty transcript"})
+                transcript_dict = {"full_text": "", "segments": []}
+        else:
+            trace_info.info({"message": "No audio stream detected, skipping transcription"})
+        
+        # For videos without audio content, force enable screenshots
+        if not has_audio_content and video_path:
+            trace_info.info({"message": "No audio content available, forcing screenshot generation"})
+            include_screenshots = True
         
         # 2. Generate notes
         trace_info.info({"message": "Starting note generation"})
@@ -230,7 +283,7 @@ class VideoNoteGenerator(BaseFunction):
         
         # 3. Process screenshots and thumbnails
         extracted_screenshots = []
-        thumbnail_images = []
+        thumbnail_image = None
         
         # Initialize video processor with temp directory
         video_processor = VideoProcessor(temp_dir)
@@ -276,9 +329,19 @@ class VideoNoteGenerator(BaseFunction):
         with tempfile.TemporaryDirectory(prefix="video_local_") as temp_dir:
             # Create video info for local file
             video_name = Path(file_path).stem
+             # Initialize video processor with temp directory
+            video_processor = VideoProcessor(temp_dir)
+
+            # Get real video duration
+            duration = 0
+            try:
+                duration = video_processor.get_video_duration(file_path)
+            except Exception as e:
+                trace_info.warning({"message": f"Failed to get video duration: {str(e)}"})
+            
             video_info = VideoInfo(
                 title=video_name,
-                duration=0,  # Could be extracted if needed
+                duration=duration,
                 video_id=video_name,
                 platform="local",
                 url=f"file://{file_path}",
@@ -286,19 +349,18 @@ class VideoNoteGenerator(BaseFunction):
                 uploader="",
                 upload_date=""
             )
-            
-            # Initialize video processor with temp directory
-            video_processor = VideoProcessor(temp_dir)
-            
-            # Extract audio from video for transcription
-            trace_info.info({"message": "Start to extract video audio"})
+            # Check if video has audio stream and extract if available
+            trace_info.info({"message": "Checking for audio stream"})
+            audio_path = None
             try:
-                audio_path = video_processor.extract_audio(file_path, output_format="wav")
-                trace_info.info({"message": "Video audio extraction completed", "audio_path": audio_path})
+                if video_processor.has_audio_stream(file_path):
+                    trace_info.info({"message": "Start to extract video audio"})
+                    audio_path = video_processor.extract_audio(file_path, output_format="wav")
+                    trace_info.info({"message": "Video audio extraction completed", "audio_path": audio_path})
+                else:
+                    trace_info.info({"message": "No audio stream detected in video"})
             except Exception as e:
-                trace_info.warning({"message": f"Fail to extract audio, try to use video file: {str(e)}"})
-                # Fallback to using video file directly if audio extraction fails
-                audio_path = file_path
+                trace_info.warning({"message": f"Audio extraction failed: {str(e)}. Proceeding without audio."})
             
             # Use common processing logic
             return await self._process_video_content(
@@ -309,7 +371,7 @@ class VideoNoteGenerator(BaseFunction):
                 include_screenshots=kwargs.get("include_screenshots", True),
                 include_links=kwargs.get("include_links", False),
                 language=kwargs.get("language", "zh"),
-                generate_thumbnail=kwargs.get("generate_thumbnail", False),
+                generate_thumbnail=kwargs.get("generate_thumbnail", True),  # 默认启用缩略图
                 thumbnail_grid_size=kwargs.get("thumbnail_grid_size", [3, 3]),
                 thumbnail_interval=kwargs.get("thumbnail_interval", 30),
                 temp_dir=temp_dir,

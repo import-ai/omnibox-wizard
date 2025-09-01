@@ -26,6 +26,7 @@ async def test_tag_extractor_success(worker_config, trace_info):
     assert len(result["tags"]) >= 0
 
 
+
 @pytest.mark.asyncio
 async def test_tag_extractor_empty_text(worker_config, trace_info):
     """Test tag extraction with empty text"""

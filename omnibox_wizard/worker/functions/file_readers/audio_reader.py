@@ -4,7 +4,9 @@ import os
 import httpcore
 import httpx
 from pydub import AudioSegment
+from opentelemetry import trace
 
+tracer = trace.get_tracer(__name__)
 
 class ASRClient(httpx.AsyncClient):
 
@@ -12,22 +14,37 @@ class ASRClient(httpx.AsyncClient):
         self.model: str = model
         super().__init__(*args, **kwargs)
 
+    @tracer.start_as_current_span("ASRClient.transcribe")
     async def transcribe(self, file_path: str, mimetype: str, retry_cnt: int = 3) -> str:
         with open(file_path, "rb") as f:
             bytes_content: bytes = f.read()
 
-        for i in range(retry_cnt):
+        actual_retry_cnt = 0
+        span = trace.get_current_span()
+        for _ in range(retry_cnt):
             try:
+                actual_retry_cnt += 1
+                span.set_attributes({
+                    "actual_retry_cnt": actual_retry_cnt
+                })
                 response: httpx.Response = await self.post(
                     "/audio/transcriptions",
                     files={"file": (file_path, io.BytesIO(bytes_content), mimetype)},
-                    data={"model": self.model}
+                    data={"model": self.model},
+                    timeout=600
                 )
                 assert response.is_success, response.text
                 return response.json()["text"]
-            except (TimeoutError, httpcore.ReadTimeout, httpx.ReadTimeout):
+            except Exception as e:
+                span.set_attributes({
+                    "error": str(e)
+                })
                 continue
-        raise RuntimeError("ASR transcription failed after retries")
+            
+        span.set_attributes({
+            "error": f"ASR transcription failed after {retry_cnt} retries"
+        })
+        raise RuntimeError(f"ASR transcription failed after {retry_cnt} retries")
 
 
 def convert(m4a_filepath: str) -> str:

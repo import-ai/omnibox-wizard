@@ -1,0 +1,7 @@
+apiVersion: v2
+name: OmniBox Wizard
+description: OmniBox Wizard Service
+
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

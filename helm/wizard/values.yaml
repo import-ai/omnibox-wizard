@@ -1,0 +1,15 @@
+release:
+  name: omnibox-wizard
+  namespace:
+
+image:
+  repository: ghcr.io/import-ai/omnibox-wizard
+  tag: main
+
+replicas: 1
+
+app:
+  port: 8000
+
+affinity: {}
+nodeSelector: {}

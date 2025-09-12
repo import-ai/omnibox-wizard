@@ -67,6 +67,10 @@ class HTMLReaderV2(BaseFunction):
     def content_selector(cls, domain: str, soup: BeautifulSoup) -> Tag:
         if selector := cls.CONTENT_SELECTOR.get(domain, None):
             if content := soup.find(**selector):
+                if domain == 'mp.weixin.qq.com':  # Special handling for WeChat articles
+                    for img in content.find_all('img'):
+                        if src := img.get('data-src'):
+                            img['src'] = src
                 return content
         return soup
 
@@ -203,6 +207,7 @@ class HTMLReaderV2(BaseFunction):
         span = trace.get_current_span()
         html_doc = Document(html)
 
+        selected_html: str = ''
         raw_title: str = html_doc.title()
         if domain in self.CONTENT_SELECTOR:
             with tracer.start_as_current_span("HTMLReaderV2.content_selector"):
@@ -232,7 +237,7 @@ class HTMLReaderV2(BaseFunction):
                 markdown = await self.html_content_extractor.ainvoke({"html": cleaned_html}, trace_info)
 
         images, title = await asyncio.gather(
-            self.get_images(html, markdown),
+            self.get_images(selected_html or html, markdown),
             self.get_title(markdown, raw_title, trace_info)
         )
 

@@ -87,7 +87,6 @@ class Worker:
         else:
             if self.health_tracker:
                 self.health_tracker.update_worker_status(self.worker_id, "idle")
-            self.logger.debug({"message": "No available task, waiting..."})
 
     async def run(self):
         while True:
@@ -114,8 +113,7 @@ class Worker:
                 http_response: httpx.Response = await client.get(f"/internal/api/v1/wizard/task")
                 logging_func: Callable = self.logger.debug if http_response.is_success else self.logger.error
                 if http_response.status_code == 204:
-                    logging_func({"status_code": http_response.status_code})
-                    return task
+                    return None
                 json_response = http_response.json()
                 logging_func({"status_code": http_response.status_code, "response": json_response})
                 return Task.model_validate(json_response)

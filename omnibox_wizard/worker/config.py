@@ -23,6 +23,9 @@ class TaskConfig(BaseModel):
     asr: OpenAIConfig = Field(default=None)
     pdf_reader_base_url: str = Field(default=None)
     docling_base_url: str = Field(default=None)
+    timeout: int = Field(default=3600, description="Default task timeout in seconds")
+    cancellation_check_interval: int = Field(
+        default=3, description="Interval in seconds to check for task cancellation")
 
 
 class HealthConfig(BaseModel):

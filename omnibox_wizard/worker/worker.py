@@ -87,7 +87,6 @@ class Worker:
         else:
             if self.health_tracker:
                 self.health_tracker.update_worker_status(self.worker_id, "idle")
-            self.logger.debug({"message": "No available task, waiting..."})
 
     async def run(self):
         while True:

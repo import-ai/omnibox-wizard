@@ -129,7 +129,7 @@ class Worker:
 
         try:
             # Use TaskManager to run with timeout and cancellation support
-            output = await self.task_manager.run_with_timeout_and_cancellation(task, self.worker_router)
+            output = await self.task_manager.run_with_timeout_and_cancellation(task, self.worker_router, trace_info)
             task.output = output
             span.set_status(Status(StatusCode.OK))
             span.set_attribute("task.output_size", len(str(output)) if output else 0)

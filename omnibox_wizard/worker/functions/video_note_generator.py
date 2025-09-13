@@ -233,7 +233,7 @@ class VideoNoteGenerator(BaseFunction):
 
     async def _process_video_content(
             self,
-            audio_path: Optional[str],
+            audio_path: str | None,
             video_path: str,
             video_info: VideoInfo,
             style: str,

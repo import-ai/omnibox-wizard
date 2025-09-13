@@ -191,18 +191,17 @@ class HTMLReaderV2(BaseFunction):
                 }))
         return images
 
-    @tracer.start_as_current_span("HTMLReaderV2.fetch_img")
+    @tracer.start_as_current_span("HTMLReaderV2.get_title")
     async def get_title(self, markdown: str, raw_title: str, trace_info: TraceInfo) -> str:
         snippet: str = "\n".join(list(filter(bool, markdown.splitlines()))[:3])
-
-        with tracer.start_as_current_span("HTMLReaderV2.llm_extract_title"):
-            title: str = (
-                await self.html_title_extractor.ainvoke({
-                    "title": raw_title, "snippet": snippet
-                }, trace_info)
-            ).title
+        title: str = (
+            await self.html_title_extractor.ainvoke({
+                "title": raw_title, "snippet": snippet
+            }, trace_info)
+        ).title
         return title
 
+    @tracer.start_as_current_span("HTMLReaderV2.convert")
     async def convert(self, domain: str, html: str, trace_info: TraceInfo):
         span = trace.get_current_span()
         html_doc = Document(html)

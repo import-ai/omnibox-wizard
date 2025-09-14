@@ -46,6 +46,23 @@ class Worker:
             "generate_video_note": VideoNoteGenerator(config),
         }
 
+        functions_enabled = set(self.worker_dict.keys())
+        if config.task.functions:
+            functions_config = [f.strip() for f in config.task.functions.split(",")]
+            for func in functions_config:
+                op, func_name = func[0], func[1:]
+                assert op in ("+", "-"), f"Invalid function config: {func}"
+                if func_name == "all":
+                    if op == "+":
+                        functions_enabled = set(self.worker_dict.keys())
+                    else:
+                        functions_enabled = set()
+                if op == "+":
+                    functions_enabled.add(func_name)
+                else:
+                    functions_enabled.discard(func_name)
+        self.supported_functions = list(functions_enabled)
+
         self.logger = get_logger(f"worker_{self.worker_id}")
 
         if self.health_tracker:
@@ -112,7 +129,9 @@ class Worker:
         task: Optional[Task] = None
         try:
             async with httpx.AsyncClient(base_url=self.config.backend.base_url) as client:
-                http_response: httpx.Response = await client.get(f"/internal/api/v1/wizard/task")
+                http_response: httpx.Response = await client.get(f"/internal/api/v1/wizard/task", params={
+                    "functions": ",".join(self.supported_functions)
+                })
                 logging_func: Callable = self.logger.debug if http_response.is_success else self.logger.error
                 if http_response.status_code == 204:
                     return None

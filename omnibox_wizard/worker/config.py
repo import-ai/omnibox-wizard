@@ -34,13 +34,19 @@ class FunctionTimeoutConfig(BaseModel):
 
 
 class TaskConfig(BaseModel):
+    functions: str = Field(
+        default=None,
+        description="Comma-separated list of functions to enable, started with + or - to add or remove. If None, all functions are enabled.",
+        examples=["-all,+collect,+file_reader", "-collect"]
+    )
     spliter: SpliterConfig = Field(default_factory=SpliterConfig)
     office_operator_base_url: str = Field(default=None)
     asr: OpenAIConfig = Field(default=None)
     pdf_reader_base_url: str = Field(default=None)
     docling_base_url: str = Field(default=None)
     timeout: int = Field(default=300, description="Default task timeout in seconds")
-    function_timeouts: FunctionTimeoutConfig = Field(default_factory=FunctionTimeoutConfig, description="Function-specific timeout overrides")
+    function_timeouts: FunctionTimeoutConfig = Field(
+        default_factory=FunctionTimeoutConfig, description="Function-specific timeout overrides")
     cancellation_check_interval: int = Field(
         default=3, description="Interval in seconds to check for task cancellation")
 

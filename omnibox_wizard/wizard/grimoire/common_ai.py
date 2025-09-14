@@ -22,6 +22,7 @@ class CommonAI:
         with project_root.open("omnibox_wizard/resources/prompts/tag.md") as f:
             self.tag_system_prompt_template: str = f.read()
 
+    @tracer.start_as_current_span("CommonAI._invoke")
     async def _invoke(
             self, text: str, /,
             system_template: str, model_size: Literal["mini", "default", "large"],
@@ -56,12 +57,14 @@ class CommonAI:
         json_response: dict = parse_json(str_response)
         return json_response
 
+    @tracer.start_as_current_span("CommonAI.title")
     async def title(self, text: str, *, lang: str | None = None, trace_info: TraceInfo | None = None) -> str:
         """
         Create title according to the given text
         """
         return (await self._invoke(text, self.title_system_prompt_template, "mini", lang, trace_info))["title"]
 
+    @tracer.start_as_current_span("CommonAI.tags")
     async def tags(self, text: str, *, lang: str | None = None, trace_info: TraceInfo | None = None) -> list[str]:
         """
         Create tags according to the given text

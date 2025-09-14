@@ -4,12 +4,15 @@ from functools import partial
 from typing import Literal
 
 import httpx
+from opentelemetry import trace
 
 from omnibox_wizard.common.exception import CommonException
 from omnibox_wizard.common.trace_info import TraceInfo
 from omnibox_wizard.wizard.grimoire.entity.retrieval import Citation, BaseRetrieval
 from omnibox_wizard.wizard.grimoire.entity.tools import BaseTool
 from omnibox_wizard.wizard.grimoire.retriever.base import BaseRetriever, SearchFunction
+
+tracer = trace.get_tracer(__name__)
 
 
 class SearXNGRetrieval(BaseRetrieval):
@@ -50,6 +53,7 @@ class SearXNG(BaseRetriever):
         self.base_url: str = base_url
         self.engines: str | None = engines
 
+    @tracer.start_as_current_span("SearXNG.search_once")
     async def search_once(self, query: str, *, page_number: int = 1,
                           trace_info: TraceInfo | None = None) -> list[SearXNGRetrieval]:
         try:
@@ -73,6 +77,7 @@ class SearXNG(BaseRetriever):
         trace_info.debug({"len(retrievals)": len(retrievals)}) if trace_info else None
         return retrievals
 
+    @tracer.start_as_current_span("SearXNG.search")
     async def search(
             self,
             query: str,

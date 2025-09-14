@@ -258,7 +258,6 @@ class MeiliVectorRetriever(BaseRetriever):
         self.vector_db = MeiliVectorDB(config)
 
     @staticmethod
-    @tracer.start_as_current_span("MeiliVectorRetriever.get_folder")
     def get_folder(resource_id: str, resources: list[Resource]) -> str | None:
         for resource in resources:
             if (
@@ -269,7 +268,6 @@ class MeiliVectorRetriever(BaseRetriever):
         return None
 
     @staticmethod
-    @tracer.start_as_current_span("MeiliVectorRetriever.get_type")
     def get_type(resource_id: str, resources: list[Resource]) -> PrivateSearchResourceType | None:
         for resource in resources:
             if resource.id == resource_id:

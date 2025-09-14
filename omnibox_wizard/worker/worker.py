@@ -21,6 +21,7 @@ from omnibox_wizard.worker.functions.tag_extractor import TagExtractor
 from omnibox_wizard.worker.functions.title_generator import TitleGenerator
 from omnibox_wizard.worker.functions.video_note_generator import VideoNoteGenerator
 from omnibox_wizard.worker.health_tracker import HealthTracker
+from omnibox_wizard.worker.task_manager import TaskManager
 
 tracer = trace.get_tracer(__name__)
 
@@ -31,6 +32,7 @@ class Worker:
         self.worker_id = worker_id
         self.callback_util = CallbackUtil(config)
         self.health_tracker = health_tracker
+        self.task_manager = TaskManager(config)
 
         self.worker_dict: dict[str, BaseFunction] = {
             "collect": HTMLReaderV2(config),
@@ -126,9 +128,44 @@ class Worker:
         span = trace.get_current_span()
 
         try:
-            output = await self.worker_router(task, trace_info)
+            # Use TaskManager to run with timeout and cancellation support
+            output = await self.task_manager.run_with_timeout_and_cancellation(task, self.worker_router, trace_info)
+            task.output = output
             span.set_status(Status(StatusCode.OK))
+            span.set_attribute("task.output_size", len(str(output)) if output else 0)
+
+        except asyncio.TimeoutError:
+            # Handle timeout - calculate actual timeout used
+            function_timeout = self.config.task.function_timeouts.get_timeout(task.function)
+            actual_timeout = function_timeout if function_timeout is not None else self.config.task.timeout
+            timeout_source = "function-specific" if function_timeout is not None else "global"
+
+            error_msg = f"Task execution timeout after {actual_timeout} seconds ({timeout_source} timeout)"
+            task.exception = {
+                "error": error_msg,
+                "timeout": actual_timeout,
+                "timeout_source": timeout_source,
+                "type": "TimeoutError"
+            }
+            logging_func = trace_info.bind(error=error_msg).warning
+            span.set_status(Status(StatusCode.ERROR, error_msg))
+            span.set_attribute("error.message", error_msg)
+            span.set_attribute("error.type", "TimeoutError")
+
+        except asyncio.CancelledError:
+            # Handle cancellation
+            error_msg = "Task cancelled by user"
+            task.exception = {
+                "error": error_msg,
+                "type": "CancelledError"
+            }
+            logging_func = trace_info.bind(error=error_msg).info
+            span.set_status(Status(StatusCode.ERROR, error_msg))
+            span.set_attribute("error.message", error_msg)
+            span.set_attribute("error.type", "CancelledError")
+
         except Exception as e:
+            # Handle other exceptions
             task.exception = {"error": CommonException.parse_exception(e), "traceback": traceback.format_exc()}
             logging_func = trace_info.bind(error=CommonException.parse_exception(e)).exception
 
@@ -137,9 +174,6 @@ class Worker:
             span.set_status(Status(StatusCode.ERROR, str(e)))
             span.set_attribute("error.message", str(e))
             span.set_attribute("error.type", type(e).__name__)
-        else:
-            task.output = output
-            span.set_attribute("task.output_size", len(str(output)) if output else 0)
 
         task.updated_at = task.ended_at = datetime.now()
         logging_func(task.model_dump(include={"created_at", "started_at", "ended_at"}))

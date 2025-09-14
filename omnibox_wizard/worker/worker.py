@@ -135,11 +135,16 @@ class Worker:
             span.set_attribute("task.output_size", len(str(output)) if output else 0)
 
         except asyncio.TimeoutError:
-            # Handle timeout
-            error_msg = f"Task execution timeout after {self.config.task.timeout} seconds"
+            # Handle timeout - calculate actual timeout used
+            function_timeout = self.config.task.function_timeouts.get_timeout(task.function)
+            actual_timeout = function_timeout if function_timeout is not None else self.config.task.timeout
+            timeout_source = "function-specific" if function_timeout is not None else "global"
+
+            error_msg = f"Task execution timeout after {actual_timeout} seconds ({timeout_source} timeout)"
             task.exception = {
                 "error": error_msg,
-                "timeout": self.config.task.timeout,
+                "timeout": actual_timeout,
+                "timeout_source": timeout_source,
                 "type": "TimeoutError"
             }
             logging_func = trace_info.bind(error=error_msg).warning

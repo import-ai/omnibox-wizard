@@ -74,11 +74,16 @@ class TaskManager:
     ) -> Any:
         """Run a task with both timeout and cancellation support."""
         span = trace.get_current_span()
-        task_timeout = self.config.task.timeout
+
+        # Get function-specific timeout if configured, otherwise use global timeout
+        function_timeout = self.config.task.function_timeouts.get_timeout(task.function)
+        task_timeout = function_timeout if function_timeout is not None else self.config.task.timeout
 
         span.set_attributes({
             "task.id": task.id,
+            "task.function": task.function,
             "task.timeout": task_timeout,
+            "task.timeout_source": "function_specific" if function_timeout is not None else "global",
             "task.cancellation_check_interval": self.config.task.cancellation_check_interval
         })
 

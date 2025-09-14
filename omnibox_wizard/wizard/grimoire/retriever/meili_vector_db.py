@@ -11,6 +11,7 @@ from meilisearch_python_sdk.models.settings import (
     UserProvidedEmbedder,
 )
 from openai import AsyncOpenAI
+from opentelemetry import trace
 
 from omnibox_wizard.common.trace_info import TraceInfo
 from omnibox_wizard.wizard.config import VectorConfig
@@ -25,6 +26,8 @@ from omnibox_wizard.wizard.grimoire.entity.tools import (
     Resource,
 )
 from omnibox_wizard.wizard.grimoire.retriever.base import BaseRetriever, SearchFunction
+
+tracer = trace.get_tracer(__name__)
 
 
 def to_filterable_attributes(
@@ -117,6 +120,7 @@ class MeiliVectorDB:
                 )
             )
 
+    @tracer.start_as_current_span("MeiliVectorDB.insert_chunks")
     async def insert_chunks(self, namespace_id: str, chunk_list: List[Chunk]):
         index = await self.get_index()
         for i in range(0, len(chunk_list), self.batch_size):
@@ -145,6 +149,7 @@ class MeiliVectorDB:
                 records.append(record.model_dump(by_alias=True))
             await index.add_documents(records, primary_key="id")
 
+    @tracer.start_as_current_span("MeiliVectorDB.upsert_message")
     async def upsert_message(self, namespace_id: str, user_id: str, message: Message):
         index = await self.get_index()
         record_id = "message_{}".format(message.message_id)
@@ -169,7 +174,7 @@ class MeiliVectorDB:
         )
         await index.add_documents([record.model_dump(by_alias=True)], primary_key="id")
 
-
+    @tracer.start_as_current_span("MeiliVectorDB.remove_conversation")
     async def remove_conversation(self, namespace_id: str, conversation_id: str):
         index = await self.get_index()
         await index.delete_documents_by_filter(
@@ -180,7 +185,7 @@ class MeiliVectorDB:
             ]
         )
 
-
+    @tracer.start_as_current_span("MeiliVectorDB.remove_chunks")
     async def remove_chunks(self, namespace_id: str, resource_id: str):
         index = await self.get_index()
         await index.delete_documents_by_filter(
@@ -191,6 +196,7 @@ class MeiliVectorDB:
             ]
         )
 
+    @tracer.start_as_current_span("MeiliVectorDB.vector_params")
     async def vector_params(self, query: str) -> dict:
         if query:
             embedding = await self.openai.embeddings.create(
@@ -204,6 +210,7 @@ class MeiliVectorDB:
             }
         return {}
 
+    @tracer.start_as_current_span("MeiliVectorDB.search")
     async def search(
             self,
             query: str,
@@ -225,6 +232,7 @@ class MeiliVectorDB:
         results = await index.search(query, filter=filter_, offset=offset, limit=limit, **vector_params)
         return [IndexRecord(**hit) for hit in results.hits]
 
+    @tracer.start_as_current_span("MeiliVectorDB.query_chunks")
     async def query_chunks(
             self,
             query: str,
@@ -250,6 +258,7 @@ class MeiliVectorRetriever(BaseRetriever):
         self.vector_db = MeiliVectorDB(config)
 
     @staticmethod
+    @tracer.start_as_current_span("MeiliVectorRetriever.get_folder")
     def get_folder(resource_id: str, resources: list[Resource]) -> str | None:
         for resource in resources:
             if (
@@ -260,6 +269,7 @@ class MeiliVectorRetriever(BaseRetriever):
         return None
 
     @staticmethod
+    @tracer.start_as_current_span("MeiliVectorRetriever.get_type")
     def get_type(resource_id: str, resources: list[Resource]) -> PrivateSearchResourceType | None:
         for resource in resources:
             if resource.id == resource_id:
@@ -280,6 +290,7 @@ class MeiliVectorRetriever(BaseRetriever):
             "Search for user's private & personal resources. Return in <cite id=\"\"></cite> format."
         )
 
+    @tracer.start_as_current_span("MeiliVectorRetriever.query")
     async def query(
             self,
             query: str,

@@ -2,6 +2,7 @@ import asyncio
 from functools import partial
 
 import httpx
+from opentelemetry import trace
 from pydantic import BaseModel
 
 from omnibox_wizard.common.trace_info import TraceInfo
@@ -9,6 +10,8 @@ from omnibox_wizard.wizard.config import OpenAIConfig, RerankerConfig
 from omnibox_wizard.wizard.grimoire.entity.retrieval import BaseRetrieval
 from omnibox_wizard.wizard.grimoire.entity.tools import ToolExecutorConfig
 from omnibox_wizard.wizard.grimoire.retriever.base import SearchFunction, BaseRetriever
+
+tracer = trace.get_tracer(__name__)
 
 
 class BilledUnits(BaseModel):
@@ -45,6 +48,7 @@ class Reranker:
         self.k: int | None = config.k
         self.threshold: float | None = config.threshold
 
+    @tracer.start_as_current_span("Reranker.rerank")
     async def rerank(
             self,
             query: str,
@@ -103,6 +107,7 @@ class Reranker:
 
         return wrapped
 
+    @tracer.start_as_current_span("Reranker.search")
     async def search(self, query: str, funcs: list[SearchFunction], *args, **kwargs) -> list[BaseRetrieval]:
         results = await asyncio.gather(*[func(query) for func in funcs])
         flattened_results: list[BaseRetrieval] = sum(results, [])

@@ -57,7 +57,7 @@ class HTMLReaderV2(BaseFunction):
             "name": "div",
             "attrs": {"data-testid": "tweetText"}
         },
-        "reddit.com": {
+        "www.reddit.com": {
             "name": "shreddit-post-text-body"
         }
     }

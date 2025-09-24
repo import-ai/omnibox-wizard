@@ -228,6 +228,7 @@ class HTMLReaderV2(BaseFunction):
             }
             trace_info.info(log_body)
             span.set_attributes(log_body)
+            # $('#inline-expander').innerText
 
         if not markdown:
             with tracer.start_as_current_span("HTMLReaderV2.llm_extract_content"):

@@ -55,9 +55,9 @@ class VideoNoteGenerator(BaseFunction):
         input_dict = task.input
 
         # Validate input
-        video_url = input_dict.get("video_url")
+        video_url = input_dict.get("url")
         if not video_url:
-            raise ValueError("video_url is required")
+            raise ValueError("url is required")
 
         # Parse configuration parameters
         style = input_dict.get("style", "Concise Style")

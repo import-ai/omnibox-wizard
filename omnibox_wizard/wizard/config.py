@@ -56,7 +56,7 @@ class GrimoireOpenAIConfig(BaseModel):
 
 class GrimoireConfig(BaseModel):
     openai: GrimoireOpenAIConfig = Field(default=None)
-    custom_tool_call: bool = Field(default=True)
+    custom_tool_call: bool = Field(default=False)
 
 
 class RerankerConfig(BaseModel):

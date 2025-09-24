@@ -1,3 +1,4 @@
+import json as jsonlib
 import mimetypes
 import re
 import tempfile
@@ -54,16 +55,17 @@ class VideoNoteGenerator(BaseFunction):
     @tracer.start_as_current_span('run')
     async def run(self, task: Task, trace_info: TraceInfo) -> dict:
         """Execute video note generation task"""
+        span = trace.get_current_span()
+
         input_dict = task.input
 
         # Validate input
-        video_url = input_dict.get("url")
-        if not video_url:
-            raise ValueError("url is required")
+        video_url = input_dict["url"]
+        title = input_dict["title"]
 
         # Parse configuration parameters
         style = input_dict.get("style", "Concise Style")
-        include_screenshots = input_dict.get("include_screenshots", False)
+        include_screenshots = input_dict.get("include_screenshots", True)
         include_links = input_dict.get("include_links", False)
         language = input_dict.get("language", "简体中文")
 
@@ -71,6 +73,16 @@ class VideoNoteGenerator(BaseFunction):
         generate_thumbnail = input_dict.get("generate_thumbnail", False)
         thumbnail_grid_size = input_dict.get("thumbnail_grid_size", [3, 3])
         thumbnail_interval = input_dict.get("thumbnail_interval", 30)  # seconds
+
+        span.set_attribute("config", jsonlib.dumps({
+            "style": style,
+            "include_screenshots": include_screenshots,
+            "include_links": include_links,
+            "language": language,
+            "generate_thumbnail": generate_thumbnail,
+            "thumbnail_grid_size": thumbnail_grid_size,
+            "thumbnail_interval": thumbnail_interval,
+        }, ensure_ascii=False, separators=(",", ":")))
 
         trace_info = trace_info.bind(
             video_url=video_url,
@@ -113,8 +125,8 @@ class VideoNoteGenerator(BaseFunction):
                 )
 
                 trace_info.debug({"message": "Video note generation successful"})
-                return {
-                    "markdown": result.markdown,
+                result_dict = {
+                    "markdown": f"> [{title}]({video_url})\n\n" + result.markdown,
                     "transcript": result.transcript,
                     "video_info": {
                         "title": result.video_info.title,
@@ -126,9 +138,11 @@ class VideoNoteGenerator(BaseFunction):
                         "uploader": result.video_info.uploader,
                         "upload_date": result.video_info.upload_date
                     },
-                    "screenshots": [img.model_dump() for img in result.screenshots],
-                    "thumbnail_image": result.thumbnail_image.model_dump()
+                    "images": [img.model_dump() for img in result.screenshots],
                 }
+                if result.thumbnail_image:
+                    result_dict["thumbnail_image"] = result.thumbnail_image.model_dump()
+                return result_dict
 
             except Exception as e:
                 trace_info.error({"error": str(e), "message": "Video note generation failed"})

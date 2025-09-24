@@ -158,4 +158,4 @@ class BilibiliDownloader(BaseDownloader):
             url
         ]
 
-        return await self._execute_video_download(cmd, video_id, output_path)
+        return await self._execute_video_download(cmd, video_id, output_dir)

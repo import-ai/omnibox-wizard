@@ -126,7 +126,7 @@ class VideoNoteGenerator(BaseFunction):
 
                 trace_info.debug({"message": "Video note generation successful"})
                 result_dict = {
-                    "markdown": f"> [{title}]({video_url})\n\n" + result.markdown,
+                    "markdown": f"> [{title}]({download_result.video_info.real_url})\n\n" + result.markdown,
                     "transcript": result.transcript,
                     "video_info": {
                         "title": result.video_info.title,

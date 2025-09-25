@@ -14,6 +14,7 @@ class VideoInfo(BaseModel):
     uploader: str = ""
     upload_date: str = ""
     thumbnail_url: str = ""
+    real_url: str = ""
 
 
 class DownloadResult(BaseModel):

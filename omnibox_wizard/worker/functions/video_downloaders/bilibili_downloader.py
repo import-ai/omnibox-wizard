@@ -75,10 +75,11 @@ class BilibiliDownloader(BaseDownloader):
     def cmd_wrapper(cls, cmd: list[str]) -> list[str]:
         return cmd
 
-    async def get_real_url(self, url: str) -> str:
+    @classmethod
+    async def get_real_url(cls, url: str) -> str:
         """Get real url"""
         cmd = ["curl", "-ILs", "-o", "/dev/null", "-w", "%{url_effective}", url]
-        _, stdout, _ = await exec_cmd(self.cmd_wrapper(cmd))
+        _, stdout, _ = await exec_cmd(cls.cmd_wrapper(cmd))
         return stdout.strip()
 
     @tracer.start_as_current_span("_get_video_info_base")
@@ -100,7 +101,10 @@ class BilibiliDownloader(BaseDownloader):
 
     @tracer.start_as_current_span("get_video_info")
     async def get_video_info(self, url: str, video_id: str) -> VideoInfo:
-        data, real_url = await asyncio.gather(self._get_video_info_base(url), self.get_real_url(url))
+        data, real_url = await asyncio.gather(
+            self._get_video_info_base(url),
+            self.get_real_url(url)
+        )
         return VideoInfo(
             title=data.get("title", "Unknown Title"),
             duration=float(data.get("duration", 0)),
@@ -110,7 +114,8 @@ class BilibiliDownloader(BaseDownloader):
             description=data.get("description", ""),
             uploader=data.get("uploader", ""),
             upload_date=data.get("upload_date", ""),
-            thumbnail_url=data.get("thumbnail", "")
+            thumbnail_url=data.get("thumbnail", ""),
+            real_url=real_url,
         )
 
     @classmethod

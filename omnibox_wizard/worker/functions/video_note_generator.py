@@ -304,7 +304,7 @@ class VideoNoteGenerator(BaseFunction):
 
         if include_screenshots and video_path:
             trace_info.info({"message": "Processing screenshots"})
-            markdown, extracted_screenshots = video_processor.extract_screenshots_as_images(
+            markdown, extracted_screenshots = await video_processor.extract_screenshots_as_images(
                 markdown, video_path
             )
             trace_info.info({
@@ -314,7 +314,7 @@ class VideoNoteGenerator(BaseFunction):
 
         if generate_thumbnail and video_path:
             trace_info.info({"message": "Generating video thumbnail grid"})
-            thumbnail_image = video_processor.create_thumbnail_grid_as_images(
+            thumbnail_image = await video_processor.create_thumbnail_grid_as_images(
                 video_path,
                 grid_size=tuple(thumbnail_grid_size),
                 frame_interval=thumbnail_interval
@@ -350,7 +350,7 @@ class VideoNoteGenerator(BaseFunction):
             # Get real video duration
             duration = 0
             try:
-                duration = video_processor.get_video_duration(file_path)
+                duration = await video_processor.get_video_duration(file_path)
             except Exception as e:
                 trace_info.warning({"message": f"Failed to get video duration: {str(e)}"})
 
@@ -368,9 +368,9 @@ class VideoNoteGenerator(BaseFunction):
             trace_info.info({"message": "Checking for audio stream"})
             audio_path = None
             try:
-                if video_processor.has_audio_stream(file_path):
+                if await video_processor.has_audio_stream(file_path):
                     trace_info.info({"message": "Start to extract video audio"})
-                    audio_path = video_processor.extract_audio(file_path, output_format="wav")
+                    audio_path = await video_processor.extract_audio(file_path, output_format="wav")
                     trace_info.info({"message": "Video audio extraction completed", "audio_path": audio_path})
                 else:
                     trace_info.info({"message": "No audio stream detected in video"})

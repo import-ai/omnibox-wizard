@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+from urllib.parse import urlparse, parse_qs
 
 from opentelemetry import trace
 
@@ -18,9 +19,20 @@ class YouTubeDownloader(BilibiliDownloader):
             return cmd[:1] + ["--proxy", proxy] + cmd[1:]
         return cmd
 
+    @classmethod
+    @tracer.start_as_current_span("_extract_video_id")
+    def extract_video_id(cls, url: str) -> str:
+        parsed_url = urlparse(url)
+        qs = parse_qs(parsed_url.query)
+        if parsed_url.netloc == 'www.youtube.com':
+            return qs["v"][0]
+        if parsed_url.netloc == 'youtu.be':
+            return parsed_url.path.lstrip('/')
+        return str(hash(url))
+
     @tracer.start_as_current_span("get_video_info")
-    def get_video_info(self, url: str) -> VideoInfo:
-        data = self._get_video_info_base(url)
+    async def get_video_info(self, url: str, video_id: str) -> VideoInfo:
+        data = await self._get_video_info_base(url)
 
         return VideoInfo(
             title=data.get("title", "Unknown Title"),

@@ -15,6 +15,7 @@ tracer = trace.get_tracer('BilibiliDownloader')
 
 class BilibiliDownloader(BaseDownloader):
     """Bilibili downloader, using yt-dlp"""
+    platform = "bilibili"
 
     def __init__(self):
         self._check_yt_dlp()
@@ -52,9 +53,12 @@ class BilibiliDownloader(BaseDownloader):
             video_info=video_info
         )
 
-    @tracer.start_as_current_span("get_video_info")
-    def get_video_info(self, url: str) -> VideoInfo:
-        """Get Bilibili video information"""
+    @classmethod
+    def cmd_wrapper(cls, cmd: list[str]) -> list[str]:
+        return cmd
+
+    @tracer.start_as_current_span("_get_video_info_base")
+    def _get_video_info_base(self, url):
         cmd = [
             "yt-dlp",
             "--dump-json",
@@ -62,10 +66,15 @@ class BilibiliDownloader(BaseDownloader):
             url
         ]
 
-        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        result = subprocess.run(self.cmd_wrapper(cmd), capture_output=True, text=True, check=True)
         # yt-dlp may return multiple JSON lines, we only need the first line
         first_line = result.stdout.strip().split('\n')[0]
         data = json.loads(first_line)
+        return data
+
+    @tracer.start_as_current_span("get_video_info")
+    def get_video_info(self, url: str) -> VideoInfo:
+        data = self._get_video_info_base(url)
 
         # Extract BV number or av number as video_id
         video_id = self._extract_video_id(url)
@@ -99,6 +108,25 @@ class BilibiliDownloader(BaseDownloader):
         # If none matches, use URL hash
         return str(hash(url))
 
+    @classmethod
+    @tracer.start_as_current_span("_exec_cmd")
+    async def _exec_cmd(cls, cmd: list[str]):
+        span = trace.get_current_span()
+        span.set_attribute("command", " ".join(cmd))
+
+        process = await asyncio.create_subprocess_exec(
+            *cls.cmd_wrapper(cmd),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+
+        stdout, stderr = await process.communicate()
+
+        if process.returncode != 0:
+            error_msg = stderr.decode()
+            span.set_attributes({"error": error_msg, "return_code": process.returncode, "stdout": stdout.decode()})
+            raise RuntimeError(f"yt-dlp download failed: {error_msg}")
+
     @tracer.start_as_current_span("_download_audio")
     async def _download_audio(self, url: str, video_id: str, output_dir: Path) -> str:
         """Download audio"""
@@ -113,7 +141,7 @@ class BilibiliDownloader(BaseDownloader):
             url
         ]
 
-        await self._exec(cmd)
+        await self._exec_cmd(cmd)
 
         # Find generated audio files
         audio_files = list(output_dir.glob(f"{video_id}.*"))
@@ -124,28 +152,9 @@ class BilibiliDownloader(BaseDownloader):
 
         return str(audio_files[0])
 
-    @classmethod
-    @tracer.start_as_current_span("_exec")
-    async def _exec(cls, cmd: list[str]):
-        span = trace.get_current_span()
-        span.set_attribute("command", " ".join(cmd))
-
-        process = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
-        )
-
-        stdout, stderr = await process.communicate()
-
-        if process.returncode != 0:
-            error_msg = stderr.decode()
-            span.set_attributes({"error": error_msg, "return_code": process.returncode, "stdout": stdout.decode()})
-            raise RuntimeError(f"yt-dlp download failed: {error_msg}")
-
     @tracer.start_as_current_span("_execute_video_download")
     async def _execute_video_download(self, cmd: list[str], video_id: str, output_dir: Path):
-        await self._exec(cmd)
+        await self._exec_cmd(cmd)
 
         # Find generated video files
         video_files = list(output_dir.glob(f"{video_id}_video.*"))

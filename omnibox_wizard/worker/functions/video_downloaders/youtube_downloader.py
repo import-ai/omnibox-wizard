@@ -1,5 +1,4 @@
-import json
-import subprocess
+import os
 from pathlib import Path
 
 from opentelemetry import trace
@@ -13,20 +12,15 @@ tracer = trace.get_tracer('YouTubeDownloader')
 class YouTubeDownloader(BilibiliDownloader):
     """YouTube downloader, using yt-dlp"""
 
+    @classmethod
+    def cmd_wrapper(cls, cmd: list[str]) -> list[str]:
+        if proxy := os.getenv("OB_PROXY", None):
+            return cmd[:1] + ["--proxy", proxy] + cmd[1:]
+        return cmd
+
     @tracer.start_as_current_span("get_video_info")
     def get_video_info(self, url: str) -> VideoInfo:
-        """Get YouTube video information"""
-        cmd = [
-            "yt-dlp",
-            "--dump-json",
-            "--no-download",
-            url
-        ]
-
-        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-        # yt-dlp may return multiple JSON lines, we only need the first line
-        first_line = result.stdout.strip().split('\n')[0]
-        data = json.loads(first_line)
+        data = self._get_video_info_base(url)
 
         return VideoInfo(
             title=data.get("title", "Unknown Title"),

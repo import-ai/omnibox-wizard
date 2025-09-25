@@ -29,8 +29,8 @@ dependencies = [
     "opentelemetry-sdk (>=1.36.0,<2.0.0)",
     "opentelemetry-instrumentation-fastapi (>=0.57b0,<0.58)",
     "opentelemetry-exporter-otlp (>=1.36.0,<2.0.0)",
-    "yt-dlp (>=2025.8.27,<2026.0.0)",
     "python-frontmatter (>=1.1.0,<2.0.0)",
+    "yt-dlp (>=2025.9.23,<2026.0.0)",
 ]
 
 [tool.poetry]

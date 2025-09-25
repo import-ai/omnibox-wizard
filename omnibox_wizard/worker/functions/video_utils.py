@@ -227,27 +227,28 @@ class VideoProcessor:
             return 0.0
 
     @tracer.start_as_current_span('get_screenshot_image')
-    async def get_screenshot_image(self, video_path: str, timestamp: int, idx: int) -> Image | None:
+    async def get_screenshot_image(self, video_path: str, timestamp: int, idx: int, semaphore: asyncio.Semaphore) -> Image | None:
         span = trace.get_current_span()
-        try:
-            # Generate screenshot
-            screenshot_path = await self.generate_screenshot(video_path, timestamp, idx)
+        async with semaphore:
+            try:
+                # Generate screenshot
+                screenshot_path = await self.generate_screenshot(video_path, timestamp, idx)
 
-            # Read screenshot file and convert to base64
-            with open(screenshot_path, 'rb') as f:
-                image_data = base64.b64encode(f.read()).decode('utf-8')
+                # Read screenshot file and convert to base64
+                with open(screenshot_path, 'rb') as f:
+                    image_data = base64.b64encode(f.read()).decode('utf-8')
 
-            # Create Image object
-            filename = Path(screenshot_path).name
-            return Image(
-                name=filename,
-                link=filename,
-                data=image_data,
-                mimetype="image/jpeg"
-            )
-        except Exception as e:
-            span.record_exception(e)
-            return None
+                # Create Image object
+                filename = Path(screenshot_path).name
+                return Image(
+                    name=filename,
+                    link=filename,
+                    data=image_data,
+                    mimetype="image/jpeg"
+                )
+            except Exception as e:
+                span.record_exception(e)
+                return None
 
     @tracer.start_as_current_span("extract_screenshots_as_images")
     async def extract_screenshots_as_images(
@@ -284,8 +285,10 @@ class VideoProcessor:
 
         tasks: list[asyncio.Task[Image | None]] = []
 
+        semaphore = asyncio.Semaphore(2)
+
         for idx, (marker, timestamp) in enumerate(timestamps):
-            tasks.append(asyncio.create_task(self.get_screenshot_image(video_path, timestamp, idx)))
+            tasks.append(asyncio.create_task(self.get_screenshot_image(video_path, timestamp, idx, semaphore)))
 
         for (marker, timestamp), task in zip(timestamps, tasks):
             if image := await task:

@@ -1,9 +1,13 @@
 from pathlib import Path
 
+from opentelemetry import trace
+
 from omnibox_wizard.common.trace_info import TraceInfo
 from omnibox_wizard.worker.config import WorkerConfig
 from omnibox_wizard.worker.entity import Image
 from omnibox_wizard.worker.functions.video_note_generator import VideoNoteGenerator
+
+tracer = trace.get_tracer("VideoReader")
 
 
 class VideoReader:
@@ -11,6 +15,7 @@ class VideoReader:
         self.config = config
         self.video_note_generator = VideoNoteGenerator(config)
 
+    @tracer.start_as_current_span("convert")
     async def convert(self, file_path: str, trace_info: TraceInfo, **kwargs) -> tuple[str, list[Image], dict]:
         """
         Convert video file to markdown notes using video_note_generator
@@ -22,6 +27,7 @@ class VideoReader:
         Returns:
             Tuple of (markdown_content, images_list)
         """
+        span = trace.get_current_span()
         try:
             # Use the refactored process_local_video method directly
             result = await self.video_note_generator.process_local_video(
@@ -35,6 +41,7 @@ class VideoReader:
             return result.markdown, result.screenshots, {}
 
         except Exception as e:
+            span.record_exception(e)
             trace_info.error({"error": str(e), "message": "Video processing failed"})
             # Return basic video file info as fallback
             video_name = Path(file_path).name

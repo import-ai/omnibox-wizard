@@ -1,123 +1,56 @@
-import asyncio
-import json
-import logging
-import subprocess
-import tempfile
+import os
 from pathlib import Path
-from typing import Optional
+from urllib.parse import urlparse, parse_qs
 
-from .base_downloader import BaseDownloader, DownloadResult, VideoInfo
+from opentelemetry import trace
 
-logger = logging.getLogger(__name__)
+from .base_downloader import VideoInfo
+from .bilibili_downloader import BilibiliDownloader
+
+tracer = trace.get_tracer('YouTubeDownloader')
 
 
-class YouTubeDownloader(BaseDownloader):
+class YouTubeDownloader(BilibiliDownloader):
     """YouTube downloader, using yt-dlp"""
-    
-    def __init__(self):
-        self._check_yt_dlp()
-    
-    def _check_yt_dlp(self):
-        """Check if yt-dlp is installed"""
-        try:
-            subprocess.run(["yt-dlp", "--version"], capture_output=True, check=True)
-        except (subprocess.CalledProcessError, FileNotFoundError):
-            raise RuntimeError("yt-dlp is not installed. Please run: pip install yt-dlp")
-    
-    async def download(self, url: str, output_dir: str, download_video: bool = False) -> DownloadResult:
-        """Download YouTube video/audio"""
-        logger.info(f"Start to download YouTube content: {url}")
-        
-        # Get video information
-        video_info = self.get_video_info(url)
-        output_path = Path(output_dir)
-        
-        # Download audio
-        audio_path = await self._download_audio(url, video_info.video_id, output_path)
-        
-        # If needed, download video
-        video_path = None
-        if download_video:
-            video_path = await self._download_video(url, video_info.video_id, output_path)
-        
-        return DownloadResult(
-            audio_path=audio_path,
-            video_path=video_path,
-            video_info=video_info
+
+    @classmethod
+    def cmd_wrapper(cls, cmd: list[str]) -> list[str]:
+        if proxy := os.getenv("OB_PROXY", None):
+            return cmd[:1] + ["--proxy", proxy] + cmd[1:]
+        return cmd
+
+    @classmethod
+    @tracer.start_as_current_span("_extract_video_id")
+    def extract_video_id(cls, url: str) -> str:
+        parsed_url = urlparse(url)
+        qs = parse_qs(parsed_url.query)
+        if parsed_url.netloc == 'www.youtube.com':
+            return qs["v"][0]
+        if parsed_url.netloc == 'youtu.be':
+            return parsed_url.path.lstrip('/')
+        return str(hash(url))
+
+    @tracer.start_as_current_span("get_video_info")
+    async def get_video_info(self, url: str, video_id: str) -> VideoInfo:
+        data = await self._get_video_info_base(url)
+
+        return VideoInfo(
+            title=data.get("title", "Unknown Title"),
+            duration=float(data.get("duration", 0)),
+            video_id=data.get("id", ""),
+            platform="youtube",
+            url=url,
+            description=data.get("description", ""),
+            uploader=data.get("uploader", ""),
+            upload_date=data.get("upload_date", ""),
+            thumbnail_url=data.get("thumbnail", "")
         )
-    
-    def get_video_info(self, url: str) -> VideoInfo:
-        """Get YouTube video information"""
-        try:
-            cmd = [
-                "yt-dlp",
-                "--dump-json",
-                "--no-download",
-                url
-            ]
-            
-            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-            # yt-dlp may return multiple JSON lines, we only need the first line
-            first_line = result.stdout.strip().split('\n')[0]
-            data = json.loads(first_line)
-            
-            return VideoInfo(
-                title=data.get("title", "Unknown Title"),
-                duration=float(data.get("duration", 0)),
-                video_id=data.get("id", ""),
-                platform="youtube",
-                url=url,
-                description=data.get("description", ""),
-                uploader=data.get("uploader", ""),
-                upload_date=data.get("upload_date", ""),
-                thumbnail_url=data.get("thumbnail", "")
-            )
-            
-        except Exception as e:
-            logger.error(f"Fail to get YouTube video information: {e}")
-            raise
-    
-    async def _download_audio(self, url: str, video_id: str, output_dir: Path) -> str:
-        """Download audio"""
-        output_path = output_dir / f"{video_id}.%(ext)s"
-        
-        cmd = [
-            "yt-dlp",
-            "-x",  # Only extract audio
-            "--audio-format", "mp3",
-            "--audio-quality", "0",  # Highest quality
-            "-o", str(output_path),
-            url
-        ]
-        
-        try:
-            process = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
-            
-            stdout, stderr = await process.communicate()
-            
-            if process.returncode != 0:
-                raise RuntimeError(f"yt-dlp audio download failed: {stderr.decode()}")
-            
-            # Find generated audio files
-            audio_files = list(output_dir.glob(f"{video_id}.*"))
-            audio_files = [f for f in audio_files if f.suffix in ['.mp3', '.m4a', '.wav']]
-            if not audio_files:
-                raise RuntimeError("Audio file not found")
-            
-            return str(audio_files[0])
-            
-        except Exception as e:
-            logger.error(f"YouTube audio download failed: {e}")
-            raise
-    
+
+    @tracer.start_as_current_span("_download_video")
     async def _download_video(self, url: str, video_id: str, output_dir: Path) -> str:
         """Download video"""
         output_path = output_dir / f"{video_id}_video.%(ext)s"
-        
+
         # Use more robust format selection, including fallback options
         cmd = [
             "yt-dlp",
@@ -128,31 +61,5 @@ class YouTubeDownloader(BaseDownloader):
             "-o", str(output_path),
             url
         ]
-        
-        logger.info(f"Execute YouTube video download command: {' '.join(cmd)}")
-        try:
-            process = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
-            
-            stdout, stderr = await process.communicate()
-            
-            if process.returncode != 0:
-                error_msg = stderr.decode()
-                logger.error(f"yt-dlp video download failed: {error_msg}")
-                raise RuntimeError(f"yt-dlp video download failed: {error_msg}")
-            
-            # Find generated video files
-            video_files = list(output_dir.glob(f"{video_id}_video.*"))
-            video_files = [f for f in video_files if f.suffix in ['.mp4', '.mkv', '.webm']]
-            
-            if not video_files:
-                raise RuntimeError("Video file not found")
-            
-            return str(video_files[0])
-            
-        except Exception as e:
-            logger.error(f"YouTube video download failed: {e}")
-            raise
+
+        return await self._execute_video_download(cmd, video_id, output_dir)

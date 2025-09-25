@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from typing import Optional
+
 from pydantic import BaseModel
 
 
@@ -23,7 +24,7 @@ class DownloadResult(BaseModel):
 
 class BaseDownloader(ABC):
     """Video downloader base class"""
-    
+
     @abstractmethod
     async def download(self, url: str, output_dir: str, download_video: bool = False) -> DownloadResult:
         """
@@ -38,8 +39,8 @@ class BaseDownloader(ABC):
             DownloadResult: Download result
         """
         pass
-    
+
     @abstractmethod
     def get_video_info(self, url: str) -> VideoInfo:
         """Get video information without downloading"""
-        pass  
+        pass

@@ -9,6 +9,7 @@ from omnibox_wizard.common.trace_info import TraceInfo
 from omnibox_wizard.worker.entity import Task
 from omnibox_wizard.worker.functions.html_reader import HTMLReaderV2
 from tests.omnibox_wizard.helper.fixture import trace_info, remote_worker_config
+from tests.omnibox_wizard.helper.get_collect_html import get_collect_html
 
 
 def get_tasks() -> list[Task]:
@@ -34,6 +35,9 @@ html_reader_base_dir = "tests/omnibox_wizard/resources/files/html_reader_input"
 async def process_task(task: Task, trace_info: TraceInfo, remote_worker_config):
     c = HTMLReaderV2(remote_worker_config)
     print(task.input['url'])
+    if task.input['html'].startswith("collect/html/gzip/"):
+        path = task.input['html']
+        task.input['html'] = get_collect_html(path)
     result = await c.run(task, trace_info)
     print(jsonlib.dumps(result, ensure_ascii=False, separators=(",", ":")))
     return result

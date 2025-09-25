@@ -1,9 +1,11 @@
-import logging
+import json as jsonlib
 import mimetypes
 import re
 import tempfile
 from pathlib import Path
 from typing import List, Dict, Any
+
+from opentelemetry import trace
 
 from omnibox_wizard.common import project_root
 from omnibox_wizard.common.template_parser import TemplateParser
@@ -17,7 +19,7 @@ from omnibox_wizard.worker.functions.video_downloaders.base_downloader import Vi
 from omnibox_wizard.worker.functions.video_downloaders.downloader_factory import DownloaderFactory
 from omnibox_wizard.worker.functions.video_utils import VideoProcessor
 
-logger = logging.getLogger(__name__)
+tracer = trace.get_tracer('VideoNoteGenerator')
 
 
 class VideoNoteResult:
@@ -50,18 +52,20 @@ class VideoNoteGenerator(BaseFunction):
         # Base64 image pattern, consistent with office_reader.py
         self.base64_img_pattern = re.compile(r"data:image/[^;]+;base64,([^\"')}]+)")
 
+    @tracer.start_as_current_span('run')
     async def run(self, task: Task, trace_info: TraceInfo) -> dict:
         """Execute video note generation task"""
+        span = trace.get_current_span()
+
         input_dict = task.input
 
         # Validate input
-        video_url = input_dict.get("video_url")
-        if not video_url:
-            raise ValueError("video_url is required")
+        video_url = input_dict["url"]
+        title = input_dict["title"]
 
         # Parse configuration parameters
         style = input_dict.get("style", "Concise Style")
-        include_screenshots = input_dict.get("include_screenshots", False)
+        include_screenshots = input_dict.get("include_screenshots", True)
         include_links = input_dict.get("include_links", False)
         language = input_dict.get("language", "简体中文")
 
@@ -70,25 +74,35 @@ class VideoNoteGenerator(BaseFunction):
         thumbnail_grid_size = input_dict.get("thumbnail_grid_size", [3, 3])
         thumbnail_interval = input_dict.get("thumbnail_interval", 30)  # seconds
 
+        span.set_attribute("config", jsonlib.dumps({
+            "style": style,
+            "include_screenshots": include_screenshots,
+            "include_links": include_links,
+            "language": language,
+            "generate_thumbnail": generate_thumbnail,
+            "thumbnail_grid_size": thumbnail_grid_size,
+            "thumbnail_interval": thumbnail_interval,
+        }, ensure_ascii=False, separators=(",", ":")))
+
         trace_info = trace_info.bind(
             video_url=video_url,
             include_screenshots=include_screenshots,
             include_links=include_links
         )
-        trace_info.info({"message": "Starting video note generation"})
+        trace_info.debug({"message": "Starting video note generation"})
 
         with tempfile.TemporaryDirectory(prefix="video_note_") as temp_dir:
             try:
                 # 1. Create downloader and download
-                trace_info.info({"message": "Creating downloader"})
+                trace_info.debug({"message": "Creating downloader"})
                 downloader = DownloaderFactory.create_downloader(video_url)
                 platform = DownloaderFactory.get_platform(video_url)
-                trace_info.info({"platform": platform, "message": "Downloader created"})
+                trace_info.debug({"platform": platform, "message": "Downloader created"})
 
                 # 2. Download audio and video (if needed)
-                trace_info.info({"message": "Starting content download"})
+                trace_info.debug({"message": "Starting content download"})
                 download_result = await downloader.download(video_url, temp_dir, download_video=include_screenshots)
-                trace_info.info({
+                trace_info.debug({
                     "audio_path": download_result.audio_path,
                     "video_path": download_result.video_path,
                     "message": "Content download completed"
@@ -110,9 +124,9 @@ class VideoNoteGenerator(BaseFunction):
                     trace_info=trace_info
                 )
 
-                trace_info.info({"message": "Video note generation successful"})
-                return {
-                    "markdown": result.markdown,
+                trace_info.debug({"message": "Video note generation successful"})
+                result_dict = {
+                    "markdown": f"> [{title}]({video_url})\n\n" + result.markdown,
                     "transcript": result.transcript,
                     "video_info": {
                         "title": result.video_info.title,
@@ -124,14 +138,17 @@ class VideoNoteGenerator(BaseFunction):
                         "uploader": result.video_info.uploader,
                         "upload_date": result.video_info.upload_date
                     },
-                    "screenshots": [img.model_dump() for img in result.screenshots],
-                    "thumbnail_image": result.thumbnail_image.model_dump()
+                    "images": [img.model_dump() for img in result.screenshots],
                 }
+                if result.thumbnail_image:
+                    result_dict["thumbnail_image"] = result.thumbnail_image.model_dump()
+                return result_dict
 
             except Exception as e:
                 trace_info.error({"error": str(e), "message": "Video note generation failed"})
                 raise
 
+    @tracer.start_as_current_span('_transcribe_audio')
     async def _transcribe_audio(self, audio_path: str, trace_info: TraceInfo) -> Dict[str, Any]:
         try:
             mimetype, _ = mimetypes.guess_type(audio_path)
@@ -146,6 +163,7 @@ class VideoNoteGenerator(BaseFunction):
             trace_info.error({"error": str(e), "message": "Fail to transcribe audio"})
             raise
 
+    @tracer.start_as_current_span('_generate_fallback_markdown')
     def _generate_fallback_markdown(
             self,
             video_info: VideoInfo,
@@ -172,6 +190,7 @@ class VideoNoteGenerator(BaseFunction):
 
         return "\n".join(markdown_parts)
 
+    @tracer.start_as_current_span('_generate_markdown')
     async def _generate_markdown(
             self,
             video_info: VideoInfo,
@@ -214,6 +233,7 @@ class VideoNoteGenerator(BaseFunction):
             trace_info.error({"error": str(e), "message": "Fail to generate AI note"})
             raise
 
+    @tracer.start_as_current_span('_call_ai_for_summary')
     async def _call_ai_for_summary(self, prompt: str, trace_info: TraceInfo) -> str:
         """Call AI to generate summary"""
         openai_client = self.config.grimoire.openai.get_config("default")
@@ -227,10 +247,7 @@ class VideoNoteGenerator(BaseFunction):
 
         return response.choices[0].message.content
 
-    async def process_video_file(self, file_path: str, trace_info: TraceInfo, **kwargs) -> VideoNoteResult:
-        """Process local video file directly - simplified wrapper for backward compatibility"""
-        return await self.process_local_video(file_path, trace_info=trace_info, **kwargs)
-
+    @tracer.start_as_current_span('_process_video_content')
     async def _process_video_content(
             self,
             audio_path: str | None,
@@ -287,7 +304,7 @@ class VideoNoteGenerator(BaseFunction):
 
         if include_screenshots and video_path:
             trace_info.info({"message": "Processing screenshots"})
-            markdown, extracted_screenshots = video_processor.extract_screenshots_as_images(
+            markdown, extracted_screenshots = await video_processor.extract_screenshots_as_images(
                 markdown, video_path
             )
             trace_info.info({
@@ -297,7 +314,7 @@ class VideoNoteGenerator(BaseFunction):
 
         if generate_thumbnail and video_path:
             trace_info.info({"message": "Generating video thumbnail grid"})
-            thumbnail_image = video_processor.create_thumbnail_grid_as_images(
+            thumbnail_image = await video_processor.create_thumbnail_grid_as_images(
                 video_path,
                 grid_size=tuple(thumbnail_grid_size),
                 frame_interval=thumbnail_interval
@@ -315,6 +332,7 @@ class VideoNoteGenerator(BaseFunction):
             thumbnail_image=thumbnail_image
         )
 
+    @tracer.start_as_current_span("process_local_video")
     async def process_local_video(self, file_path: str, **kwargs) -> VideoNoteResult:
         """Process local video file directly"""
         trace_info = kwargs.get("trace_info")
@@ -332,7 +350,7 @@ class VideoNoteGenerator(BaseFunction):
             # Get real video duration
             duration = 0
             try:
-                duration = video_processor.get_video_duration(file_path)
+                duration = await video_processor.get_video_duration(file_path)
             except Exception as e:
                 trace_info.warning({"message": f"Failed to get video duration: {str(e)}"})
 
@@ -350,9 +368,9 @@ class VideoNoteGenerator(BaseFunction):
             trace_info.info({"message": "Checking for audio stream"})
             audio_path = None
             try:
-                if video_processor.has_audio_stream(file_path):
+                if await video_processor.has_audio_stream(file_path):
                     trace_info.info({"message": "Start to extract video audio"})
-                    audio_path = video_processor.extract_audio(file_path, output_format="wav")
+                    audio_path = await video_processor.extract_audio(file_path, output_format="wav")
                     trace_info.info({"message": "Video audio extraction completed", "audio_path": audio_path})
                 else:
                     trace_info.info({"message": "No audio stream detected in video"})

@@ -22,7 +22,7 @@ class TestVideoNoteGeneratorIntegration:
             user_id="test_user",
             function="generate_video_note",
             input={
-                "video_url": self.YOUTUBE_URL,
+                "url": self.YOUTUBE_URL,
                 "include_screenshots": False,
                 "include_links": True,
                 "language": "en"
@@ -76,7 +76,7 @@ class TestVideoNoteGeneratorIntegration:
             user_id="test_user",
             function="generate_video_note", 
             input={
-                "video_url": self.BILIBILI_URL,
+                "url": self.BILIBILI_URL,
                 "style": "Concise Style",
                 "include_screenshots": True,
                 "include_links": False,
@@ -119,7 +119,7 @@ class TestVideoNoteGeneratorIntegration:
             user_id="test_user",
             function="generate_video_note", 
             input={
-                "video_url": self.YOUTUBE_URL,
+                "url": self.YOUTUBE_URL,
                 "style": "Concise Style",
                 "include_screenshots": True,
                 "include_links": False,
@@ -163,7 +163,7 @@ class TestVideoNoteGeneratorIntegration:
                 user_id="test_user",
                 function="generate_video_note",
                 input={
-                    "video_url": self.YOUTUBE_URL,
+                    "url": self.YOUTUBE_URL,
                     "style": style,
                     "include_screenshots": False,
                     "include_links": False
@@ -193,7 +193,7 @@ class TestVideoNoteGeneratorIntegration:
             user_id="test_user",
             function="generate_video_note",
             input={
-                "video_url": "https://www.youtube.com/watch?v=invalid_video_id_12345",
+                "url": "https://www.youtube.com/watch?v=invalid_video_id_12345",
                 "style": "Academic Style"
             }
         )
@@ -216,7 +216,7 @@ class TestVideoNoteGeneratorIntegration:
             }
         )
         
-        with pytest.raises(ValueError, match="video_url is required"):
+        with pytest.raises(ValueError, match="url is required"):
             await video_note_generator.run(task, trace_info)
     
     @pytest.mark.asyncio
@@ -231,7 +231,7 @@ class TestVideoNoteGeneratorIntegration:
             user_id="test_user",
             function="generate_video_note",
             input={
-                "video_url": self.YOUTUBE_URL,
+                "url": self.YOUTUBE_URL,
                 "include_screenshots": True,
                 "include_links": True,
                 "language": "zh",
@@ -272,7 +272,7 @@ class TestVideoNoteGeneratorIntegration:
                 user_id="test_user",
                 function="generate_video_note",
                 input={
-                    "video_url": url
+                    "url": url
                 }
             )
             
@@ -371,7 +371,7 @@ class TestVideoNoteGeneratorIntegration:
             user_id="test_user", 
             function="generate_video_note",
             input={
-                "video_url": non_existent_file,
+                "url": non_existent_file,
             }
         )
         

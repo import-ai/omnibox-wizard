@@ -21,7 +21,7 @@ from omnibox_wizard.worker.entity import Task, Image
 from omnibox_wizard.worker.functions.base_function import BaseFunction
 
 json_dumps = partial(jsonlib.dumps, separators=(",", ":"), ensure_ascii=False)
-tracer = trace.get_tracer(__name__)
+tracer = trace.get_tracer("HTMLReaderV2")
 
 
 class HTMLReaderV2(BaseFunction):
@@ -140,7 +140,7 @@ class HTMLReaderV2(BaseFunction):
                 all_imgs.append((src, img.get("alt", "")))
         return all_imgs
 
-    @tracer.start_as_current_span("HTMLReaderV2.run")
+    @tracer.start_as_current_span("run")
     async def run(self, task: Task, trace_info: TraceInfo) -> dict:
         input_dict = task.input
         html = input_dict["html"]
@@ -154,7 +154,7 @@ class HTMLReaderV2(BaseFunction):
         return result_dict
 
     @classmethod
-    @tracer.start_as_current_span("HTMLReaderV2.fetch_img")
+    @tracer.start_as_current_span("fetch_img")
     async def fetch_img(cls, url: str) -> tuple[str, str] | None:
         span = trace.get_current_span()
         span.set_attribute("url", url)
@@ -168,10 +168,10 @@ class HTMLReaderV2(BaseFunction):
                     base64_data = base64.b64encode(httpx_response.content).decode()
                     return mimetype, base64_data
         except Exception as e:
-            trace.get_current_span().record_exception(e)
+            span.record_exception(e)
         return None
 
-    @tracer.start_as_current_span("HTMLReaderV2.get_images")
+    @tracer.start_as_current_span("get_images")
     async def get_images(self, html: str, markdown: str) -> list[Image]:
         extracted_images = self.extract_images(html)
         fetch_src_list: list[tuple[str, str]] = []
@@ -194,7 +194,7 @@ class HTMLReaderV2(BaseFunction):
                 }))
         return images
 
-    @tracer.start_as_current_span("HTMLReaderV2.get_title")
+    @tracer.start_as_current_span("get_title")
     async def get_title(self, markdown: str, raw_title: str, trace_info: TraceInfo) -> str:
         snippet: str = "\n".join(list(filter(bool, markdown.splitlines()))[:3])
         title: str = (
@@ -204,7 +204,7 @@ class HTMLReaderV2(BaseFunction):
         ).title
         return title
 
-    @tracer.start_as_current_span("HTMLReaderV2.convert")
+    @tracer.start_as_current_span("convert")
     async def convert(self, domain: str, html: str, trace_info: TraceInfo):
         span = trace.get_current_span()
         html_doc = Document(html)
@@ -212,7 +212,7 @@ class HTMLReaderV2(BaseFunction):
         selected_html: str = ''
         raw_title: str = html_doc.title()
         if domain in self.CONTENT_SELECTOR:
-            with tracer.start_as_current_span("HTMLReaderV2.content_selector"):
+            with tracer.start_as_current_span("content_selector"):
                 selected_html = self.content_selector(domain, BeautifulSoup(html, "html.parser")).prettify()
                 cleaned_html = clean_attributes(tounicode(Document(selected_html)._html(True), method="html"))
                 markdown = html2text(cleaned_html).strip()
@@ -228,9 +228,10 @@ class HTMLReaderV2(BaseFunction):
             }
             trace_info.info(log_body)
             span.set_attributes(log_body)
+            # $('#inline-expander').innerText
 
         if not markdown:
-            with tracer.start_as_current_span("HTMLReaderV2.llm_extract_content"):
+            with tracer.start_as_current_span("llm_extract_content"):
                 cleaned_html: str = clean_attributes(tounicode(Document(html)._html(True), method="html"))
                 cleaned_html: str = self.clean_html(
                     cleaned_html, clean_svg=True, clean_base64=True,

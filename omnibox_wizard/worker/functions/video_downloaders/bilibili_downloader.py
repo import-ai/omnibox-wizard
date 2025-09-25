@@ -79,6 +79,7 @@ class BilibiliDownloader(BaseDownloader):
     async def _get_video_info_base(self, url):
         cmd = [
             "yt-dlp",
+            "--no-playlist",
             "--dump-json",
             "--no-download",
             url

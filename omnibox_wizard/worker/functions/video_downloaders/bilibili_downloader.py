@@ -1,11 +1,13 @@
 import asyncio
 import json
+import json as jsonlib
 import re
 import subprocess
 from pathlib import Path
 
 from opentelemetry import trace
 
+from omnibox_wizard.worker.functions.video_utils import VideoProcessor
 from .base_downloader import BaseDownloader, DownloadResult, VideoInfo
 
 tracer = trace.get_tracer('BilibiliDownloader')
@@ -26,15 +28,23 @@ class BilibiliDownloader(BaseDownloader):
             raise RuntimeError("yt-dlp is not installed. Please run: pip install yt-dlp")
 
     @tracer.start_as_current_span("download")
-    async def download(self, url: str, output_dir: str, download_video: bool = False) -> DownloadResult:
+    async def download(
+            self, url: str, output_dir: str, download_video: bool = True,
+            download_audio: bool = False
+    ) -> DownloadResult:
+        span = trace.get_current_span()
         video_info = self.get_video_info(url)
+        span.set_attribute("video_info", jsonlib.dumps(
+            video_info.model_dump(exclude_none=True), ensure_ascii=False, separators=(",", ":")))
         output_path = Path(output_dir)
 
-        audio_path = await self._download_audio(url, video_info.video_id, output_path)
+        video_path = await self._download_video(url, video_info.video_id, output_path) if download_video else None
 
-        video_path = None
-        if download_video:
-            video_path = await self._download_video(url, video_info.video_id, output_path)
+        if download_audio or not download_video:
+            audio_path = await self._download_audio(url, video_info.video_id, output_path)
+        else:
+            video_processor = VideoProcessor(output_dir)
+            audio_path = video_processor.extract_audio(url, video_info.video_id, output_path)
 
         return DownloadResult(
             audio_path=audio_path,

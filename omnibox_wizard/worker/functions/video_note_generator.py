@@ -247,11 +247,6 @@ class VideoNoteGenerator(BaseFunction):
 
         return response.choices[0].message.content
 
-    @tracer.start_as_current_span('process_video_file')
-    async def process_video_file(self, file_path: str, trace_info: TraceInfo, **kwargs) -> VideoNoteResult:
-        """Process local video file directly - simplified wrapper for backward compatibility"""
-        return await self.process_local_video(file_path, trace_info=trace_info, **kwargs)
-
     @tracer.start_as_current_span('_process_video_content')
     async def _process_video_content(
             self,

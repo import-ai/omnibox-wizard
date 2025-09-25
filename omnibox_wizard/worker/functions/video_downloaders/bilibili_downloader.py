@@ -44,7 +44,7 @@ class BilibiliDownloader(BaseDownloader):
             audio_path = await self._download_audio(url, video_info.video_id, output_path)
         else:
             video_processor = VideoProcessor(output_dir)
-            audio_path = video_processor.extract_audio(url, video_info.video_id, output_path)
+            audio_path = video_processor.extract_audio(video_path, output_format="wav")
 
         return DownloadResult(
             audio_path=audio_path,

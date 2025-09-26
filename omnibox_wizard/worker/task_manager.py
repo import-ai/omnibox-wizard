@@ -18,26 +18,12 @@ class TaskManager:
     def __init__(self, config: WorkerConfig):
         self.config = config
 
-    async def check_task_status(self, task_id: str, trace_info: TraceInfo) -> Optional[Task]:
+    async def check_task_status(self, task_id: str) -> Task:
         """Fetch task from backend to check its current status."""
-        try:
-            async with httpx.AsyncClient(base_url=self.config.backend.base_url) as client:
-                response = await client.get(f"internal/api/v1/wizard/tasks/{task_id}")
-                if response.is_success:
-                    return Task.model_validate(response.json())
-                else:
-                    trace_info.warning({
-                        "message": "Failed to fetch task status",
-                        "task_id": task_id,
-                        "status_code": response.status_code
-                    })
-        except Exception as e:
-            trace_info.exception({
-                "message": "Error checking task status",
-                "task_id": task_id,
-                "error": CommonException.parse_exception(e)
-            })
-        return None
+        async with httpx.AsyncClient(base_url=self.config.backend.base_url) as client:
+            response = await client.get(f"internal/api/v1/wizard/tasks/{task_id}")
+            response.raise_for_status()
+            return Task.model_validate(response.json())
 
     async def monitor_cancellation(self, task_id: str, execution_task: asyncio.Task, trace_info: TraceInfo):
         """Monitor task cancellation status and cancel execution if needed."""
@@ -45,19 +31,19 @@ class TaskManager:
 
         while not execution_task.done():
             try:
-                task_status = await self.check_task_status(task_id, trace_info)
-                if task_status and task_status.canceled_at:
+                task = await self.check_task_status(task_id)
+                if task.canceled_at:
                     trace_info.info({
                         "message": "Task cancellation detected, cancelling execution",
                         "task_id": task_id,
-                        "canceled_at": task_status.canceled_at.isoformat()
+                        "canceled_at": task.canceled_at.isoformat()
                     })
                     execution_task.cancel()
                     break
 
                 await asyncio.sleep(check_interval)
             except Exception as e:
-                trace_info.exception({
+                trace_info.warning({
                     "message": "Error in cancellation monitor",
                     "task_id": task_id,
                     "error": CommonException.parse_exception(e)

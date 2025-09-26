@@ -1,3 +1,4 @@
+import asyncio
 import os
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
@@ -32,7 +33,7 @@ class YouTubeDownloader(BilibiliDownloader):
 
     @tracer.start_as_current_span("get_video_info")
     async def get_video_info(self, url: str, video_id: str) -> VideoInfo:
-        data = await self._get_video_info_base(url)
+        data, real_url = await asyncio.gather(self._get_video_info_base(url), self.get_real_url(url))
 
         return VideoInfo(
             title=data.get("title", "Unknown Title"),
@@ -43,7 +44,8 @@ class YouTubeDownloader(BilibiliDownloader):
             description=data.get("description", ""),
             uploader=data.get("uploader", ""),
             upload_date=data.get("upload_date", ""),
-            thumbnail_url=data.get("thumbnail", "")
+            thumbnail_url=data.get("thumbnail", ""),
+            real_url=real_url,
         )
 
     @tracer.start_as_current_span("_download_video")

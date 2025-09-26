@@ -53,26 +53,27 @@ class CallbackUtil:
         else:
             await self._send_regular_callback(payload, task.id, trace_info)
 
+    @tracer.start_as_current_span("CallbackUtil._send_regular_callback")
     async def _send_regular_callback(self, payload: dict, task_id: str, trace_info: TraceInfo):
-        async with httpx.AsyncClient(base_url=self.config.backend.base_url) as client:
-            http_response: httpx.Response = await client.post(
-                f"/internal/api/v1/wizard/callback",
-                json=payload,
-                headers=self.inject_trace({"X-Request-Id": task_id}),
-            )
-            logging_func: Callable[[dict], None] = trace_info.debug if http_response.is_success else trace_info.error
-            logging_func({"status_code": http_response.status_code, "response": http_response.json()})
-
-        if not http_response.is_success:
-            if http_response.status_code == 413:
-                message = "Callback content too large"
-            else:
-                message = "Unknown error"
+        try:
+            async with httpx.AsyncClient(base_url=self.config.backend.base_url) as client:
+                http_response: httpx.Response = await client.post(
+                    f"/internal/api/v1/wizard/callback",
+                    json=payload,
+                    headers=self.inject_trace({"X-Request-Id": task_id}),
+                )
+                logging_func: Callable[
+                    [dict], None] = trace_info.debug if http_response.is_success else trace_info.error
+                logging_func({"status_code": http_response.status_code, "response": http_response.json()})
+                if http_response.status_code == 413:
+                    raise RuntimeError("Callback content too large")
+                http_response.raise_for_status()
+        except Exception as e:
             async with httpx.AsyncClient(base_url=self.config.backend.base_url) as client:
                 await client.post(
                     f"/internal/api/v1/wizard/callback",
                     json={"id": payload["id"], "exception": {
-                        "message": message,
+                        "message": CommonException.parse_exception(e),
                         "task": {
                             "has_exception": bool(payload.get("exception")),
                             "has_output": bool(payload.get("output")),
@@ -99,6 +100,7 @@ class CallbackUtil:
 
         return chunks
 
+    @tracer.start_as_current_span("CallbackUtil._send_chunked_callback")
     async def _send_chunked_callback(self, payload: dict, task_id: str, trace_info: TraceInfo):
         span = trace.get_current_span()
         chunks = self._chunk_payload(payload)
@@ -158,6 +160,7 @@ class CallbackUtil:
         raise Exception(
             f"Failed to send chunk {chunk_payload['chunk_index'] + 1}/{chunk_payload['total_chunks']} after {retry_count} attempts")
 
+    @tracer.start_as_current_span("CallbackUtil._send_chunked_callback_failure")
     async def _send_chunked_callback_failure(self, original_payload: dict, task_id: str, trace_info: TraceInfo,
                                              failure_exception: Exception):
         """Send a regular callback with exception details when chunked callback fails"""

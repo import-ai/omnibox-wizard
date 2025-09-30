@@ -2,31 +2,40 @@ import asyncio
 import json
 import json as jsonlib
 import re
-import subprocess
 from pathlib import Path
+from typing import Optional
 
 from opentelemetry import trace
 
 from omnibox_wizard.worker.functions.video_utils import VideoProcessor, exec_cmd
 from .base_downloader import BaseDownloader, DownloadResult, VideoInfo
+from .video_dl_client import YtdlpClient
 
 tracer = trace.get_tracer('BilibiliDownloader')
 
 
 class BilibiliDownloader(BaseDownloader):
-    """Bilibili downloader, using yt-dlp"""
+    """Bilibili downloader, using yt-dlp service"""
     platform = "bilibili"
 
-    def __init__(self):
-        self._check_yt_dlp()
+    def __init__(self, video_dl_base_url: Optional[str] = None):
+        """
+        Initialize Bilibili downloader
 
-    @classmethod
-    def _check_yt_dlp(cls):
-        """Check if yt-dlp is installed"""
-        try:
-            subprocess.run(["yt-dlp", "--version"], capture_output=True, check=True)
-        except (subprocess.CalledProcessError, FileNotFoundError):
-            raise RuntimeError("yt-dlp is not installed. Please run: pip install yt-dlp")
+        Args:
+            video_dl_base_url: Base URL for yt-dlp service. If None, falls back to local yt-dlp
+        """
+        self.video_dl_base_url = video_dl_base_url
+        if video_dl_base_url:
+            self.video_dl_client = YtdlpClient(video_dl_base_url)
+        else:
+            self.video_dl_client = None
+            # Fallback to local yt-dlp if no service URL provided
+            import subprocess
+            try:
+                subprocess.run(["yt-dlp", "--version"], capture_output=True, check=True)
+            except (subprocess.CalledProcessError, FileNotFoundError):
+                raise RuntimeError("yt-dlp service URL not configured and local yt-dlp not installed")
 
     @classmethod
     async def none_func(cls) -> None:
@@ -84,20 +93,26 @@ class BilibiliDownloader(BaseDownloader):
 
     @tracer.start_as_current_span("_get_video_info_base")
     async def _get_video_info_base(self, url):
-        cmd = [
-            "yt-dlp",
-            "--no-playlist",
-            "--dump-json",
-            "--no-download",
-            url
-        ]
+        if self.video_dl_client:
+            # Use yt-dlp service
+            data = await self.video_dl_client.extract_info(url)
+            return data
+        else:
+            # Fallback to local yt-dlp
+            cmd = [
+                "yt-dlp",
+                "--no-playlist",
+                "--dump-json",
+                "--no-download",
+                url
+            ]
 
-        _, stdout, stderr = await exec_cmd(self.cmd_wrapper(cmd))
+            _, stdout, stderr = await exec_cmd(self.cmd_wrapper(cmd))
 
-        # yt-dlp may return multiple JSON lines, we only need the first line
-        first_line = stdout.strip().split('\n')[0]
-        data = json.loads(first_line)
-        return data
+            # yt-dlp may return multiple JSON lines, we only need the first line
+            first_line = stdout.strip().split('\n')[0]
+            data = json.loads(first_line)
+            return data
 
     @tracer.start_as_current_span("get_video_info")
     async def get_video_info(self, url: str, video_id: str) -> VideoInfo:
@@ -134,25 +149,36 @@ class BilibiliDownloader(BaseDownloader):
         """Download audio"""
         output_path = output_dir / f"{video_id}.%(ext)s"
 
-        cmd = [
-            "yt-dlp",
-            "-x",  # Only extract audio
-            "--audio-format", "mp3",
-            "--audio-quality", "0",  # Highest quality
-            "-o", str(output_path),
-            url
-        ]
+        if self.video_dl_client:
+            # Use yt-dlp service
+            audio_path = await self.video_dl_client.download_audio(
+                url=url,
+                output_path=output_path,
+                audio_format="mp3",
+                audio_quality="0"
+            )
+            return audio_path
+        else:
+            # Fallback to local yt-dlp
+            cmd = [
+                "yt-dlp",
+                "-x",  # Only extract audio
+                "--audio-format", "mp3",
+                "--audio-quality", "0",  # Highest quality
+                "-o", str(output_path),
+                url
+            ]
 
-        await exec_cmd(self.cmd_wrapper(cmd))
+            await exec_cmd(self.cmd_wrapper(cmd))
 
-        # Find generated audio files
-        audio_files = list(output_dir.glob(f"{video_id}.*"))
-        audio_files = [f for f in audio_files if f.suffix in ['.mp3', '.m4a', '.wav']]
+            # Find generated audio files
+            audio_files = list(output_dir.glob(f"{video_id}.*"))
+            audio_files = [f for f in audio_files if f.suffix in ['.mp3', '.m4a', '.wav']]
 
-        if not audio_files:
-            raise RuntimeError("Audio file not found")
+            if not audio_files:
+                raise RuntimeError("Audio file not found")
 
-        return str(audio_files[0])
+            return str(audio_files[0])
 
     @tracer.start_as_current_span("_execute_video_download")
     async def _execute_video_download(self, cmd: list[str], video_id: str, output_dir: Path):
@@ -172,11 +198,21 @@ class BilibiliDownloader(BaseDownloader):
         """Download video"""
         output_path = output_dir / f"{video_id}_video.%(ext)s"
 
-        # Simplify command, don't specify format to let yt-dlp auto-select
-        cmd = [
-            "yt-dlp",
-            "-o", str(output_path),
-            url
-        ]
+        if self.video_dl_client:
+            # Use yt-dlp service with default format
+            video_path = await self.video_dl_client.download_video(
+                url=url,
+                output_path=output_path,
+                format="best"
+            )
+            return video_path
+        else:
+            # Fallback to local yt-dlp
+            # Simplify command, don't specify format to let yt-dlp auto-select
+            cmd = [
+                "yt-dlp",
+                "-o", str(output_path),
+                url
+            ]
 
-        return await self._execute_video_download(cmd, video_id, output_dir)
+            return await self._execute_video_download(cmd, video_id, output_dir)

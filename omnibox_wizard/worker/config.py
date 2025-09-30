@@ -44,6 +44,7 @@ class TaskConfig(BaseModel):
     asr: OpenAIConfig = Field(default=None)
     pdf_reader_base_url: str = Field(default=None)
     docling_base_url: str = Field(default=None)
+    video_dl_base_url: str = Field(default=None, description="Base URL for yt-dlp service")
     timeout: int = Field(default=300, description="Default task timeout in seconds")
     function_timeouts: FunctionTimeoutConfig = Field(
         default_factory=FunctionTimeoutConfig, description="Function-specific timeout overrides")

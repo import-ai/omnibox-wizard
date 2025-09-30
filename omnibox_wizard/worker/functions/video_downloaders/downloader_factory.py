@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Literal, Optional
 from urllib.parse import urlparse
 
 from .base_downloader import BaseDownloader
@@ -12,16 +12,25 @@ class DownloaderFactory:
     """Downloader factory class"""
 
     @classmethod
-    def create_downloader(cls, url: str) -> BaseDownloader:
-        """Create corresponding downloader based on URL"""
+    def create_downloader(cls, url: str, video_dl_base_url: Optional[str] = None) -> BaseDownloader:
+        """
+        Create corresponding downloader based on URL
+
+        Args:
+            url: Video URL
+            video_dl_base_url: Base URL for yt-dlp service. If None, falls back to local yt-dlp
+
+        Returns:
+            BaseDownloader instance
+        """
         platform: Platform = cls.get_platform(url)
 
         if platform == "youtube":
-            return YouTubeDownloader()
+            return YouTubeDownloader(video_dl_base_url)
         elif platform == "bilibili":
-            return BilibiliDownloader()
+            return BilibiliDownloader(video_dl_base_url)
         else:
-            return YouTubeDownloader()
+            return YouTubeDownloader(video_dl_base_url)
 
     @classmethod
     def get_platform(cls, url: str) -> Platform:

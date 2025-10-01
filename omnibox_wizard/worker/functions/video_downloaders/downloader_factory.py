@@ -12,13 +12,13 @@ class DownloaderFactory:
     """Downloader factory class"""
 
     @classmethod
-    def create_downloader(cls, url: str, video_dl_base_url: Optional[str] = None) -> BaseDownloader:
+    def create_downloader(cls, url: str, video_dl_base_url: str) -> BaseDownloader:
         """
         Create corresponding downloader based on URL
 
         Args:
             url: Video URL
-            video_dl_base_url: Base URL for yt-dlp service. If None, falls back to local yt-dlp
+            video_dl_base_url: Base URL for yt-dlp service
 
         Returns:
             BaseDownloader instance

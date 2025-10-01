@@ -1,20 +1,23 @@
+import os
 import tempfile
 from pathlib import Path
 
 import pytest
+from dotenv import load_dotenv
 
 from omnibox_wizard.worker.functions.video_downloaders.base_downloader import VideoInfo, DownloadResult
 from omnibox_wizard.worker.functions.video_downloaders.bilibili_downloader import BilibiliDownloader
+
+load_dotenv()
 
 
 @pytest.mark.integration
 class TestBilibiliDownloaderIntegration:
     BILIBILI_URL = "https://www.bilibili.com/video/BV1uT4y1P7CX/"
+    VIDEO_DL_BASE_URL = os.environ["OBW_TASK_VIDEO_DL_BASE_URL"]  # Default yt-dlp service URL
 
     def test_extract_video_id_real_url(self):
-        downloader = BilibiliDownloader()
-
-        video_id = downloader.extract_video_id(self.BILIBILI_URL)
+        video_id = BilibiliDownloader.extract_video_id(self.BILIBILI_URL)
         assert video_id == "BV1uT4y1P7CX"
 
         other_formats = [
@@ -24,12 +27,13 @@ class TestBilibiliDownloaderIntegration:
         ]
 
         for url in other_formats:
-            assert downloader.extract_video_id(url) == "BV1uT4y1P7CX"
+            assert BilibiliDownloader.extract_video_id(url) == "BV1uT4y1P7CX"
 
     async def test_get_video_info_real_url(self):
-        downloader = BilibiliDownloader()
+        downloader = BilibiliDownloader(self.VIDEO_DL_BASE_URL)
 
-        video_info = await downloader.get_video_info(self.BILIBILI_URL, downloader.extract_video_id(self.BILIBILI_URL))
+        video_info = await downloader.get_video_info(self.BILIBILI_URL,
+                                                     BilibiliDownloader.extract_video_id(self.BILIBILI_URL))
 
         assert isinstance(video_info, VideoInfo)
         assert video_info.platform == "bilibili"
@@ -49,7 +53,7 @@ class TestBilibiliDownloaderIntegration:
 
     @pytest.mark.asyncio
     async def test_download_audio_only_real_url(self):
-        downloader = BilibiliDownloader()
+        downloader = BilibiliDownloader(self.VIDEO_DL_BASE_URL)
 
         with tempfile.TemporaryDirectory() as temp_dir:
             result = await downloader.download(self.BILIBILI_URL, temp_dir, download_video=False)
@@ -72,7 +76,7 @@ class TestBilibiliDownloaderIntegration:
     @pytest.mark.asyncio
     @pytest.mark.slow
     async def test_download_with_video_real_url(self):
-        downloader = BilibiliDownloader()
+        downloader = BilibiliDownloader(self.VIDEO_DL_BASE_URL)
 
         with tempfile.TemporaryDirectory() as temp_dir:
             result = await downloader.download(self.BILIBILI_URL, temp_dir, download_video=True)
@@ -101,7 +105,7 @@ class TestBilibiliDownloaderIntegration:
 
     @pytest.mark.asyncio
     async def test_download_error_handling(self):
-        downloader = BilibiliDownloader()
+        downloader = BilibiliDownloader(self.VIDEO_DL_BASE_URL)
 
         with tempfile.TemporaryDirectory() as temp_dir:
             invalid_url = "https://www.bilibili.com/video/BV1invalidvideo/"
@@ -111,8 +115,6 @@ class TestBilibiliDownloaderIntegration:
 
     def test_temp_directory_cleanup(self):
         """Test that temporary directory is properly cleaned up"""
-        downloader = BilibiliDownloader()
-
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
 
@@ -128,8 +130,6 @@ class TestBilibiliDownloaderIntegration:
         assert not temp_path.exists()
 
     def test_video_id_extraction_edge_cases(self):
-        downloader = BilibiliDownloader()
-
         test_cases = [
             ("https://www.bilibili.com/video/BV1xx411c7mD?p=1", "BV1xx411c7mD"),
             ("https://bilibili.com/video/BV1Ab4y1x7Gw?from=search", "BV1Ab4y1x7Gw"),
@@ -141,14 +141,12 @@ class TestBilibiliDownloaderIntegration:
         ]
 
         for url, expected_id in test_cases:
-            actual_id = downloader.extract_video_id(url)
+            actual_id = BilibiliDownloader.extract_video_id(url)
             assert actual_id == expected_id, f"URL: {url}, Expected: {expected_id}, Actual: {actual_id}"
 
     def test_fallback_video_id(self):
-        downloader = BilibiliDownloader()
-
         bangumi_url = "https://www.bilibili.com/bangumi/play/ep123456"
-        video_id = downloader.extract_video_id(bangumi_url)
+        video_id = BilibiliDownloader.extract_video_id(bangumi_url)
 
         expected_hash = str(hash(bangumi_url))
         assert video_id == expected_hash

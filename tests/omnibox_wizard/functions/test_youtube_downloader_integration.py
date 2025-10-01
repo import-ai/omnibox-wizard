@@ -1,19 +1,24 @@
+import os
 import tempfile
 from pathlib import Path
 
 import pytest
+from dotenv import load_dotenv
 
 from omnibox_wizard.worker.functions.video_downloaders.base_downloader import VideoInfo, DownloadResult
 from omnibox_wizard.worker.functions.video_downloaders.youtube_downloader import YouTubeDownloader
+
+load_dotenv()
 
 
 @pytest.mark.integration
 class TestYouTubeDownloaderIntegration:
     YOUTUBE_URL = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+    VIDEO_DL_BASE_URL = os.environ["OBW_TASK_VIDEO_DL_BASE_URL"]  # Default yt-dlp service URL
 
     async def test_get_video_info_real_url(self):
-        downloader = YouTubeDownloader()
-       
+        downloader = YouTubeDownloader(self.VIDEO_DL_BASE_URL)
+
         video_info = await downloader.get_video_info(self.YOUTUBE_URL, downloader.extract_video_id(self.YOUTUBE_URL))
 
         assert isinstance(video_info, VideoInfo)
@@ -33,7 +38,7 @@ class TestYouTubeDownloaderIntegration:
 
     @pytest.mark.asyncio
     async def test_download_audio_only_real_url(self):
-        downloader = YouTubeDownloader()
+        downloader = YouTubeDownloader(self.VIDEO_DL_BASE_URL)
 
         with tempfile.TemporaryDirectory() as temp_dir:
             result = await downloader.download(self.YOUTUBE_URL, temp_dir, download_video=False)
@@ -54,7 +59,7 @@ class TestYouTubeDownloaderIntegration:
     @pytest.mark.asyncio
     @pytest.mark.slow
     async def test_download_with_video_real_url(self):
-        downloader = YouTubeDownloader()
+        downloader = YouTubeDownloader(self.VIDEO_DL_BASE_URL)
 
         with tempfile.TemporaryDirectory() as temp_dir:
             result = await downloader.download(self.YOUTUBE_URL, temp_dir, download_video=True)
@@ -82,7 +87,7 @@ class TestYouTubeDownloaderIntegration:
 
     @pytest.mark.asyncio
     async def test_download_error_handling(self):
-        downloader = YouTubeDownloader()
+        downloader = YouTubeDownloader(self.VIDEO_DL_BASE_URL)
 
         with tempfile.TemporaryDirectory() as temp_dir:
             invalid_url = "https://www.youtube.com/watch?v=invalid_video_id"
@@ -91,9 +96,6 @@ class TestYouTubeDownloaderIntegration:
                 await downloader.download(invalid_url, temp_dir)
 
     def test_temp_directory_cleanup(self):
-        """Test that temporary directory is properly cleaned up"""
-        downloader = YouTubeDownloader()
-
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
 

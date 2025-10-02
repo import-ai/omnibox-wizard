@@ -41,3 +41,9 @@ class Image(BaseModel):
 
     def dump(self, f: BinaryIO) -> None:
         f.write(base64.b64decode(self.data))
+
+
+class GeneratedContent(BaseModel):
+    title: str | None = Field(default=None)
+    markdown: str
+    images: list[Image] | None = Field(default=None)

@@ -41,7 +41,10 @@ class RedNoteProcessor(HTMLReaderBaseProcessor):
 
                 elif child.name == 'img' and 'note-content-emoji' in child.get('class', []):
                     src = child.get('src', '')
-                    markdown_parts.append(f"![emoji]({src})")
+                    if src.startswith('https://picasso-static.xiaohongshu.com/fe-platform/'):
+                        markdown_parts.append(f'<img src="{src}" width="16" height="16" alt="emoji">')
+                    else:
+                        markdown_parts.append(f"![emoji]({src})")
 
                 elif child.name == 'a' and 'tag' in child.get('class', []):
                     tag_text = child.get_text(strip=True)

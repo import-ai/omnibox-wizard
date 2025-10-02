@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import json as jsonlib
+import os
 import re
 from functools import partial
 from urllib.parse import urlparse
@@ -171,6 +172,12 @@ class HTMLReaderV2(BaseFunction):
             span.record_exception(e)
         return None
 
+    @classmethod
+    def get_name_from_url(cls, url: str) -> str:
+        parsed = urlparse(url)
+        filename = os.path.basename(parsed.path)
+        return filename
+
     @tracer.start_as_current_span("get_images")
     async def get_images(self, html: str, markdown: str) -> list[Image]:
         extracted_images = self.extract_images(html)
@@ -187,7 +194,7 @@ class HTMLReaderV2(BaseFunction):
             if pair:
                 mimetype, base64_data = pair
                 images.append(Image.model_validate({
-                    "name": alt or src,
+                    "name": alt or self.get_name_from_url(src),
                     "link": src,
                     "data": base64_data,
                     "mimetype": mimetype,

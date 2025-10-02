@@ -138,6 +138,8 @@ class Worker:
                 json_response = http_response.json()
                 logging_func({"status_code": http_response.status_code, "response": json_response})
                 return Task.model_validate(json_response)
+        except httpx.ConnectError:
+            self.logger.warning({"message": "Failed to connect", "backend_base_url": self.config.backend.base_url})
         except Exception as e:
             self.logger.exception({"error": CommonException.parse_exception(e)})
         return task

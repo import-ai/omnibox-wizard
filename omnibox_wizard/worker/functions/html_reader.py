@@ -19,6 +19,7 @@ from omnibox_wizard.worker.entity import Task, Image, GeneratedContent
 from omnibox_wizard.worker.functions.base_function import BaseFunction
 from omnibox_wizard.worker.functions.html_reader_processors.base import HTMLReaderBaseProcessor
 from omnibox_wizard.worker.functions.html_reader_processors.green_note import GreenNoteProcessor
+from omnibox_wizard.worker.functions.html_reader_processors.red_note import RedNoteProcessor
 
 json_dumps = partial(jsonlib.dumps, separators=(",", ":"), ensure_ascii=False)
 tracer = trace.get_tracer("HTMLReaderV2")
@@ -49,10 +50,6 @@ class HTMLReaderV2(BaseFunction):
             "name": "div",
             "class_": "post_body"
         },
-        "www.xiaohongshu.com": {
-            "name": "div",
-            "class_": "note-content"
-        },
         "x.com": {
             "name": "div",
             "attrs": {"data-testid": "tweetText"}
@@ -66,7 +63,7 @@ class HTMLReaderV2(BaseFunction):
         self.html_title_extractor = HTMLTitleExtractor(config.grimoire.openai.get_config("mini"))
         self.html_content_extractor = HTMLContentExtractor(config.grimoire.openai.get_config("mini"))
         self.processors: list[HTMLReaderBaseProcessor] = [
-            GreenNoteProcessor(config=config)
+            GreenNoteProcessor(config=config), RedNoteProcessor(config=config)
         ]
 
     @classmethod

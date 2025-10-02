@@ -23,7 +23,7 @@ class GreenNoteProcessor(HTMLReaderBaseProcessor):
 
     async def convert(self, html: str, url: str) -> GeneratedContent:
         soup = BeautifulSoup(html, "html.parser")
-        images = soup.select("div.swiper_item_img img")
+        images = soup.select("div.swiper_item_img img:not(#img_item_placeholder)")
         content = soup.find("p", attrs={"id": "js_image_desc"})
         h1 = soup.select("div#js_image_content h1")[0]
 

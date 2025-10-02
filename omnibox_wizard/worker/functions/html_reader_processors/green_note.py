@@ -2,10 +2,10 @@ from urllib.parse import urlparse
 
 from bs4 import BeautifulSoup
 from html2text import html2text
+from opentelemetry import trace
 
 from omnibox_wizard.worker.entity import GeneratedContent
 from omnibox_wizard.worker.functions.html_reader_processors.base import HTMLReaderBaseProcessor
-from opentelemetry import trace
 
 tracer = trace.get_tracer("GreenNoteProcessor")
 
@@ -40,6 +40,7 @@ class GreenNoteProcessor(HTMLReaderBaseProcessor):
 
         title: str = h1.text
         images = await self.get_images(tuple_images)
-        markdown_images: str = "\n\n".join([f"![{i + 1}]({image.link})" for i, image in enumerate(images)])
-        markdown = markdown_images + "\n\n" + html2text(content.prettify())
+        markdown: str = "\n\n".join([f"![{i + 1}]({image.link})" for i, image in enumerate(images)])
+        if content:
+            markdown = markdown + "\n\n" + html2text(content.prettify())
         return GeneratedContent(title=title, markdown=markdown, images=images or None)

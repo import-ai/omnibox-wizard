@@ -44,6 +44,6 @@ class Image(BaseModel):
 
 
 class GeneratedContent(BaseModel):
-    title: str
+    title: str | None = Field(default=None)
     markdown: str
     images: list[Image] | None = Field(default=None)

@@ -95,7 +95,8 @@ class VideoNoteGenerator(BaseFunction):
             try:
                 # 1. Create downloader and download
                 trace_info.debug({"message": "Creating downloader"})
-                downloader = DownloaderFactory.create_downloader(video_url)
+                video_dl_base_url = self.config.task.video_dl_base_url
+                downloader = DownloaderFactory.create_downloader(video_url, video_dl_base_url)
                 platform = DownloaderFactory.get_platform(video_url)
                 trace_info.debug({"platform": platform, "message": "Downloader created"})
 

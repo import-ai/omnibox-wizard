@@ -210,6 +210,7 @@ class Agent(BaseSearchableAgent):
             *,
             trace_info: TraceInfo | None = None
     ) -> AsyncIterable[ChatResponse | MessageDto]:
+        chunks: list[dict] = []
         with tracer.start_as_current_span("agent.chat") as span:
             assistant_message: dict = {'role': 'assistant'}
 
@@ -271,6 +272,7 @@ class Agent(BaseSearchableAgent):
 
                     async for chunk in openai_response:
                         delta = chunk.choices[0].delta
+                        chunks.append(chunk.model_dump(exclude_none=True))
                         if ttft < 0:
                             ttft = time.time() - start_time
                             openai_span.set_attribute("ttft", ttft)
@@ -295,7 +297,7 @@ class Agent(BaseSearchableAgent):
 
                         for key in ['content', 'reasoning_content']:
                             if hasattr(delta, key) and (v := getattr(delta, key)):
-                                if key == 'content':
+                                if custom_tool_call and key == 'content':
                                     normal_content: str = ''
                                     operations: list[DeltaOperation] = stream_parser.parse(v)
                                     for operation in operations:

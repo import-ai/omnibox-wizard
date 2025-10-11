@@ -7,7 +7,7 @@ from opentelemetry import trace
 
 from omnibox_wizard.worker.functions.video_utils import VideoProcessor, exec_cmd
 from .base_downloader import BaseDownloader, DownloadResult, VideoInfo
-from .video_dl_client import YtDlpClient
+from .video_dl_client import YtDlpClient, YtDlpDownloadResult
 
 tracer = trace.get_tracer('BilibiliDownloader')
 
@@ -26,41 +26,61 @@ class BilibiliDownloader(BaseDownloader):
     @tracer.start_as_current_span("get_video_and_audio_path")
     async def get_video_and_audio_path(
             self, url: str, output_dir: str, video_id: str, download_video: bool = True,
-            force_download_audio: bool = False
-    ) -> tuple[str | None, str]:
+            force_download_audio: bool = False, cookies: str | None = None
+    ) -> tuple[YtDlpDownloadResult | None, str | None]:
         output_path = Path(output_dir)
         if download_video:
-            video_path_task = asyncio.create_task(self._download_video(url, video_id, output_path))
+            # Download video first and get result
+            video_download_result = await self._download_video(url, video_id, output_path, cookies)
+
+            # If video has subtitles, no need to extract/download audio
+            if len(video_download_result.subtitles) > 0:
+                return video_download_result, None
+
+            # No subtitles, need audio for ASR
             if force_download_audio:
                 audio_path = await self._download_audio(url, video_id, output_path)
+                audio_path = audio_path.file_path
             else:
                 video_processor = VideoProcessor(output_dir)
-                audio_path = await video_processor.extract_audio(await video_path_task, output_format="wav")
-            return await video_path_task, audio_path
+                audio_path = await video_processor.extract_audio(video_download_result.file_path, output_format="wav")
+
+            return video_download_result, audio_path
         else:
+            # if the video's subtitles are available, don't need to download audio
+            video_download_result = await self._download_subtitles(url, video_id, output_path, cookies)
+            if video_download_result.subtitles:
+                return video_download_result, None
+            
             audio_path = await self._download_audio(url, video_id, output_path)
-            return None, audio_path
+            audio_path = audio_path.file_path
+            return YtDlpDownloadResult(), audio_path
 
     @tracer.start_as_current_span("download")
     async def download(
             self, url: str, output_dir: str, download_video: bool = True,
-            force_download_audio: bool = False
+            force_download_audio: bool = False, cookies: str | None = None
     ) -> DownloadResult:
+        if not url:
+            return DownloadResult()
         span = trace.get_current_span()
         video_id: str = self.extract_video_id(url)
-        video_info, (video_path, audio_path) = await asyncio.gather(
+        video_info, (video_download_result, audio_path) = await asyncio.gather(
             self.get_video_info(url, video_id),
             self.get_video_and_audio_path(
-                url, output_dir, video_id, download_video, force_download_audio)
+                url, output_dir, video_id, download_video, force_download_audio, cookies)
         )
         span.set_attributes({
             "video_info": jsonlib.dumps(
                 video_info.model_dump(exclude_none=True), ensure_ascii=False, separators=(",", ":")),
-            "video_path": video_path,
+            "video_path": video_download_result.file_path,
+            "chapters": video_download_result.chapters, 
+            "subtitles": video_download_result.subtitles,
             "audio_path": audio_path,
         })
 
-        return DownloadResult(video_info=video_info, video_path=video_path, audio_path=audio_path)
+        return DownloadResult(video_info=video_info, video_path=video_download_result.file_path, audio_path=audio_path, 
+                                chapters=video_download_result.chapters, subtitles=video_download_result.subtitles)
 
     @classmethod
     def cmd_wrapper(cls, cmd: list[str]) -> list[str]:
@@ -69,12 +89,16 @@ class BilibiliDownloader(BaseDownloader):
     @classmethod
     async def get_real_url(cls, url: str) -> str:
         """Get real url"""
+        if not url:
+            return ""
         cmd = ["curl", "-ILs", "-o", "/dev/null", "-w", "%{url_effective}", url]
         _, stdout, _ = await exec_cmd(cls.cmd_wrapper(cmd))
         return stdout.strip()
 
     @tracer.start_as_current_span("_get_video_info_base")
     async def _get_video_info_base(self, url):
+        if not url:
+            return {}
         data = await self.video_dl_client.extract_info(url)
         return data
 
@@ -120,11 +144,25 @@ class BilibiliDownloader(BaseDownloader):
         return audio_path
 
     @tracer.start_as_current_span("_download_video")
-    async def _download_video(self, url: str, video_id: str, output_dir: Path) -> str:
+    async def _download_video(self, url: str, video_id: str, output_dir: Path, cookies: str | None = None) -> YtDlpDownloadResult:
         output_path = output_dir / f"{video_id}_video.%(ext)s"
 
-        video_path = await self.video_dl_client.download_video(
+        download_result = await self.video_dl_client.download_video(
             url=url,
             output_path=output_path,
+            cookies=cookies
         )
-        return video_path
+        return download_result
+
+    @tracer.start_as_current_span("_download_subtitles")
+    async def _download_subtitles(self, url: str, video_id: str, output_dir: Path, cookies: str | None = None) -> str:
+        """Download subtitles"""
+        output_path = output_dir / f"{video_id}.%(ext)s"
+
+        audio_path = await self.video_dl_client.download_subtitles(
+            url=url,
+            output_path=output_path,
+            cookies=cookies
+        )
+        return audio_path
+

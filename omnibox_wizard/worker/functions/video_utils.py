@@ -176,30 +176,31 @@ class VideoProcessor:
     def extract_timestamps_from_markdown(self, markdown: str) -> List[Tuple[str, int]]:
         """
         Extract screenshot timestamps from Markdown text
-        
+
         Supported formats:
-        - *Screenshot-mm:ss
-        - Screenshot-[mm:ss]
-        - ![Screenshot](mm:ss)
-        
+        - *Screenshot-hh:mm:ss
+        - Screenshot-[hh:mm:ss]
+        - ![Screenshot](hh:mm:ss)
+
         Args:
             markdown: Markdown text
-            
+
         Returns:
             [(original marker, timestamp in seconds), ...]
         """
         patterns = [
-            r"(?:\*Screenshot-(\d{1,2}):(\d{2}))",  # *Screenshot-mm:ss
-            r"(?:Screenshot-\[(\d{1,2}):(\d{2})\])",  # Screenshot-[mm:ss]
-            r"(?:!\[Screenshot\]\((\d{1,2}):(\d{2})\))",  # ![Screenshot](mm:ss)
+            r"(?:\*Screenshot-(\d{1,2}):(\d{2}):(\d{2}))",  # *Screenshot-hh:mm:ss
+            r"(?:Screenshot-\[(\d{1,2}):(\d{2}):(\d{2})\])",  # Screenshot-[hh:mm:ss]
+            r"(?:!\[Screenshot\]\((\d{1,2}):(\d{2}):(\d{2})\))",  # ![Screenshot](hh:mm:ss)
         ]
 
         results = []
         for pattern in patterns:
             for match in re.finditer(pattern, markdown):
-                mm = int(match.group(1))
-                ss = int(match.group(2))
-                total_seconds = mm * 60 + ss
+                hh = int(match.group(1))
+                mm = int(match.group(2))
+                ss = int(match.group(3))
+                total_seconds = hh * 3600 + mm * 60 + ss
                 results.append((match.group(0), total_seconds))
 
         # Remove duplicates and sort by timestamp

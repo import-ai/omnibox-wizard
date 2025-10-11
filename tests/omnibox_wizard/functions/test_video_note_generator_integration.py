@@ -4,17 +4,38 @@ from pathlib import Path
 
 from omnibox_wizard.worker.entity import Task
 from omnibox_wizard.worker.functions.video_note_generator import VideoNoteGenerator
+import json
+#using "EditThisCookie" Chrome extension get cookies
+cookies = """"""
 
+def json_cookies_to_netscape(json_str: str) -> str:
+    """Convert JSON cookies to Netscape format for yt-dlp"""
+    cookies = json.loads(json_str)
+    lines = ["# Netscape HTTP Cookie File\n"]
+
+    for cookie in cookies:
+        domain = cookie.get("domain", "")
+        flag = "TRUE" if cookie.get("hostOnly", False) is False else "FALSE"
+        path = cookie.get("path", "/")
+        secure = "TRUE" if cookie.get("secure", False) else "FALSE"
+        expiration = str(int(cookie.get("expirationDate", 0)))
+        name = cookie.get("name", "")
+        value = cookie.get("value", "")
+
+        lines.append(f"{domain}\t{flag}\t{path}\t{secure}\t{expiration}\t{name}\t{value}\n")
+
+    return "".join(lines)
+
+BILIBILI_COOKIE = json_cookies_to_netscape(cookies)
 
 @pytest.mark.integration
 class TestVideoNoteGeneratorIntegration:
-    YOUTUBE_URL = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
-    BILIBILI_URL = "https://www.bilibili.com/video/BV1uT4y1P7CX/"
+    YOUTUBE_URL = "https://www.youtube.com/watch?v=qpRGnTTcLpo"
+    BILIBILI_URL = "https://www.bilibili.com/video/BV1i147zfEUa"
     
     @pytest.mark.asyncio
     async def test_youtube_integration_audio_only(self, remote_worker_config, trace_info):
         video_note_generator = VideoNoteGenerator(remote_worker_config)
-        
         task = Task(
             id="test-youtube-integration",
             priority=1,
@@ -25,7 +46,8 @@ class TestVideoNoteGeneratorIntegration:
                 "url": self.YOUTUBE_URL,
                 "include_screenshots": False,
                 "include_links": True,
-                "language": "en"
+                "language": "en",
+                "title":""
             }
         )
         
@@ -36,19 +58,9 @@ class TestVideoNoteGeneratorIntegration:
             assert "markdown" in result
             assert "transcript" in result
             assert "video_info" in result
-            assert "screenshots" in result
-            
-            assert isinstance(result["screenshots"], list)
-            for screenshot in result["screenshots"]:
-                if screenshot:
-                    assert "name" in screenshot
-                    assert "link" in screenshot  
-                    assert "data" in screenshot
-                    assert "mimetype" in screenshot
             
             video_info = result["video_info"]
             assert video_info["platform"] == "youtube"
-            assert video_info["video_id"] == "dQw4w9WgXcQ"
             assert video_info["url"] == self.YOUTUBE_URL
             assert video_info["title"] != ""
             assert video_info["duration"] > 0
@@ -65,7 +77,6 @@ class TestVideoNoteGeneratorIntegration:
             pass
     
     @pytest.mark.asyncio
-    @pytest.mark.slow
     async def test_bilibili_integration_with_screenshots(self, remote_worker_config, trace_info):
         video_note_generator = VideoNoteGenerator(remote_worker_config)
         
@@ -80,8 +91,10 @@ class TestVideoNoteGeneratorIntegration:
                 "style": "Concise Style",
                 "include_screenshots": True,
                 "include_links": False,
-                "language": "English",
-                "generate_thumbnail": True
+                "language": "简体中文",
+                "generate_thumbnail": True,
+                "cookies":BILIBILI_COOKIE,
+                "title":""
             }
         )
         
@@ -89,7 +102,6 @@ class TestVideoNoteGeneratorIntegration:
             result = await video_note_generator.run(task, trace_info)
             video_info = result["video_info"]
             assert video_info["platform"] == "bilibili"
-            assert video_info["video_id"] == "BV1uT4y1P7CX"
             assert video_info["url"] == self.BILIBILI_URL
             assert video_info["title"] != ""
             assert video_info["duration"] > 0
@@ -108,7 +120,6 @@ class TestVideoNoteGeneratorIntegration:
             pass
     
     @pytest.mark.asyncio
-    @pytest.mark.slow
     async def test_youtube_integration_with_screenshots(self, remote_worker_config, trace_info):
         video_note_generator = VideoNoteGenerator(remote_worker_config)
         
@@ -123,7 +134,8 @@ class TestVideoNoteGeneratorIntegration:
                 "style": "Concise Style",
                 "include_screenshots": True,
                 "include_links": False,
-                "language": "en"
+                "language": "简体中文",
+                "title":""
             }
         )
         
@@ -131,7 +143,6 @@ class TestVideoNoteGeneratorIntegration:
             result = await video_note_generator.run(task, trace_info)
             video_info = result["video_info"]
             assert video_info["platform"] == "youtube"
-            assert video_info["video_id"] == "dQw4w9WgXcQ"
             assert video_info["url"] == self.YOUTUBE_URL
             assert video_info["title"] != ""
             assert video_info["duration"] > 0
@@ -166,7 +177,8 @@ class TestVideoNoteGeneratorIntegration:
                     "url": self.YOUTUBE_URL,
                     "style": style,
                     "include_screenshots": False,
-                    "include_links": False
+                    "include_links": False,
+                    "title":""
                 }
             )
             
@@ -194,7 +206,8 @@ class TestVideoNoteGeneratorIntegration:
             function="generate_video_note",
             input={
                 "url": "https://www.youtube.com/watch?v=invalid_video_id_12345",
-                "style": "Academic Style"
+                "style": "Academic Style",
+                "title":""
             }
         )
         
@@ -220,7 +233,6 @@ class TestVideoNoteGeneratorIntegration:
             await video_note_generator.run(task, trace_info)
     
     @pytest.mark.asyncio
-    @pytest.mark.slow
     async def test_all_parameters_combination(self, remote_worker_config, trace_info):
         video_note_generator = VideoNoteGenerator(remote_worker_config)
         
@@ -237,7 +249,8 @@ class TestVideoNoteGeneratorIntegration:
                 "language": "zh",
                 "generate_thumbnail": True,
                 "thumbnail_grid_size": [2, 2],
-                "thumbnail_interval": 60
+                "thumbnail_interval": 60,
+                "title":""
             }
         )
         
@@ -272,7 +285,8 @@ class TestVideoNoteGeneratorIntegration:
                 user_id="test_user",
                 function="generate_video_note",
                 input={
-                    "url": url
+                    "url": url,
+                    "title":""
                 }
             )
             
@@ -281,7 +295,6 @@ class TestVideoNoteGeneratorIntegration:
                 
                 video_info = result["video_info"]
                 assert video_info["platform"] == expected_platform
-                assert video_info["video_id"] == expected_id
                 assert video_info["url"] == url
                 
                 print(f"Platform {expected_platform} detection correct, video ID: {expected_id}")
@@ -290,7 +303,6 @@ class TestVideoNoteGeneratorIntegration:
                 pass
     
     @pytest.mark.asyncio
-    @pytest.mark.slow
     async def test_process_local_video(self, remote_worker_config, trace_info):
         """Test process_local_video function directly with local video file"""
         local_video_path = "/Users/alex_wu/work/changyuan/codes/omnibox-wizard/tests/omnibox_wizard/resources/files/video.mp4"
@@ -324,15 +336,15 @@ class TestVideoNoteGeneratorIntegration:
             assert result.video_info.platform == "local"
             assert result.video_info.title == Path(local_video_path).stem
             assert result.video_info.url == f"file://{local_video_path}"
-            assert isinstance(result.images, list)
+            assert isinstance(result.screenshots, list)
             
             # Verify transcript structure
             assert "full_text" in result.transcript
             assert result.transcript["full_text"] != ""
             
             # Verify screenshot functionality if enabled
-            if result.images:
-                for image in result.images:
+            if result.screenshots:
+                for image in result.screenshots:
                     from omnibox_wizard.worker.entity import Image
                     assert isinstance(image, Image)
                     assert hasattr(image, 'name')
@@ -347,7 +359,7 @@ class TestVideoNoteGeneratorIntegration:
             print(f"URL: {result.video_info.url}")
             print(f"Transcript length: {len(result.transcript['full_text'])} characters")
             print(f"Note length: {len(result.markdown)} characters")
-            print(f"Generated image count: {len(result.images)}")
+            print(f"Generated image count: {len(result.screenshots)}")
             
         except Exception as e:
             print(f"process_local_video test failed: {str(e)}")

@@ -203,6 +203,19 @@ class VideoProcessor:
                 total_seconds = hh * 3600 + mm * 60 + ss
                 results.append((match.group(0), total_seconds))
 
+        # sometimes LLM will generate mm:ss format
+        patterns = [
+            r"(?:\*Screenshot-(\d{1,2}):(\d{2}))",  # *Screenshot-mm:ss
+            r"(?:Screenshot-\[(\d{1,2}):(\d{2})\])",  # Screenshot-[mm:ss]
+            r"(?:!\[Screenshot\]\((\d{1,2}):(\d{2})\))",  # ![Screenshot](mm:ss)
+        ]
+        for pattern in patterns:
+            for match in re.finditer(pattern, markdown):
+                mm = int(match.group(1))
+                ss = int(match.group(2))
+                total_seconds = mm * 60 + ss
+                results.append((match.group(0), total_seconds))
+        
         # Remove duplicates and sort by timestamp
         results = list(set(results))
         results.sort(key=lambda x: x[1])

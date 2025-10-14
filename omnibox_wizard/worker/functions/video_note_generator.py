@@ -5,7 +5,7 @@ import tempfile
 from pathlib import Path
 from typing import List, Dict, Any
 
-from opentelemetry import trace
+from opentelemetry import propagate, trace
 
 from omnibox_wizard.common import project_root
 from omnibox_wizard.common.template_parser import TemplateParser
@@ -300,13 +300,18 @@ class VideoNoteGenerator(BaseFunction):
         """Call AI to generate summary"""
         openai_client = self.config.grimoire.openai.get_config("default")
 
+        headers = {}
+        propagate.inject(headers)
+        
+        if trace_info:
+            headers = headers | {"X-Request-Id": trace_info.request_id}
+
         response = await openai_client.chat(
             messages=[
                 {"role": "user", "content": prompt}
             ],
-            extra_headers={"X-Request-Id": trace_info.request_id}
+            extra_headers=headers if headers else None
         )
-
         return response.choices[0].message.content
 
     @tracer.start_as_current_span('_process_video_content')

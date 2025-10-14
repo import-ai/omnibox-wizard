@@ -27,19 +27,15 @@ class GreenNoteProcessor(HTMLReaderBaseProcessor):
     @tracer.start_as_current_span("GreenNoteProcessor.convert")
     async def convert(self, html: str, url: str) -> GeneratedContent:
         soup = BeautifulSoup(html, "html.parser")
-        images = soup.select("div.swiper_item_img img:not(#img_item_placeholder)")
+        image_selection = soup.select("div.swiper_item_img img:not(#img_item_placeholder)")
         content = soup.find("p", attrs={"id": "js_image_desc"})
-        h1 = soup.select("div#js_image_content h1")[0]
+        h1_selection = soup.select("div#js_image_content h1")
+        images = await self.img_selection_to_image(image_selection)
 
-        tuple_images: list[tuple[str, str]] = []
-
-        for img in images:
-            if src := img.get("src"):
-                if not any(x[0] == src for x in tuple_images):
-                    tuple_images.append((src, img.get("alt", self.get_name_from_url(src))))
-
-        title: str = h1.text
-        images = await self.get_images(tuple_images)
+        if h1_selection:
+            title: str = h1_selection[0].text.strip()
+        else:
+            title = "微信图文"
         markdown: str = "\n\n".join([f"![{i + 1}]({image.link})" for i, image in enumerate(images)])
         if content:
             markdown = markdown + "\n\n" + html2text(content.prettify())

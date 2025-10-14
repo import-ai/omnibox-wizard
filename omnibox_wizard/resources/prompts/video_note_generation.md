@@ -34,7 +34,7 @@ Chapters Info:
 3. Include clear heading hierarchy
 4. Extract key points and core content
 5. Include summary section if content is suitable
-{% if include_screenshots %}6. Insert *Screenshot-hh:mm:ss markers at appropriate positions for screenshots{% endif %}
+{% if include_screenshots %}6. Insert *Screenshot-hh:mm:ss* markers at appropriate positions for screenshots{% endif %}
 
 # Meta Info
 

@@ -189,7 +189,7 @@ class VideoProcessor:
             [(original marker, timestamp in seconds), ...]
         """
         patterns = [
-            r"(?:\*Screenshot-(\d{1,2}):(\d{2}):(\d{2}))",  # *Screenshot-hh:mm:ss
+            r"(?:\*Screenshot-(\d{1,2}):(\d{2}):(\d{2}))\*",  # *Screenshot-hh:mm:ss
             r"(?:Screenshot-\[(\d{1,2}):(\d{2}):(\d{2})\])",  # Screenshot-[hh:mm:ss]
             r"(?:!\[Screenshot\]\((\d{1,2}):(\d{2}):(\d{2})\))",  # ![Screenshot](hh:mm:ss)
         ]
@@ -205,7 +205,7 @@ class VideoProcessor:
 
         # sometimes LLM will generate mm:ss format
         patterns = [
-            r"(?:\*Screenshot-(\d{1,2}):(\d{2}))",  # *Screenshot-mm:ss
+            r"(?:\*Screenshot-(\d{1,2}):(\d{2}))\*",  # *Screenshot-mm:ss
             r"(?:Screenshot-\[(\d{1,2}):(\d{2})\])",  # Screenshot-[mm:ss]
             r"(?:!\[Screenshot\]\((\d{1,2}):(\d{2})\))",  # ![Screenshot](mm:ss)
         ]

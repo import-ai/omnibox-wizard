@@ -25,6 +25,18 @@ class HTMLReaderBaseProcessor(ABC):
         return filename
 
     @classmethod
+    async def img_selection_to_image(cls, image_selection) -> list[Image]:
+        tuple_images: list[tuple[str, str]] = []
+
+        for img in image_selection:
+            if src := img.get("src"):
+                if not any(x[0] == src for x in tuple_images):
+                    tuple_images.append((src, img.get("alt", cls.get_name_from_url(src))))
+
+        images = await cls.get_images(tuple_images)
+        return images
+
+    @classmethod
     @tracer.start_as_current_span("fetch_img")
     async def fetch_img(cls, url: str) -> tuple[str, str] | None:
         span = trace.get_current_span()

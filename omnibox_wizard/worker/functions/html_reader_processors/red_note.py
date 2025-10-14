@@ -56,22 +56,20 @@ class RedNoteProcessor(HTMLReaderBaseProcessor):
         markdown = ' '.join(markdown_parts)
         return markdown.strip()
 
-    @tracer.start_as_current_span("GreenNoteProcessor.convert")
+    @tracer.start_as_current_span("RedNoteProcessor.convert")
     async def convert(self, html: str, url: str) -> GeneratedContent:
         soup = BeautifulSoup(html, "html.parser")
-        images = soup.select("img.note-slider-img")
-        title = soup.select("div.note-content div#detail-title")[0].text
-        content = soup.select("div.note-content div#detail-desc span.note-text")[0]
+        image_selection = soup.select("img.note-slider-img")
+        title_selection = soup.select("div.note-content div#detail-title")
+        content_selection = soup.select("div.note-content div#detail-desc span.note-text")
 
-        tuple_images: list[tuple[str, str]] = []
+        images = await self.img_selection_to_image(image_selection)
 
-        for img in images:
-            if src := img.get("src"):
-                if not any(x[0] == src for x in tuple_images):
-                    tuple_images.append((src, img.get("alt", self.get_name_from_url(src))))
-
-        images = await self.get_images(tuple_images)
         markdown: str = "\n\n".join([f"![{i + 1}]({image.link})" for i, image in enumerate(images)])
-        if content:
-            markdown = markdown + "\n\n" + self.content_to_md(content)
+        if content_selection:
+            markdown = markdown + "\n\n" + self.content_to_md(content_selection[0])
+        if title_selection:
+            title: str = title_selection[0].text.strip()
+        else:
+            title = "小红书笔记"
         return GeneratedContent(title=title, markdown=markdown, images=images or None)

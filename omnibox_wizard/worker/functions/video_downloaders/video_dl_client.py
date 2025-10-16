@@ -5,6 +5,7 @@ import json
 import httpx
 from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 from pydantic import BaseModel, Field
+import gzip
 
 class YtDlpDownloadResult(BaseModel):
     file_path: str = ""
@@ -55,8 +56,9 @@ class YtDlpClient:
             # Get subtitles
             subtitles_b64 = response.headers.get("Video-Subtitles")
             if subtitles_b64:
-                subtitles_json = base64.b64decode(subtitles_b64).decode('utf-8')
-                subtitles = json.loads(subtitles_json)
+                subtitles_json = base64.b64decode(subtitles_b64)
+                decompressed = gzip.decompress(subtitles_json)
+                subtitles = json.loads(decompressed.decode('utf-8'))
 
             # Get chapters
             chapters_b64 = response.headers.get("Video-Chapters")

@@ -211,7 +211,7 @@ class VideoNoteGenerator(BaseFunction):
     async def _transcribe_audio(self, audio_path: str, trace_info: TraceInfo) -> Dict[str, Any]:
         try:
             mimetype, _ = mimetypes.guess_type(audio_path)
-            text = await self.asr_client.transcribe(audio_path, mimetype)
+            text = await self.asr_client.transcribe(file_path=audio_path, mimetype=mimetype, trace_info=trace_info)
 
             return {
                 "full_text": text,
@@ -302,7 +302,7 @@ class VideoNoteGenerator(BaseFunction):
 
         headers = {}
         propagate.inject(headers)
-        
+
         if trace_info:
             headers = headers | {"X-Request-Id": trace_info.request_id}
 

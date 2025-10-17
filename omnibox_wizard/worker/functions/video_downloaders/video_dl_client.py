@@ -1,16 +1,19 @@
+import base64
+import gzip
+import json
 from pathlib import Path
 from typing import Dict, Any, Literal
-import base64
-import json
+
 import httpx
 from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 from pydantic import BaseModel, Field
-import gzip
+
 
 class YtDlpDownloadResult(BaseModel):
     file_path: str = ""
     chapters: list[dict] = Field(default_factory=list)
     subtitles: dict = Field(default_factory=dict)  # format:{lang: subtitle_text}
+
 
 class YtDlpClient:
 
@@ -25,16 +28,15 @@ class YtDlpClient:
             response.raise_for_status()
             return response.json()
 
-    async def common_download(self, url: str, output_path: Path, media_type: Literal["video", "audio", "subtitles"], cookies: str | None = None):
+    async def common_download(self, url: str, output_path: Path, media_type: Literal["video", "audio", "subtitles"],
+                              cookies: str | None = None):
         async with httpx.AsyncClient(base_url=self.base_url, timeout=self.timeout) as client:
             HTTPXClientInstrumentor.instrument_client(client)
             if media_type == "audio":
                 response = await client.get(f"/api/v1/download/{media_type}", params={"url": url})
             else:
-                response = await client.post(
-                    f"/api/v1/download/{media_type}",
-                    json={"url": url, "cookies": cookies})
-            
+                response = await client.post(f"/api/v1/download/{media_type}", json={"url": url, "cookies": cookies})
+
             response.raise_for_status()
 
             # Get filename from Content-Disposition header or generate one
@@ -67,16 +69,16 @@ class YtDlpClient:
                 chapters = json.loads(chapters_json)
 
             return YtDlpDownloadResult(
-                    file_path = str(final_path),
-                    subtitles = subtitles,
-                    chapters = chapters
-                )
+                file_path=str(final_path),
+                subtitles=subtitles,
+                chapters=chapters
+            )
 
     async def download_video(self, url: str, output_path: Path, cookies: str | None = None) -> YtDlpDownloadResult:
-        return await self.common_download(url, output_path, "video", cookies)  
+        return await self.common_download(url, output_path, "video", cookies)
 
     async def download_audio(self, url: str, output_path: Path) -> YtDlpDownloadResult:
         return await self.common_download(url, output_path, "audio")
 
     async def download_subtitles(self, url: str, output_path: Path, cookies: str | None = None) -> YtDlpDownloadResult:
-        return await self.common_download(url, output_path, "subtitles", cookies)  
+        return await self.common_download(url, output_path, "subtitles", cookies)

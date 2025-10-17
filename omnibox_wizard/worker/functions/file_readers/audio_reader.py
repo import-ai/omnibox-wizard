@@ -1,13 +1,14 @@
 import io
 import os
 
-import httpcore
 import httpx
-from pydub import AudioSegment
 from opentelemetry import propagate, trace
+from pydub import AudioSegment
+
 from omnibox_wizard.common.trace_info import TraceInfo
 
 tracer = trace.get_tracer(__name__)
+
 
 class ASRClient(httpx.AsyncClient):
 
@@ -21,11 +22,6 @@ class ASRClient(httpx.AsyncClient):
             bytes_content: bytes = f.read()
         actual_retry_cnt = 0
         span = trace.get_current_span()
-        headers = {}
-        propagate.inject(headers)
-        
-        if trace_info:
-            headers = headers | {"X-Request-Id": trace_info.request_id}
 
         for _ in range(retry_cnt):
             try:
@@ -46,7 +42,7 @@ class ASRClient(httpx.AsyncClient):
                     "error": f"ASR transcription failed: {str(e)}"
                 })
                 continue
-            
+
         span.set_attributes({
             "error": f"ASR transcription failed after {retry_cnt} retries"
         })

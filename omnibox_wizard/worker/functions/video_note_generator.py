@@ -88,8 +88,8 @@ class VideoNoteGenerator(BaseFunction):
 
         # Priority: manual subtitle > AI subtitle > any available subtitle
         candidates = [
-            lang_code,              # zh, en
-            f"ai-{lang_code}",     # ai-zh, ai-en
+            lang_code,  # zh, en
+            f"ai-{lang_code}",  # ai-zh, ai-en
         ]
 
         # Try exact matches first
@@ -129,7 +129,7 @@ class VideoNoteGenerator(BaseFunction):
         thumbnail_interval = input_dict.get("thumbnail_interval", 30)  # seconds
 
         cookies = input_dict.get('cookies', None)
-        
+
         span.set_attribute("config", jsonlib.dumps({
             "style": style,
             "include_screenshots": include_screenshots,
@@ -158,7 +158,8 @@ class VideoNoteGenerator(BaseFunction):
 
                 # 2. Download audio and video (if needed)
                 trace_info.debug({"message": "Starting content download"})
-                download_result = await downloader.download(video_url, temp_dir, download_video=include_screenshots, cookies=cookies)
+                download_result = await downloader.download(
+                    video_url, temp_dir, download_video=include_screenshots, cookies=cookies)
                 trace_info.debug({
                     "audio_path": download_result.audio_path,
                     "video_path": download_result.video_path,
@@ -377,7 +378,7 @@ class VideoNoteGenerator(BaseFunction):
             chapter['start_time'] = self.seconds_to_hms(int(chapter['start_time']))
             chapter['end_time'] = self.seconds_to_hms(int(chapter['end_time']))
             std_chapter.append(chapter)
-            
+
         markdown = await self._generate_markdown(
             video_info, transcript_dict, std_chapter, style, include_screenshots, include_links, language, trace_info
         )

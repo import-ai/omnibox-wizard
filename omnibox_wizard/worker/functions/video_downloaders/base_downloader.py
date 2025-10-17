@@ -29,7 +29,8 @@ class BaseDownloader(ABC):
     """Video downloader base class"""
 
     @abstractmethod
-    async def download(self, url: str, output_dir: str, download_video: bool = False) -> DownloadResult:
+    async def download(self, url: str, output_dir: str, download_video: bool = False,
+                       cookies: str | None = None) -> DownloadResult:
         """
         Download video/audio
         
@@ -37,6 +38,7 @@ class BaseDownloader(ABC):
             url: Video link
             output_dir: Directory to save downloaded files
             download_video: Whether to download video file (for screenshots, etc.)
+            cookies: Optional cookies string for authenticated downloads
             
         Returns:
             DownloadResult: Download result

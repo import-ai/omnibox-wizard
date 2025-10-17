@@ -51,7 +51,7 @@ class BilibiliDownloader(BaseDownloader):
             video_download_result = await self._download_subtitles(url, video_id, output_path, cookies)
             if video_download_result.subtitles:
                 return video_download_result, None
-            
+
             audio_path = await self._download_audio(url, video_id, output_path)
             audio_path = audio_path.file_path
             return YtDlpDownloadResult(), audio_path
@@ -74,13 +74,13 @@ class BilibiliDownloader(BaseDownloader):
             "video_info": jsonlib.dumps(
                 video_info.model_dump(exclude_none=True), ensure_ascii=False, separators=(",", ":")),
             "video_path": video_download_result.file_path,
-            "chapters": video_download_result.chapters, 
+            "chapters": video_download_result.chapters,
             "subtitles": video_download_result.subtitles,
             "audio_path": audio_path,
         })
 
-        return DownloadResult(video_info=video_info, video_path=video_download_result.file_path, audio_path=audio_path, 
-                                chapters=video_download_result.chapters, subtitles=video_download_result.subtitles)
+        return DownloadResult(video_info=video_info, video_path=video_download_result.file_path, audio_path=audio_path,
+                              chapters=video_download_result.chapters, subtitles=video_download_result.subtitles)
 
     @classmethod
     def cmd_wrapper(cls, cmd: list[str]) -> list[str]:
@@ -133,7 +133,7 @@ class BilibiliDownloader(BaseDownloader):
         return str(hash(url))
 
     @tracer.start_as_current_span("_download_audio")
-    async def _download_audio(self, url: str, video_id: str, output_dir: Path) -> str:
+    async def _download_audio(self, url: str, video_id: str, output_dir: Path) -> YtDlpDownloadResult:
         """Download audio"""
         output_path = output_dir / f"{video_id}.%(ext)s"
 
@@ -144,7 +144,8 @@ class BilibiliDownloader(BaseDownloader):
         return audio_path
 
     @tracer.start_as_current_span("_download_video")
-    async def _download_video(self, url: str, video_id: str, output_dir: Path, cookies: str | None = None) -> YtDlpDownloadResult:
+    async def _download_video(self, url: str, video_id: str, output_dir: Path,
+                              cookies: str | None = None) -> YtDlpDownloadResult:
         output_path = output_dir / f"{video_id}_video.%(ext)s"
 
         download_result = await self.video_dl_client.download_video(
@@ -155,7 +156,8 @@ class BilibiliDownloader(BaseDownloader):
         return download_result
 
     @tracer.start_as_current_span("_download_subtitles")
-    async def _download_subtitles(self, url: str, video_id: str, output_dir: Path, cookies: str | None = None) -> str:
+    async def _download_subtitles(
+            self, url: str, video_id: str, output_dir: Path, cookies: str | None = None) -> YtDlpDownloadResult:
         """Download subtitles"""
         output_path = output_dir / f"{video_id}.%(ext)s"
 
@@ -165,4 +167,3 @@ class BilibiliDownloader(BaseDownloader):
             cookies=cookies
         )
         return audio_path
-

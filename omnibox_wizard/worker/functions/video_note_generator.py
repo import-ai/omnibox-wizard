@@ -5,7 +5,7 @@ import tempfile
 from pathlib import Path
 from typing import List, Dict, Any
 
-from opentelemetry import trace
+from opentelemetry import propagate, trace
 
 from omnibox_wizard.common import project_root
 from omnibox_wizard.common.template_parser import TemplateParser
@@ -52,6 +52,60 @@ class VideoNoteGenerator(BaseFunction):
         # Base64 image pattern, consistent with office_reader.py
         self.base64_img_pattern = re.compile(r"data:image/[^;]+;base64,([^\"')}]+)")
 
+        self.language_map = {"简体中文": "zh", "English": "en"}
+
+    @staticmethod
+    def seconds_to_hms(seconds: int) -> str:
+        """
+        Convert seconds to HH:MM:SS format string
+
+        Args:
+            seconds: Total seconds
+
+        Returns:
+            Formatted time string "HH:MM:SS"
+        """
+        hours = seconds // 3600
+        minutes = (seconds % 3600) // 60
+        secs = seconds % 60
+        return f"{hours:02d}:{minutes:02d}:{secs:02d}"
+
+    def _get_best_subtitle(self, subtitles: dict, language: str) -> str:
+        """
+        Intelligently select the best subtitle from available options
+
+        Args:
+            subtitles: Dictionary of subtitles {lang: content}
+            language: Preferred language (e.g., "简体中文", "English")
+
+        Returns:
+            Subtitle text content (empty string if none found)
+        """
+        if not subtitles:
+            return ""
+
+        lang_code = self.language_map.get(language, "zh")
+
+        # Priority: manual subtitle > AI subtitle > any available subtitle
+        candidates = [
+            lang_code,  # zh, en
+            f"ai-{lang_code}",  # ai-zh, ai-en
+        ]
+
+        # Try exact matches first
+        for pattern in candidates:
+            if pattern in subtitles and subtitles[pattern].strip():
+                return subtitles[pattern]
+
+        # Try prefix matches (e.g., "zh" matches "zh-CN", "zh-Hans")
+        for pattern in candidates:
+            for sub_lang, content in subtitles.items():
+                if sub_lang.startswith(pattern) and content.strip():
+                    return content
+
+        # If no match found, return first available subtitle
+        return next((content for content in subtitles.values() if content.strip()), "")
+
     @tracer.start_as_current_span('run')
     async def run(self, task: Task, trace_info: TraceInfo) -> dict:
         """Execute video note generation task"""
@@ -60,8 +114,8 @@ class VideoNoteGenerator(BaseFunction):
         input_dict = task.input
 
         # Validate input
-        video_url = input_dict["url"]
-        title = input_dict["title"]
+        video_url = input_dict.get("url", "")
+        title = input_dict.get("title", "")
 
         # Parse configuration parameters
         style = input_dict.get("style", "Concise Style")
@@ -73,6 +127,8 @@ class VideoNoteGenerator(BaseFunction):
         generate_thumbnail = input_dict.get("generate_thumbnail", False)
         thumbnail_grid_size = input_dict.get("thumbnail_grid_size", [3, 3])
         thumbnail_interval = input_dict.get("thumbnail_interval", 30)  # seconds
+
+        cookies = input_dict.get('cookies', None)
 
         span.set_attribute("config", jsonlib.dumps({
             "style": style,
@@ -102,7 +158,8 @@ class VideoNoteGenerator(BaseFunction):
 
                 # 2. Download audio and video (if needed)
                 trace_info.debug({"message": "Starting content download"})
-                download_result = await downloader.download(video_url, temp_dir, download_video=include_screenshots)
+                download_result = await downloader.download(
+                    video_url, temp_dir, download_video=include_screenshots, cookies=cookies)
                 trace_info.debug({
                     "audio_path": download_result.audio_path,
                     "video_path": download_result.video_path,
@@ -114,6 +171,8 @@ class VideoNoteGenerator(BaseFunction):
                     audio_path=download_result.audio_path,
                     video_path=download_result.video_path,
                     video_info=download_result.video_info,
+                    subtitles=download_result.subtitles,
+                    chapters=download_result.chapters,
                     style=style,
                     include_screenshots=include_screenshots,
                     include_links=include_links,
@@ -153,7 +212,7 @@ class VideoNoteGenerator(BaseFunction):
     async def _transcribe_audio(self, audio_path: str, trace_info: TraceInfo) -> Dict[str, Any]:
         try:
             mimetype, _ = mimetypes.guess_type(audio_path)
-            text = await self.asr_client.transcribe(audio_path, mimetype)
+            text = await self.asr_client.transcribe(file_path=audio_path, mimetype=mimetype, trace_info=trace_info)
 
             return {
                 "full_text": text,
@@ -184,9 +243,10 @@ class VideoNoteGenerator(BaseFunction):
 
                 for i in range(1, total_screenshots + 1):
                     timestamp_seconds = int(interval * i)
-                    minutes = timestamp_seconds // 60
+                    hours = timestamp_seconds // 3600
+                    minutes = (timestamp_seconds % 3600) // 60
                     seconds = timestamp_seconds % 60
-                    markdown_parts.append(f"*Screenshot-{minutes}:{seconds:02d}")
+                    markdown_parts.append(f"*Screenshot-{hours:02d}:{minutes:02d}:{seconds:02d}")
                     markdown_parts.append("")
 
         return "\n".join(markdown_parts)
@@ -196,6 +256,7 @@ class VideoNoteGenerator(BaseFunction):
             self,
             video_info: VideoInfo,
             transcript: Dict[str, Any],
+            chapters: list[dict],
             style: str,
             include_screenshots: bool,
             include_links: bool,
@@ -220,6 +281,7 @@ class VideoNoteGenerator(BaseFunction):
             video_platform=video_info.platform,
             video_duration=f"{video_info.duration / 60:.1f}",
             transcript_text=transcript_text,
+            chapters=chapters,
             note_style=style,
             include_screenshots=include_screenshots,
             include_links=include_links,
@@ -239,13 +301,18 @@ class VideoNoteGenerator(BaseFunction):
         """Call AI to generate summary"""
         openai_client = self.config.grimoire.openai.get_config("default")
 
+        headers = {}
+        propagate.inject(headers)
+
+        if trace_info:
+            headers = headers | {"X-Request-Id": trace_info.request_id}
+
         response = await openai_client.chat(
             messages=[
                 {"role": "user", "content": prompt}
             ],
-            extra_headers={"X-Request-Id": trace_info.request_id}
+            extra_headers=headers if headers else None
         )
-
         return response.choices[0].message.content
 
     @tracer.start_as_current_span('_process_video_content')
@@ -254,6 +321,8 @@ class VideoNoteGenerator(BaseFunction):
             audio_path: str | None,
             video_path: str,
             video_info: VideoInfo,
+            subtitles: dict,
+            chapters: list[dict],
             style: str,
             include_screenshots: bool,
             include_links: bool,
@@ -270,7 +339,20 @@ class VideoNoteGenerator(BaseFunction):
         transcript_dict = {"full_text": "", "segments": []}
         has_audio_content = False
 
-        if audio_path:
+        if len(subtitles) > 0:
+            subtitle_text = self._get_best_subtitle(subtitles, language)
+
+            if subtitle_text:
+                transcript_dict = {"full_text": subtitle_text, "segments": []}
+                has_audio_content = True
+                trace_info.info({
+                    "subtitle_length": len(subtitle_text),
+                    "available_langs": list(subtitles.keys()),
+                    "message": "Using subtitle as transcript"
+                })
+            else:
+                trace_info.warning({"message": "Subtitles exist but all are empty"})
+        elif audio_path:
             trace_info.info({"message": "Starting audio transcription"})
             try:
                 transcript_dict = await self._transcribe_audio(audio_path, trace_info)
@@ -291,8 +373,14 @@ class VideoNoteGenerator(BaseFunction):
 
         # 2. Generate notes
         trace_info.info({"message": "Starting note generation"})
+        std_chapter = []
+        for chapter in chapters:
+            chapter['start_time'] = self.seconds_to_hms(int(chapter['start_time']))
+            chapter['end_time'] = self.seconds_to_hms(int(chapter['end_time']))
+            std_chapter.append(chapter)
+
         markdown = await self._generate_markdown(
-            video_info, transcript_dict, style, include_screenshots, include_links, language, trace_info
+            video_info, transcript_dict, std_chapter, style, include_screenshots, include_links, language, trace_info
         )
         trace_info.info({"markdown_length": len(markdown), "message": "Note generation completed"})
 
@@ -383,11 +471,13 @@ class VideoNoteGenerator(BaseFunction):
                 audio_path=audio_path,
                 video_path=file_path,
                 video_info=video_info,
+                subtitles={},
+                chapters=[],
                 style=kwargs.get("style", "Concise Style"),
                 include_screenshots=kwargs.get("include_screenshots", True),
                 include_links=kwargs.get("include_links", False),
                 language=kwargs.get("language", "zh"),
-                generate_thumbnail=kwargs.get("generate_thumbnail", True),  # 默认启用缩略图
+                generate_thumbnail=kwargs.get("generate_thumbnail", True),
                 thumbnail_grid_size=kwargs.get("thumbnail_grid_size", [3, 3]),
                 thumbnail_interval=kwargs.get("thumbnail_interval", 30),
                 temp_dir=temp_dir,

@@ -6,7 +6,7 @@ from urllib.parse import urlparse, parse_qs
 from opentelemetry import trace
 
 from .base_downloader import VideoInfo
-from .bilibili_downloader import BilibiliDownloader
+from .bilibili_downloader import BilibiliDownloader, YtDlpDownloadResult
 
 tracer = trace.get_tracer('YouTubeDownloader')
 
@@ -49,8 +49,8 @@ class YouTubeDownloader(BilibiliDownloader):
         )
 
     @tracer.start_as_current_span("_download_video")
-    async def _download_video(self, url: str, video_id: str, output_dir: Path) -> str:
+    async def _download_video(self, url: str, video_id: str, output_dir: Path, *args, **kargs) -> YtDlpDownloadResult:
         """Download video"""
         output_path = output_dir / f"{video_id}_video.%(ext)s"
-        video_path = await self.video_dl_client.download_video(url=url, output_path=output_path)
-        return video_path
+        download_result = await self.video_dl_client.download_video(url=url, output_path=output_path)
+        return download_result

@@ -5,11 +5,11 @@ from pydantic import BaseModel
 
 
 class VideoInfo(BaseModel):
-    title: str
-    duration: float
-    video_id: str
-    platform: str
-    url: str
+    title: str = ""
+    duration: float = 0
+    video_id: str = ""
+    platform: str = ""
+    url: str = ""
     description: str = ""
     uploader: str = ""
     upload_date: str = ""
@@ -18,16 +18,19 @@ class VideoInfo(BaseModel):
 
 
 class DownloadResult(BaseModel):
-    audio_path: str
-    video_path: Optional[str]
-    video_info: VideoInfo
+    audio_path: str | None = None
+    video_path: Optional[str] = None
+    video_info: VideoInfo = VideoInfo()
+    chapters: list[dict] = []
+    subtitles: dict = {}
 
 
 class BaseDownloader(ABC):
     """Video downloader base class"""
 
     @abstractmethod
-    async def download(self, url: str, output_dir: str, download_video: bool = False) -> DownloadResult:
+    async def download(self, url: str, output_dir: str, download_video: bool = False,
+                       cookies: str | None = None) -> DownloadResult:
         """
         Download video/audio
         
@@ -35,6 +38,7 @@ class BaseDownloader(ABC):
             url: Video link
             output_dir: Directory to save downloaded files
             download_video: Whether to download video file (for screenshots, etc.)
+            cookies: Optional cookies string for authenticated downloads
             
         Returns:
             DownloadResult: Download result
@@ -42,6 +46,6 @@ class BaseDownloader(ABC):
         pass
 
     @abstractmethod
-    def get_video_info(self, url: str) -> VideoInfo:
+    def get_video_info(self, url: str, video_id: str) -> VideoInfo:
         """Get video information without downloading"""
         pass

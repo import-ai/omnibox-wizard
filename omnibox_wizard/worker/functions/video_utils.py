@@ -176,32 +176,36 @@ class VideoProcessor:
     def extract_timestamps_from_markdown(self, markdown: str) -> List[Tuple[str, int]]:
         """
         Extract screenshot timestamps from Markdown text
-        
+
         Supported formats:
-        - *Screenshot-mm:ss
-        - Screenshot-[mm:ss]
-        - ![Screenshot](mm:ss)
-        
+        - *Screenshot-hh:mm:ss* or *Screenshot-hh:mm:ss (with or without closing *)
+        - *Screenshot-mm:ss* or *Screenshot-mm:ss
+        - Screenshot-[hh:mm:ss] or Screenshot-[mm:ss]
+        - ![Screenshot](hh:mm:ss) or ![Screenshot](mm:ss)
+
         Args:
             markdown: Markdown text
-            
+
         Returns:
             [(original marker, timestamp in seconds), ...]
         """
-        patterns = [
-            r"(?:\*Screenshot-(\d{1,2}):(\d{2}))",  # *Screenshot-mm:ss
-            r"(?:Screenshot-\[(\d{1,2}):(\d{2})\])",  # Screenshot-[mm:ss]
-            r"(?:!\[Screenshot\]\((\d{1,2}):(\d{2})\))",  # ![Screenshot](mm:ss)
-        ]
-
         results = []
-        for pattern in patterns:
-            for match in re.finditer(pattern, markdown):
-                mm = int(match.group(1))
-                ss = int(match.group(2))
-                total_seconds = mm * 60 + ss
-                results.append((match.group(0), total_seconds))
-
+        
+        # Pattern : *Screenshot-hh:mm:ss* or *Screenshot-hh:mm:ss (optional closing *)
+        # Also matches mm:ss format
+        pattern1 = r"\*Screenshot-(\d{1,2}):(\d{2})(?::(\d{2}))?\*?"
+        for match in re.finditer(pattern1, markdown):
+            h_or_m = int(match.group(1))
+            m_or_s = int(match.group(2))
+            ss = match.group(3)
+            
+            if ss:  # hh:mm:ss format
+                total_seconds = h_or_m * 3600 + m_or_s * 60 + int(ss)
+            else:  # mm:ss format
+                total_seconds = h_or_m * 60 + m_or_s
+            
+            results.append((match.group(0), total_seconds))
+        
         # Remove duplicates and sort by timestamp
         results = list(set(results))
         results.sort(key=lambda x: x[1])

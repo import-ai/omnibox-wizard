@@ -11,7 +11,7 @@ from meilisearch_python_sdk.models.settings import (
     UserProvidedEmbedder,
 )
 from openai import AsyncOpenAI
-from opentelemetry import trace
+from opentelemetry import propagate, trace
 
 from omnibox_wizard.common.trace_info import TraceInfo
 from omnibox_wizard.wizard.config import VectorConfig
@@ -134,7 +134,14 @@ class MeiliVectorDB:
                     batch.append(x)
                     prompts.append(prompt)
 
-            embeddings = await self.openai.embeddings.create(model=self.config.embedding.model, input=prompts)
+            headers = {}
+            propagate.inject(headers)
+
+            embeddings = await self.openai.embeddings.create(
+                model=self.config.embedding.model,
+                input=prompts,
+                extra_headers=headers
+            )
             records = []
             for chunk, embed in zip(batch, embeddings.data):
                 record = IndexRecord(
@@ -158,9 +165,13 @@ class MeiliVectorDB:
             await index.delete_document(record_id)
             return
 
+        headers = {}
+        propagate.inject(headers)
+
         embedding = await self.openai.embeddings.create(
             model=self.config.embedding.model,
             input=message.message.content or "",
+            extra_headers=headers
         )
         record = IndexRecord(
             id=record_id,
@@ -199,8 +210,13 @@ class MeiliVectorDB:
     @tracer.start_as_current_span("MeiliVectorDB.vector_params")
     async def vector_params(self, query: str) -> dict:
         if query:
+            headers = {}
+            propagate.inject(headers)
+
             embedding = await self.openai.embeddings.create(
-                model=self.config.embedding.model, input=query
+                model=self.config.embedding.model,
+                input=query,
+                extra_headers=headers
             )
             vector = embedding.data[0].embedding
             hybrid = Hybrid(embedder=self.embedder_name, semantic_ratio=0.5)

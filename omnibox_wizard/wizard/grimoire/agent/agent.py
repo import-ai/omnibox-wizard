@@ -51,7 +51,7 @@ class UserQueryPreprocessor:
         span.set_attribute("tool_names", json_dumps([tool.name for tool in message.attrs.tools or []]))
         if tool := tools.get(cls.PRIVATE_SEARCH_TOOL_NAME):
             span.set_attributes({
-                "len(tool.visible_resources)": len(tool.visible_resources),
+                "len(tool.visible_resources)": len(tool.visible_resources or []),
                 "tool.resources": json_dumps([
                     r.model_dump(exclude_none=True, mode="json") for r in tool.visible_resources or []]),
             })

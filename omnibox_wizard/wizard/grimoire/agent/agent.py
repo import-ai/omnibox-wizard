@@ -23,7 +23,9 @@ from omnibox_wizard.wizard.grimoire.entity.api import (
     ChatRequestOptions, ChatBaseResponse, MessageAttrs
 )
 from omnibox_wizard.wizard.grimoire.entity.chunk import ResourceChunkRetrieval
-from omnibox_wizard.wizard.grimoire.entity.tools import ToolExecutorConfig, ToolDict, Resource, ALL_TOOLS
+from omnibox_wizard.wizard.grimoire.entity.tools import (
+    ToolExecutorConfig, ToolDict, Resource, ALL_TOOLS, PrivateSearchResourceType
+)
 from omnibox_wizard.wizard.grimoire.retriever.base import BaseRetriever
 from omnibox_wizard.wizard.grimoire.retriever.meili_vector_db import MeiliVectorRetriever
 from omnibox_wizard.wizard.grimoire.retriever.reranker import get_tool_executor_config, get_merged_description, Reranker
@@ -45,22 +47,29 @@ class UserQueryPreprocessor:
             tool_executor_config: dict[str, ToolExecutorConfig]
     ) -> MessageDto:
         tools = ToolDict(message.attrs.tools or [])
-        if (tool := tools.get(cls.PRIVATE_SEARCH_TOOL_NAME)) and not tool.resources:
-            func = tool_executor_config[cls.PRIVATE_SEARCH_TOOL_NAME]["func"]
-            retrievals: list[ResourceChunkRetrieval] = await func(message.message["content"])
-            related_resources: list[Resource] = []
-            for r in retrievals:
-                if r.chunk.resource_id not in [res.id for res in related_resources]:
-                    related_resources.append(Resource.model_validate({
-                        "id": r.chunk.resource_id,
-                        "name": r.chunk.title,
-                        "type": r.type,
-                    }))
-            tool.related_resources = related_resources
-            span = trace.get_current_span()
+        span = trace.get_current_span()
+        span.set_attribute("tool_names", json_dumps([tool.name for tool in message.attrs.tools or []]))
+        if tool := tools.get(cls.PRIVATE_SEARCH_TOOL_NAME):
             span.set_attributes({
-                "related_resources": json_dumps([r.model_dump(exclude_none=True) for r in related_resources])
+                "len(tool.visible_resources)": len(tool.visible_resources),
+                "tool.resources": json_dumps([
+                    r.model_dump(exclude_none=True, mode="json") for r in tool.visible_resources or []]),
             })
+            if not tool.resources or all(r.type == PrivateSearchResourceType.FOLDER for r in tool.resources):
+                func = tool_executor_config[cls.PRIVATE_SEARCH_TOOL_NAME]["func"]
+                retrievals: list[ResourceChunkRetrieval] = await func(message.message["content"])
+                related_resources: list[Resource] = []
+                for r in retrievals:
+                    if r.chunk.resource_id not in [res.id for res in related_resources]:
+                        related_resources.append(Resource.model_validate({
+                            "id": r.chunk.resource_id,
+                            "name": r.chunk.title,
+                            "type": r.type,
+                        }))
+                tool.related_resources = related_resources
+                span.set_attributes({
+                    "related_resources": json_dumps([r.model_dump(exclude_none=True) for r in related_resources])
+                })
         return message
 
     @classmethod
@@ -70,14 +79,36 @@ class UserQueryPreprocessor:
     ) -> list[str]:
         tools = ToolDict(options.tools or [])
         if tool := tools.get(cls.PRIVATE_SEARCH_TOOL_NAME):
-            prompt_title = "selected_private_resources" if tool.resources else "system_suggested_private_resources"
-            resources: list[Resource] = tool.resources or tool.related_resources
-            if resources:
+            if tool.resources:
+                all_folders = all(resource.type == PrivateSearchResourceType.FOLDER for resource in tool.resources)
+
+                selected_section = "\n".join([
+                    "<selected_private_resources>",
+                    json_dumps(
+                        [{"title": resource.name or None, "type": resource.type} for resource in tool.resources]),
+                    "</selected_private_resources>"
+                ])
+
+                if all_folders and tool.related_resources:
+                    related_resources_data = [{"title": resource.name or None, "type": resource.type} for resource in
+                                              tool.related_resources]
+
+                    suggested_section = "\n".join([
+                        "<system_suggested_private_resources>",
+                        json_dumps(related_resources_data),
+                        "</system_suggested_private_resources>"
+                    ])
+
+                    return [selected_section + "\n\n" + suggested_section]
+                else:
+                    return [selected_section]
+            elif tool.related_resources:
                 return [
                     "\n".join([
-                        f"<{prompt_title}>",
-                        json_dumps([{"title": resource.name or None, "type": resource.type} for resource in resources]),
-                        f"</{prompt_title}>"
+                        "<system_suggested_private_resources>",
+                        json_dumps([{"title": resource.name or None, "type": resource.type} for resource in
+                                    tool.related_resources]),
+                        "</system_suggested_private_resources>"
                     ])
                 ]
         return []

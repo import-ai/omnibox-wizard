@@ -51,9 +51,8 @@ class UserQueryPreprocessor:
         span.set_attribute("tool_names", json_dumps([tool.name for tool in message.attrs.tools or []]))
         if tool := tools.get(cls.PRIVATE_SEARCH_TOOL_NAME):
             span.set_attributes({
-                "len(tool.visible_resources)": len(tool.visible_resources or []),
-                "tool.resources": json_dumps([
-                    r.model_dump(exclude_none=True, mode="json") for r in tool.visible_resources or []]),
+                "private_search.selected_resources": json_dumps([
+                    r.model_dump(exclude_none=True, mode="json") for r in tool.resources or []]),
             })
             if not tool.resources or all(r.type == PrivateSearchResourceType.FOLDER for r in tool.resources):
                 func = tool_executor_config[cls.PRIVATE_SEARCH_TOOL_NAME]["func"]
@@ -429,7 +428,7 @@ class Agent(BaseSearchableAgent):
 
             user_message: MessageDto = MessageDto.model_validate({
                 "message": {"role": "user", "content": agent_request.query},
-                "attrs": agent_request.model_dump(exclude_none=True),
+                "attrs": agent_request.model_dump(exclude_none=True, mode="json"),
             })
             user_message = await UserQueryPreprocessor.with_related_resources_(user_message, tool_executor.config)
 

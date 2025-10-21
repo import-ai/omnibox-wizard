@@ -210,6 +210,7 @@ class Agent(BaseSearchableAgent):
             *,
             trace_info: TraceInfo | None = None
     ) -> AsyncIterable[ChatResponse | MessageDto]:
+        chunks: list[dict] = []
         with tracer.start_as_current_span("agent.chat") as span:
             assistant_message: dict = {'role': 'assistant'}
 
@@ -271,6 +272,7 @@ class Agent(BaseSearchableAgent):
 
                     async for chunk in openai_response:
                         delta = chunk.choices[0].delta
+                        chunks.append(chunk.model_dump(exclude_none=True))
                         if ttft < 0:
                             ttft = time.time() - start_time
                             openai_span.set_attribute("ttft", ttft)
@@ -295,7 +297,7 @@ class Agent(BaseSearchableAgent):
 
                         for key in ['content', 'reasoning_content']:
                             if hasattr(delta, key) and (v := getattr(delta, key)):
-                                if key == 'content':
+                                if custom_tool_call and key == 'content':
                                     normal_content: str = ''
                                     operations: list[DeltaOperation] = stream_parser.parse(v)
                                     for operation in operations:
@@ -367,16 +369,32 @@ class Agent(BaseSearchableAgent):
                 if agent_request.merge_search:
                     all_tools = [BaseRetriever.generate_schema("search", get_merged_description(all_tools))]
 
-                prompt: str = self.template_parser.render_template(
-                    self.system_prompt_template,
-                    lang=agent_request.lang or "简体中文",
-                    tools="\n".join(
-                        json_dumps(tool) for tool in all_tools) if self.custom_tool_call and all_tools else None
-                )
-                system_message: dict = {"role": "system", "content": prompt}
-                for r in self.yield_complete_message(system_message):
-                    yield r
-                messages.append(MessageDto.model_validate({"message": system_message}))
+                assert all_tools, "all_tools must not be empty"
+
+                if self.custom_tool_call:
+                    prompt: str = self.template_parser.render_template(
+                        self.system_prompt_template,
+                        lang=agent_request.lang or "简体中文",
+                        tools="\n".join(
+                            json_dumps(tool) for tool in all_tools) if self.custom_tool_call else None,
+                        part_1_enabled=True,
+                        part_2_enabled=True,
+                    )
+                    system_message: dict = {"role": "system", "content": prompt}
+                    for r in self.yield_complete_message(system_message):
+                        yield r
+                    messages.append(MessageDto.model_validate({"message": system_message}))
+                else:
+                    for i in range(2):
+                        prompt: str = self.template_parser.render_template(
+                            self.system_prompt_template,
+                            lang=agent_request.lang or "简体中文",
+                            **{f"part_{i + 1}_enabled": True}
+                        )
+                        system_message: dict = {"role": "system", "content": prompt}
+                        for r in self.yield_complete_message(system_message):
+                            yield r
+                        messages.append(MessageDto.model_validate({"message": system_message}))
 
             user_message: MessageDto = MessageDto.model_validate({
                 "message": {"role": "user", "content": agent_request.query},

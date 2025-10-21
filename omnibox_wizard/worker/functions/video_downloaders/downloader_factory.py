@@ -1,30 +1,42 @@
+from typing import Literal, Optional
 from urllib.parse import urlparse
 
 from .base_downloader import BaseDownloader
-from .youtube_downloader import YouTubeDownloader
 from .bilibili_downloader import BilibiliDownloader
+from .youtube_downloader import YouTubeDownloader
+
+Platform = Literal["bilibili", "youtube", "unknown"]
 
 
 class DownloaderFactory:
     """Downloader factory class"""
-    
-    @staticmethod
-    def create_downloader(url: str) -> BaseDownloader:
-        """Create corresponding downloader based on URL"""
-        domain = urlparse(url).netloc.lower()
-        
-        if 'youtube.com' in domain or 'youtu.be' in domain:
-            return YouTubeDownloader()
-        elif 'bilibili.com' in domain or 'b23.tv' in domain:
-            return BilibiliDownloader()
+
+    @classmethod
+    def create_downloader(cls, url: str, video_dl_base_url: str) -> BaseDownloader:
+        """
+        Create corresponding downloader based on URL
+
+        Args:
+            url: Video URL
+            video_dl_base_url: Base URL for yt-dlp service
+
+        Returns:
+            BaseDownloader instance
+        """
+        platform: Platform = cls.get_platform(url)
+
+        if platform == "youtube":
+            return YouTubeDownloader(video_dl_base_url)
+        elif platform == "bilibili":
+            return BilibiliDownloader(video_dl_base_url)
         else:
-            return YouTubeDownloader()
-    
-    @staticmethod
-    def get_platform(url: str) -> str:
+            return YouTubeDownloader(video_dl_base_url)
+
+    @classmethod
+    def get_platform(cls, url: str) -> Platform:
         """Get platform name from URL"""
         domain = urlparse(url).netloc.lower()
-        
+
         if 'youtube.com' in domain or 'youtu.be' in domain:
             return 'youtube'
         elif 'bilibili.com' in domain or 'b23.tv' in domain:

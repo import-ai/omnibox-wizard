@@ -1,11 +1,9 @@
 import asyncio
-import base64
 import json as jsonlib
 import re
 from functools import partial
 from urllib.parse import urlparse
 
-import httpx
 from bs4 import BeautifulSoup, Tag, Comment
 from html2text import html2text
 from lxml.etree import tounicode
@@ -17,11 +15,14 @@ from omnibox_wizard.common.trace_info import TraceInfo
 from omnibox_wizard.worker.agent.html_content_extractor import HTMLContentExtractor
 from omnibox_wizard.worker.agent.html_title_extractor import HTMLTitleExtractor
 from omnibox_wizard.worker.config import WorkerConfig
-from omnibox_wizard.worker.entity import Task, Image
+from omnibox_wizard.worker.entity import Task, Image, GeneratedContent
 from omnibox_wizard.worker.functions.base_function import BaseFunction
+from omnibox_wizard.worker.functions.html_reader_processors.base import HTMLReaderBaseProcessor
+from omnibox_wizard.worker.functions.html_reader_processors.green_note import GreenNoteProcessor
+from omnibox_wizard.worker.functions.html_reader_processors.red_note import RedNoteProcessor
 
 json_dumps = partial(jsonlib.dumps, separators=(",", ":"), ensure_ascii=False)
-tracer = trace.get_tracer(__name__)
+tracer = trace.get_tracer("HTMLReaderV2")
 
 
 class HTMLReaderV2(BaseFunction):
@@ -49,19 +50,21 @@ class HTMLReaderV2(BaseFunction):
             "name": "div",
             "class_": "post_body"
         },
-        "www.xiaohongshu.com": {
-            "name": "div",
-            "class_": "note-content"
-        },
         "x.com": {
             "name": "div",
             "attrs": {"data-testid": "tweetText"}
+        },
+        "www.reddit.com": {
+            "name": "shreddit-post-text-body"
         }
     }
 
     def __init__(self, config: WorkerConfig):
         self.html_title_extractor = HTMLTitleExtractor(config.grimoire.openai.get_config("mini"))
         self.html_content_extractor = HTMLContentExtractor(config.grimoire.openai.get_config("mini"))
+        self.processors: list[HTMLReaderBaseProcessor] = [
+            GreenNoteProcessor(config=config), RedNoteProcessor(config=config)
+        ]
 
     @classmethod
     def content_selector(cls, domain: str, soup: BeautifulSoup) -> Tag:
@@ -137,38 +140,26 @@ class HTMLReaderV2(BaseFunction):
                 all_imgs.append((src, img.get("alt", "")))
         return all_imgs
 
-    @tracer.start_as_current_span("HTMLReaderV2.run")
+    @tracer.start_as_current_span("run")
     async def run(self, task: Task, trace_info: TraceInfo) -> dict:
         input_dict = task.input
         html = input_dict["html"]
         url = input_dict["url"]
 
+        for processor in self.processors:
+            if processor.hit(html, url):
+                result = await processor.convert(html, url)
+                return result.model_dump(exclude_none=True)
+
         domain: str = urlparse(url).netloc
         trace_info = trace_info.bind(domain=domain)
 
-        result_dict: dict = await self.convert(domain, html, trace_info)
+        result: GeneratedContent = await self.convert(domain, html, trace_info)
+        result_dict: dict = result.model_dump(exclude_none=True)
         trace_info.info({k: v for k, v in result_dict.items() if k != "markdown"})
         return result_dict
 
-    @classmethod
-    @tracer.start_as_current_span("HTMLReaderV2.fetch_img")
-    async def fetch_img(cls, url: str) -> tuple[str, str] | None:
-        span = trace.get_current_span()
-        span.set_attribute("url", url)
-        if not url.startswith("http"):
-            return None
-        try:
-            async with httpx.AsyncClient(timeout=3) as client:
-                httpx_response = await client.get(url)
-                if httpx_response.is_success:
-                    mimetype = httpx_response.headers.get("Content-Type", "image/jpeg")
-                    base64_data = base64.b64encode(httpx_response.content).decode()
-                    return mimetype, base64_data
-        except Exception as e:
-            trace.get_current_span().record_exception(e)
-        return None
-
-    @tracer.start_as_current_span("HTMLReaderV2.get_images")
+    @tracer.start_as_current_span("get_images")
     async def get_images(self, html: str, markdown: str) -> list[Image]:
         extracted_images = self.extract_images(html)
         fetch_src_list: list[tuple[str, str]] = []
@@ -177,21 +168,9 @@ class HTMLReaderV2(BaseFunction):
             if src in markdown:
                 fetch_src_list.append((src, alt))
 
-        imgs_to_fetch = await asyncio.gather(*[self.fetch_img(src) for src, _ in fetch_src_list])
-        images: list[Image] = []
+        return await HTMLReaderBaseProcessor.get_images(fetch_src_list)
 
-        for (src, alt), pair in zip(fetch_src_list, imgs_to_fetch):
-            if pair:
-                mimetype, base64_data = pair
-                images.append(Image.model_validate({
-                    "name": alt or src,
-                    "link": src,
-                    "data": base64_data,
-                    "mimetype": mimetype,
-                }))
-        return images
-
-    @tracer.start_as_current_span("HTMLReaderV2.get_title")
+    @tracer.start_as_current_span("get_title")
     async def get_title(self, markdown: str, raw_title: str, trace_info: TraceInfo) -> str:
         snippet: str = "\n".join(list(filter(bool, markdown.splitlines()))[:3])
         title: str = (
@@ -201,15 +180,15 @@ class HTMLReaderV2(BaseFunction):
         ).title
         return title
 
-    @tracer.start_as_current_span("HTMLReaderV2.convert")
-    async def convert(self, domain: str, html: str, trace_info: TraceInfo):
+    @tracer.start_as_current_span("convert")
+    async def convert(self, domain: str, html: str, trace_info: TraceInfo) -> GeneratedContent:
         span = trace.get_current_span()
         html_doc = Document(html)
 
         selected_html: str = ''
         raw_title: str = html_doc.title()
         if domain in self.CONTENT_SELECTOR:
-            with tracer.start_as_current_span("HTMLReaderV2.content_selector"):
+            with tracer.start_as_current_span("content_selector"):
                 selected_html = self.content_selector(domain, BeautifulSoup(html, "html.parser")).prettify()
                 cleaned_html = clean_attributes(tounicode(Document(selected_html)._html(True), method="html"))
                 markdown = html2text(cleaned_html).strip()
@@ -225,9 +204,10 @@ class HTMLReaderV2(BaseFunction):
             }
             trace_info.info(log_body)
             span.set_attributes(log_body)
+            # $('#inline-expander').innerText
 
         if not markdown:
-            with tracer.start_as_current_span("HTMLReaderV2.llm_extract_content"):
+            with tracer.start_as_current_span("llm_extract_content"):
                 cleaned_html: str = clean_attributes(tounicode(Document(html)._html(True), method="html"))
                 cleaned_html: str = self.clean_html(
                     cleaned_html, clean_svg=True, clean_base64=True,
@@ -239,10 +219,4 @@ class HTMLReaderV2(BaseFunction):
             self.get_images(selected_html or html, markdown),
             self.get_title(markdown, raw_title, trace_info)
         )
-
-        result: dict = {"title": title, "markdown": markdown}
-
-        if images:
-            result["images"] = [image.model_dump(exclude_none=True) for image in images]
-
-        return result
+        return GeneratedContent(title=title, markdown=markdown, images=images or None)

@@ -1,5 +1,5 @@
 import asyncio
-from typing import Optional, Callable, Any
+from typing import Callable, Any
 
 import httpx
 from opentelemetry import trace
@@ -21,7 +21,7 @@ class TaskManager:
     async def check_task_status(self, task_id: str) -> Task:
         """Fetch task from backend to check its current status."""
         async with httpx.AsyncClient(base_url=self.config.backend.base_url) as client:
-            response = await client.get(f"internal/api/v1/wizard/tasks/{task_id}")
+            response = await client.get(f"/internal/api/v1/wizard/tasks/{task_id}")
             response.raise_for_status()
             return Task.model_validate(response.json())
 

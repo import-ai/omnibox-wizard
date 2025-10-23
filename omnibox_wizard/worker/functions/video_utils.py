@@ -29,12 +29,14 @@ async def exec_cmd(cmd: list[str]) -> tuple[int, str, str]:
 
     stdout, stderr = await process.communicate()
 
-    if process.returncode != 0:
-        error_msg = stderr.decode()
-        span.set_attributes({"error": error_msg, "return_code": process.returncode, "stdout": stdout.decode()})
-        raise RuntimeError(f"exec cmd failed: {error_msg}, cmd: {' '.join(cmd)}")
+    out = stdout.decode('utf-8', errors='ignore')
+    err = stderr.decode('utf-8', errors='ignore')
 
-    return process.returncode, stdout.decode(), stderr.decode()
+    if process.returncode != 0:
+        span.set_attributes({"error": err, "return_code": process.returncode, "stdout": stdout.decode()})
+        raise RuntimeError(f"exec cmd failed: {err}, cmd: {' '.join(cmd)}")
+
+    return process.returncode, out, err
 
 
 class VideoProcessor:
@@ -190,7 +192,7 @@ class VideoProcessor:
             [(original marker, timestamp in seconds), ...]
         """
         results = []
-        
+
         # Pattern : *Screenshot-hh:mm:ss* or *Screenshot-hh:mm:ss (optional closing *)
         # Also matches mm:ss format
         pattern1 = r"\*Screenshot-(\d{1,2}):(\d{2})(?::(\d{2}))?\*?"
@@ -198,14 +200,14 @@ class VideoProcessor:
             h_or_m = int(match.group(1))
             m_or_s = int(match.group(2))
             ss = match.group(3)
-            
+
             if ss:  # hh:mm:ss format
                 total_seconds = h_or_m * 3600 + m_or_s * 60 + int(ss)
             else:  # mm:ss format
                 total_seconds = h_or_m * 60 + m_or_s
-            
+
             results.append((match.group(0), total_seconds))
-        
+
         # Remove duplicates and sort by timestamp
         results = list(set(results))
         results.sort(key=lambda x: x[1])
@@ -231,7 +233,8 @@ class VideoProcessor:
             return 0.0
 
     @tracer.start_as_current_span('get_screenshot_image')
-    async def get_screenshot_image(self, video_path: str, timestamp: int, idx: int, semaphore: asyncio.Semaphore) -> Image | None:
+    async def get_screenshot_image(self, video_path: str, timestamp: int, idx: int,
+                                   semaphore: asyncio.Semaphore) -> Image | None:
         span = trace.get_current_span()
         async with semaphore:
             try:

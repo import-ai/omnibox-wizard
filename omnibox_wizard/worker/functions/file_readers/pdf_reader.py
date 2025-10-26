@@ -1,4 +1,3 @@
-import asyncio
 import base64
 import io
 import re
@@ -25,7 +24,6 @@ class PageChunk(BaseModel):
 class PDFReader:
     def __init__(self, base_url: str):
         self.base_url: str = base_url
-        self.semaphore = asyncio.Semaphore(6)
         self.chinese_char_pattern = re.compile(r"[\u4e00-\u9fff]")
 
     @classmethod
@@ -122,14 +120,9 @@ class PDFReader:
             }))
         return page_chunks
 
-    async def _get_page_chunk(self, *args, **kwargs) -> list[PageChunk]:
-        async with self.semaphore:
-            return await self.get_page_chunk(*args, **kwargs)
-
     async def convert(self, pdf_path: str) -> tuple[str, list[Image]]:
-        page_chunks = sum(await asyncio.gather(*[
-            self._get_page_chunk(page_data, page_no)
-            for page_no, page_data in enumerate(self.get_pages(pdf_path))
-        ]), [])
-
+        page_chunks = []
+        for page_no, page_data in enumerate(self.get_pages(pdf_path)):
+            page_chunk = await self.get_page_chunk(page_data, page_no)
+            page_chunks.append(page_chunk)
         return self.concatenate_pages(page_chunks)

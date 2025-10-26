@@ -19,14 +19,13 @@ async def test_pdf_reader(remote_worker_config: WorkerConfig, filename: str):
     if '巴曙松' not in filename:
         pytest.skip()
     pdf_reader = PDFReader(base_url=remote_worker_config.task.pdf_reader_base_url)
-    markdown, images = await pdf_reader.convert(os.path.join(input_base_dir, filename))
+    markdown, images = await pdf_reader.convert(os.path.join(input_base_dir, filename), page_type=FileType.IMAGE)
     output_dir: str = os.path.join(output_base_dir, filename.replace(".pdf", ""))
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
+    os.makedirs(output_dir, exist_ok=True)
     with open(os.path.join(output_dir, "doc.md"), "w") as f:
         f.write(markdown)
     for image in images:
-        img_path = os.path.join(output_dir, image.name)
+        img_path = os.path.join(output_dir, image.link)
         with open(img_path, "wb") as img_file:
             img_file.write(base64.b64decode(image.data))
 

@@ -138,8 +138,8 @@ class PDFReader:
         return page_chunks
 
     async def convert(self, pdf_path: str, page_type: int = FileType.PDF) -> tuple[str, list[Image]]:
-        page_chunks = []
+        page_chunks: list[PageChunk] = []
         for page_no, page_data in enumerate(self.get_pages(pdf_path, page_type=page_type)):
             page_chunk = await self.get_page_chunk(page_data, page_no, page_type=page_type)
-            page_chunks.append(page_chunk)
+            page_chunks.extend(page_chunk)
         return self.concatenate_pages(page_chunks)

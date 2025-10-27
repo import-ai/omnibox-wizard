@@ -2,7 +2,7 @@ import io
 import os
 
 import httpx
-from opentelemetry import propagate, trace
+from opentelemetry import trace
 from pydub import AudioSegment
 
 from omnibox_wizard.common.trace_info import TraceInfo
@@ -47,15 +47,6 @@ class ASRClient(httpx.AsyncClient):
             "error": f"ASR transcription failed after {retry_cnt} retries"
         })
         raise RuntimeError(f"ASR transcription failed after {retry_cnt} retries")
-
-
-def convert(m4a_filepath: str) -> str:
-    if not m4a_filepath.lower().endswith('.m4a'):
-        raise ValueError("Input file must be a .m4a file")
-    mp3_filepath = os.path.splitext(m4a_filepath)[0] + '.mp3'
-    audio = AudioSegment.from_file(m4a_filepath, format="m4a")
-    audio.export(mp3_filepath, format="mp3")
-    return mp3_filepath
 
 
 class M4AConvertor:

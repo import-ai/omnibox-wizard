@@ -190,6 +190,12 @@ class HTMLReaderV2(BaseFunction):
         # List of lazy loading attributes to check, in priority order
         lazy_attrs = ['data-src', 'data-lazy-src', 'data-original', 'data-lazy', 'data-url']
 
+        # Common placeholder URL patterns
+        placeholder_patterns = [
+            '/t.png', '/placeholder', '/lazy', '/loading.gif',
+            'data:image/', '1x1', 'blank.gif', 'grey.gif', 'transparent'
+        ]
+
         for img in soup.find_all('img'):
             for attr in lazy_attrs:
                 if lazy_src := img.get(attr):
@@ -198,8 +204,8 @@ class HTMLReaderV2(BaseFunction):
                         continue
 
                     current_src = img.get('src', '')
-                    # Replace src if it's empty, a placeholder, or base64
-                    if not current_src or current_src.startswith('data:image/') or 'placeholder' in current_src.lower() or 'lazy' in current_src.lower():
+                    # Check if current src is a placeholder
+                    if not current_src or any(pattern in current_src.lower() for pattern in placeholder_patterns):
                         img['src'] = lazy_src
                         break
 

@@ -10,7 +10,7 @@ from omnibox_wizard.worker.functions.html_reader_processors.base import HTMLRead
 tracer = trace.get_tracer("OKJikeProcessor")
 
 
-class OKJikeProcessor(HTMLReaderBaseProcessor):
+class OKJikeWebProcessor(HTMLReaderBaseProcessor):
 
     def hit(self, html: str, url: str) -> bool:
         parsed = urlparse(url)

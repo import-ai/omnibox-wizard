@@ -4,6 +4,7 @@ import re
 from functools import partial
 from urllib.parse import urlparse
 
+import htmlmin
 from bs4 import BeautifulSoup, Tag, Comment
 from html2text import html2text
 from lxml.etree import tounicode
@@ -191,10 +192,10 @@ class HTMLReaderV2(BaseFunction):
             with tracer.start_as_current_span("content_selector"):
                 selected_html = self.content_selector(domain, BeautifulSoup(html, "html.parser")).prettify()
                 cleaned_html = clean_attributes(tounicode(Document(selected_html)._html(True), method="html"))
-                markdown = html2text(cleaned_html).strip()
+                markdown = html2text(htmlmin.minify(cleaned_html, remove_empty_space=True), bodywidth=0).strip()
         else:
             html_summary: str = html_doc.summary().strip()
-            markdown: str = html2text(html_summary).strip()
+            markdown: str = html2text(htmlmin.minify(html_summary, remove_empty_space=True), bodywidth=0).strip()
 
             log_body: dict = {
                 "len(html)": len(html),

@@ -216,9 +216,8 @@ class HTMLReaderV2(BaseFunction):
         return str(soup)
 
     @tracer.start_as_current_span("convert")
-    async def convert(self, domain: str, raw_html: str, trace_info: TraceInfo) -> GeneratedContent:
+    async def convert(self, domain: str, html: str, trace_info: TraceInfo) -> GeneratedContent:
         span = trace.get_current_span()
-        html = self.fix_lazy_images(raw_html)
         html_doc = Document(html)
 
         selected_html: str = ''
@@ -229,7 +228,7 @@ class HTMLReaderV2(BaseFunction):
                 cleaned_html = clean_attributes(tounicode(Document(selected_html)._html(True), method="html"))
                 markdown = html2text(htmlmin.minify(cleaned_html, remove_empty_space=True), bodywidth=0).strip()
         else:
-            html_summary: str = html_doc.summary().strip()
+            html_summary: str = self.fix_lazy_images(html_doc.summary().strip())
             markdown: str = html2text(htmlmin.minify(html_summary, remove_empty_space=True), bodywidth=0).strip()
 
             log_body: dict = {

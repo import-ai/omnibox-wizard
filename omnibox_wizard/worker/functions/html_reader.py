@@ -78,7 +78,8 @@ class HTMLReaderV2(BaseFunction):
                 return content
         return soup
 
-    def clean_html(self, html: str, *, clean_svg: bool = False, clean_base64: bool = False,
+    @classmethod
+    def clean_html(cls, html: str, *, clean_svg: bool = False, clean_base64: bool = False,
                    compress: bool = False, remove_empty_tag: bool = False, remove_atts: bool = False,
                    allowed_attrs: set | None = None) -> str:
         soup = BeautifulSoup(html, 'html.parser')
@@ -128,7 +129,7 @@ class HTMLReaderV2(BaseFunction):
         # Compress whitespace if compress is True
         if compress:
             # Replace multiple whitespace characters with a single space
-            cleaned_html = self.SPACE_PATTERN.sub(' ', cleaned_html).strip()
+            cleaned_html = cls.SPACE_PATTERN.sub(' ', cleaned_html).strip()
 
         return cleaned_html
 
@@ -147,6 +148,7 @@ class HTMLReaderV2(BaseFunction):
         html = input_dict["html"]
         url = input_dict["url"]
 
+        # Special case
         for processor in self.processors:
             if processor.hit(html, url):
                 result = await processor.convert(html, url)
@@ -181,9 +183,36 @@ class HTMLReaderV2(BaseFunction):
         ).title
         return title
 
+    @classmethod
+    def fix_lazy_images(cls, html: str) -> str:
+        soup = BeautifulSoup(html, 'html.parser')
+
+        # List of lazy loading attributes to check, in priority order
+        lazy_attrs = ['data-src', 'data-lazy-src', 'data-original', 'data-lazy', 'data-url']
+
+        for img in soup.find_all('img'):
+            for attr in lazy_attrs:
+                if lazy_src := img.get(attr):
+                    # Skip if it's a base64 placeholder
+                    if lazy_src.startswith('data:image/'):
+                        continue
+
+                    current_src = img.get('src', '')
+                    # Replace src if it's empty, a placeholder, or base64
+                    if not current_src or current_src.startswith('data:image/') or 'placeholder' in current_src.lower() or 'lazy' in current_src.lower():
+                        img['src'] = lazy_src
+                        break
+
+            # Handle responsive images (srcset)
+            if data_srcset := img.get('data-srcset'):
+                img['srcset'] = data_srcset
+
+        return str(soup)
+
     @tracer.start_as_current_span("convert")
-    async def convert(self, domain: str, html: str, trace_info: TraceInfo) -> GeneratedContent:
+    async def convert(self, domain: str, raw_html: str, trace_info: TraceInfo) -> GeneratedContent:
         span = trace.get_current_span()
+        html = self.fix_lazy_images(raw_html)
         html_doc = Document(html)
 
         selected_html: str = ''
@@ -205,7 +234,6 @@ class HTMLReaderV2(BaseFunction):
             }
             trace_info.info(log_body)
             span.set_attributes(log_body)
-            # $('#inline-expander').innerText
 
         if not markdown:
             with tracer.start_as_current_span("llm_extract_content"):

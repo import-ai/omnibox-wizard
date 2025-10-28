@@ -39,18 +39,19 @@ class OKJikeProcessor(HTMLReaderBaseProcessor):
     @tracer.start_as_current_span("OKJikeProcessor.convert")
     async def convert(self, html: str, url: str) -> GeneratedContent:
         body: Tag = self.get_body(html, url)
-        children = list(body.children)
-        content = children[0]
+        children: list[Tag] = list(body.children)
+        content: Tag = children[0]
         if len(children) == 3:
             images_dom = children[1]
             image_selection: list[Tag] = images_dom.select("img")
             for img in image_selection:
-                img.src = self.remove_query_params(img.get("src", ""))
+                img["src"] = self.remove_query_params(img["src"])
             images = await self.img_selection_to_image(image_selection)
         else:
             images = []
-        title = "即刻图文" if len(children) == 3 else "即刻推文"
         markdown: str = "\n\n".join([f"![{i + 1}]({image.link})" for i, image in enumerate(images)])
         if content:
-            markdown = html2text(content.prettify()) + "\n\n" + markdown
+            content_with_br: str = str(next(content.children)).replace('\n', '<br>\n')
+            markdown = html2text(content_with_br, bodywidth=0) + "\n\n" + markdown
+        title: str = next(filter(lambda x: bool(x.strip()), markdown.split("\n")))
         return GeneratedContent(title=title, markdown=markdown, images=images or None)

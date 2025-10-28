@@ -20,6 +20,8 @@ from omnibox_wizard.worker.entity import Task, Image, GeneratedContent
 from omnibox_wizard.worker.functions.base_function import BaseFunction
 from omnibox_wizard.worker.functions.html_reader_processors.base import HTMLReaderBaseProcessor
 from omnibox_wizard.worker.functions.html_reader_processors.green_note import GreenNoteProcessor
+from omnibox_wizard.worker.functions.html_reader_processors.okjike_m import OKJikeMProcessor
+from omnibox_wizard.worker.functions.html_reader_processors.okjike_web import OKJikeWebProcessor
 from omnibox_wizard.worker.functions.html_reader_processors.red_note import RedNoteProcessor
 
 json_dumps = partial(jsonlib.dumps, separators=(",", ":"), ensure_ascii=False)
@@ -64,7 +66,10 @@ class HTMLReaderV2(BaseFunction):
         self.html_title_extractor = HTMLTitleExtractor(config.grimoire.openai.get_config("mini"))
         self.html_content_extractor = HTMLContentExtractor(config.grimoire.openai.get_config("mini"))
         self.processors: list[HTMLReaderBaseProcessor] = [
-            GreenNoteProcessor(config=config), RedNoteProcessor(config=config)
+            GreenNoteProcessor(config=config),
+            RedNoteProcessor(config=config),
+            OKJikeWebProcessor(config=config),
+            OKJikeMProcessor(config=config),
         ]
 
     @classmethod

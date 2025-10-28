@@ -11,10 +11,6 @@ tracer = trace.get_tracer("GreenNoteProcessor")
 
 
 class GreenNoteProcessor(HTMLReaderBaseProcessor):
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
     def hit(self, html: str, url: str) -> bool:
         parsed = urlparse(url)
         if parsed.netloc == 'mp.weixin.qq.com':

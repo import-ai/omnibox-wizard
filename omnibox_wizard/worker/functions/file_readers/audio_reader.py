@@ -30,7 +30,7 @@ class ASRClient(httpx.AsyncClient):
                     "actual_retry_cnt": actual_retry_cnt
                 })
                 response: httpx.Response = await self.post(
-                    "/api/v1/transcribe",
+                    "/audio/transcriptions",
                     files={"file": (file_path, io.BytesIO(bytes_content), mimetype)},
                     # data={"model": self.model},
                     timeout=600,

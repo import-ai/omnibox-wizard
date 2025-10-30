@@ -427,6 +427,7 @@ class VideoNoteGenerator(BaseFunction):
         # 1. Audio transcription (only if audio_path is provided)
         transcript_dict = {"full_text": "", "segments": []}
         has_audio_content = False
+        span = trace.get_current_span()
 
         if len(subtitles) > 0:
             subtitle_text = self._get_best_subtitle(subtitles, language)
@@ -468,10 +469,13 @@ class VideoNoteGenerator(BaseFunction):
             chapter['end_time'] = int(chapter['end_time'])
             std_chapter.append(chapter)
 
+        span.set_attribute("transcript_dict", transcript_dict)
+
         markdown, extracted_chapters = await self._generate_markdown(
             video_info, transcript_dict, std_chapter, style, include_screenshots, include_links, language, trace_info
         )
-
+        span.set_attribute("generated markdown", markdown)
+        span.set_attribute("extracted_chapters", extracted_chapters)
         # Use extracted chapters if original chapters were empty
         if not chapters and extracted_chapters:
             trace_info.info({
@@ -491,6 +495,7 @@ class VideoNoteGenerator(BaseFunction):
 
         if include_screenshots and video_path:
             trace_info.info({"message": "Processing screenshots"})
+            span.set_attribute("chapters", chapters)
 
             # New logic: Generate chapter-based screenshots if chapters are available
             if chapters:
@@ -501,12 +506,14 @@ class VideoNoteGenerator(BaseFunction):
                 markdown, extracted_screenshots = await video_processor.generate_chapter_screenshots(
                     video_path, chapters, markdown
                 )
+                span.set_attribute("processed_markdown", markdown)
             else:
                 # Fallback to old logic: Extract screenshots from markdown markers
                 trace_info.info({"message": "Generating screenshots from markdown markers"})
                 markdown, extracted_screenshots = await video_processor.extract_screenshots_as_images(
                     markdown, video_path
                 )
+                span.set_attribute("processed_markdown_2", markdown)
 
             trace_info.info({
                 "screenshot_count": len(extracted_screenshots),

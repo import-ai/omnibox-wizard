@@ -487,6 +487,7 @@ class VideoProcessor:
                     logger.warning(f"Chapter marker '{marker}' not found in markdown, appending at end")
                     processed_markdown += f"\n\n{img_markdown}"
 
+        span.set_attribute("processed_markdown", processed_markdown)
         logger.info(f"Generated {len(screenshots)} chapter screenshot grids")
         return processed_markdown, screenshots
 

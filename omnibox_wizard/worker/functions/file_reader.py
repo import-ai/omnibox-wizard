@@ -80,13 +80,43 @@ class FileReader(BaseFunction):
             worker_config=config,
         )
 
-    async def download(self, resource_id: str, target: str):
+
+    async def get_file_info(self, namespace_id: str, resource_id: str):
+        try:
+            async with httpx.AsyncClient(base_url=self.base_url) as client:
+                response = await client.get(f'/internal/api/v1/namespaces/{namespace_id}/resources/{resource_id}/file')
+                response.raise_for_status()
+                file_info = response.json()
+                return file_info
+        except httpx.HTTPStatusError as e:
+            error_data = e.response.json()
+            if error_data.get('code') == 'file_not_found':
+                return None
+            raise
+
+
+    async def download(self, namespace_id: str, resource_id: str, target: str):
+        file_info = await self.get_file_info(namespace_id, resource_id)
+        if not file_info:
+            await self.download_old(resource_id, target)
+            return
+
+        async with httpx.AsyncClient() as client:
+            async with client.stream('GET', file_info['url']['public']) as response:
+                response.raise_for_status()
+                with open(target, 'wb') as f:
+                    async for chunk in response.aiter_bytes():
+                        f.write(chunk)
+
+
+    async def download_old(self, resource_id: str, target: str):
         async with httpx.AsyncClient(base_url=self.base_url) as client:
             async with client.stream('GET', f'/internal/api/v1/resources/files/{resource_id}') as response:
                 response.raise_for_status()
                 with open(target, 'wb') as f:
                     async for chunk in response.aiter_bytes():
                         f.write(chunk)
+
 
     async def run(self, task: Task, trace_info: TraceInfo) -> dict:
         task_input: dict = task.input
@@ -104,7 +134,7 @@ class FileReader(BaseFunction):
 
         with tempfile.TemporaryDirectory() as temp_dir:
             local_path: str = os.path.join(temp_dir, filename)
-            await self.download(resource_id, local_path)
+            await self.download(task.namespace_id, resource_id, local_path)
 
             mime_ext: str | None = guess_extension(mimetype)
 

@@ -7,7 +7,7 @@ import subprocess
 import uuid
 from pathlib import Path
 from typing import List, Optional, Tuple
-
+from PIL import Image as PILImage, ImageDraw, ImageFont
 from opentelemetry import trace
 
 from omnibox_wizard.worker.entity import Image
@@ -343,12 +343,6 @@ class VideoProcessor:
         Returns:
             Image object with the 2x2 grid
         """
-        try:
-            from PIL import Image as PILImage, ImageDraw, ImageFont
-        except ImportError:
-            logger.error("PIL is not installed, cannot create chapter grid")
-            return None
-
         start_time = int(chapter['start_time'])
         end_time = int(chapter['end_time'])
 
@@ -473,7 +467,7 @@ class VideoProcessor:
 
                 # Format image markdown with optional description
                 if chapter_desc:
-                    img_markdown = f"*{chapter_desc}*\n\n![]({result.link})\n"
+                    img_markdown = f"![]({result.link})\n*{chapter_desc}*\n"
                 else:
                     img_markdown = f"![]({result.link})\n"
 
@@ -568,12 +562,6 @@ class VideoProcessor:
         Returns:
             Image object list (always contains exactly one grid image)
         """
-
-        try:
-            from PIL import Image as PILImage, ImageDraw, ImageFont
-        except ImportError:
-            logger.error("PIL is not installed, cannot create thumbnail grid")
-            return None
 
         # Fixed 3x3 grid
         cols, rows = 3, 3

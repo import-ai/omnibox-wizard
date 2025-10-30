@@ -39,11 +39,7 @@ class ASRClient(httpx.AsyncClient):
                 sentence_info = []
 
                 for sentence in response.json().get('sentence_info', []):
-                    one_sentence = f"""Speaker: {sentence.get('speaker', 0)}
-Start_time: {sentence.get('start_time',0)}
-End_time: {sentence.get('end_time',0)}
-Content: {sentence.get('sentence', '')}
-"""
+                    one_sentence=f"[{sentence.get('start_time','00:00')}]speaker {sentence.get('speaker', 0)}:{sentence.get('sentence', '')}"
                     sentence_info.append(one_sentence)
 
                 return '\n'.join(sentence_info)

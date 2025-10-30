@@ -464,8 +464,8 @@ class VideoNoteGenerator(BaseFunction):
         trace_info.info({"message": "Starting note generation"})
         std_chapter = []
         for chapter in chapters:
-            chapter['start_time'] = self.seconds_to_hms(int(chapter['start_time']))
-            chapter['end_time'] = self.seconds_to_hms(int(chapter['end_time']))
+            chapter['start_time'] = int(chapter['start_time'])
+            chapter['end_time'] = int(chapter['end_time'])
             std_chapter.append(chapter)
 
         markdown, extracted_chapters = await self._generate_markdown(

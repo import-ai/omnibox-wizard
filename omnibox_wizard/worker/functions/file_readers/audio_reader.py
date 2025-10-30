@@ -30,13 +30,23 @@ class ASRClient(httpx.AsyncClient):
                     "actual_retry_cnt": actual_retry_cnt
                 })
                 response: httpx.Response = await self.post(
-                    "/audio/transcriptions",
+                    "/api/v1/transcribe",
                     files={"file": (file_path, io.BytesIO(bytes_content), mimetype)},
-                    data={"model": self.model},
+                    # data={"model": self.model},
                     timeout=600,
                 )
                 assert response.is_success, response.text
-                return response.json()["text"]
+                sentence_info = []
+
+                for sentence in response.json().get('sentence_info', []):
+                    one_sentence = f"""Speaker: {sentence.get('speaker', 0)}
+Start_time: {sentence.get('start_time',0)}
+End_time: {sentence.get('end_time',0)}
+Content: {sentence.get('sentence', '')}
+"""
+                    sentence_info.append(one_sentence)
+
+                return '\n'.join(sentence_info)
             except Exception as e:
                 span.set_attributes({
                     "error": f"ASR transcription failed: {str(e)}"

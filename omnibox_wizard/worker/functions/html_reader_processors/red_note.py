@@ -10,10 +10,6 @@ tracer = trace.get_tracer("RedNoteProcessor")
 
 
 class RedNoteProcessor(HTMLReaderBaseProcessor):
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
     def hit(self, html: str, url: str) -> bool:
         parsed = urlparse(url)
         if parsed.netloc == 'www.xiaohongshu.com':

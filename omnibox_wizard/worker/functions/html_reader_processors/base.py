@@ -41,6 +41,9 @@ class HTMLReaderBaseProcessor(ABC):
     async def fetch_img(cls, url: str) -> tuple[str, str] | None:
         span = trace.get_current_span()
         span.set_attribute("url", url)
+        if url.startswith("//:"):
+            url = "https:" + url
+            span.set_attribute("url", url)
         if not url.startswith("http"):
             return None
         try:

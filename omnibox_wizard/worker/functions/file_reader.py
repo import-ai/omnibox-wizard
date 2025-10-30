@@ -11,7 +11,7 @@ from omnibox_wizard.worker.functions.base_function import BaseFunction
 from omnibox_wizard.worker.functions.file_readers.audio_reader import ASRClient, M4AConvertor
 from omnibox_wizard.worker.functions.file_readers.md_reader import MDReader
 from omnibox_wizard.worker.functions.file_readers.office_reader import OfficeReader, OfficeOperatorClient
-from omnibox_wizard.worker.functions.file_readers.pdf_reader import PDFReader
+from omnibox_wizard.worker.functions.file_readers.pdf_reader import PDFReader, FileType
 from omnibox_wizard.worker.functions.file_readers.utils import guess_extension
 from omnibox_wizard.worker.functions.file_readers.video_reader import VideoReader
 
@@ -50,7 +50,7 @@ class Convertor:
             markdown, images = await self.office_reader.convert(path, ext, mimetype)
             return markdown, images, {}
         elif mime_ext in [".pdf"]:
-            markdown, images = await self.pdf_reader.convert(filepath)
+            markdown, images = await self.pdf_reader.convert(filepath, page_type=FileType.IMAGE)
             return markdown, images, {}
         elif mime_ext == ".md":
             return self.md_reader.convert(filepath)

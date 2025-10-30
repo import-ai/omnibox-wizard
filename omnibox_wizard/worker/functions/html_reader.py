@@ -4,6 +4,7 @@ import re
 from functools import partial
 from urllib.parse import urlparse
 
+import htmlmin
 from bs4 import BeautifulSoup, Tag, Comment
 from html2text import html2text
 from lxml.etree import tounicode
@@ -19,6 +20,8 @@ from omnibox_wizard.worker.entity import Task, Image, GeneratedContent
 from omnibox_wizard.worker.functions.base_function import BaseFunction
 from omnibox_wizard.worker.functions.html_reader_processors.base import HTMLReaderBaseProcessor
 from omnibox_wizard.worker.functions.html_reader_processors.green_note import GreenNoteProcessor
+from omnibox_wizard.worker.functions.html_reader_processors.okjike_m import OKJikeMProcessor
+from omnibox_wizard.worker.functions.html_reader_processors.okjike_web import OKJikeWebProcessor
 from omnibox_wizard.worker.functions.html_reader_processors.red_note import RedNoteProcessor
 
 json_dumps = partial(jsonlib.dumps, separators=(",", ":"), ensure_ascii=False)
@@ -63,7 +66,10 @@ class HTMLReaderV2(BaseFunction):
         self.html_title_extractor = HTMLTitleExtractor(config.grimoire.openai.get_config("mini"))
         self.html_content_extractor = HTMLContentExtractor(config.grimoire.openai.get_config("mini"))
         self.processors: list[HTMLReaderBaseProcessor] = [
-            GreenNoteProcessor(config=config), RedNoteProcessor(config=config)
+            GreenNoteProcessor(config=config),
+            RedNoteProcessor(config=config),
+            OKJikeWebProcessor(config=config),
+            OKJikeMProcessor(config=config),
         ]
 
     @classmethod
@@ -77,7 +83,8 @@ class HTMLReaderV2(BaseFunction):
                 return content
         return soup
 
-    def clean_html(self, html: str, *, clean_svg: bool = False, clean_base64: bool = False,
+    @classmethod
+    def clean_html(cls, html: str, *, clean_svg: bool = False, clean_base64: bool = False,
                    compress: bool = False, remove_empty_tag: bool = False, remove_atts: bool = False,
                    allowed_attrs: set | None = None) -> str:
         soup = BeautifulSoup(html, 'html.parser')
@@ -127,7 +134,7 @@ class HTMLReaderV2(BaseFunction):
         # Compress whitespace if compress is True
         if compress:
             # Replace multiple whitespace characters with a single space
-            cleaned_html = self.SPACE_PATTERN.sub(' ', cleaned_html).strip()
+            cleaned_html = cls.SPACE_PATTERN.sub(' ', cleaned_html).strip()
 
         return cleaned_html
 
@@ -146,6 +153,7 @@ class HTMLReaderV2(BaseFunction):
         html = input_dict["html"]
         url = input_dict["url"]
 
+        # Special case
         for processor in self.processors:
             if processor.hit(html, url):
                 result = await processor.convert(html, url)
@@ -180,6 +188,38 @@ class HTMLReaderV2(BaseFunction):
         ).title
         return title
 
+    @classmethod
+    def fix_lazy_images(cls, html: str) -> str:
+        soup = BeautifulSoup(html, 'html.parser')
+
+        # List of lazy loading attributes to check, in priority order
+        lazy_attrs = ['data-src', 'data-lazy-src', 'data-original', 'data-lazy', 'data-url']
+
+        # Common placeholder URL patterns
+        placeholder_patterns = [
+            '/t.png', '/placeholder', '/lazy', '/loading.gif',
+            'data:image/', '1x1', 'blank.gif', 'grey.gif', 'transparent'
+        ]
+
+        for img in soup.find_all('img'):
+            for attr in lazy_attrs:
+                if lazy_src := img.get(attr):
+                    # Skip if it's a base64 placeholder
+                    if lazy_src.startswith('data:image/'):
+                        continue
+
+                    current_src = img.get('src', '')
+                    # Check if current src is a placeholder
+                    if not current_src or any(pattern in current_src.lower() for pattern in placeholder_patterns):
+                        img['src'] = lazy_src
+                        break
+
+            # Handle responsive images (srcset)
+            if data_srcset := img.get('data-srcset'):
+                img['srcset'] = data_srcset
+
+        return str(soup)
+
     @tracer.start_as_current_span("convert")
     async def convert(self, domain: str, html: str, trace_info: TraceInfo) -> GeneratedContent:
         span = trace.get_current_span()
@@ -191,10 +231,10 @@ class HTMLReaderV2(BaseFunction):
             with tracer.start_as_current_span("content_selector"):
                 selected_html = self.content_selector(domain, BeautifulSoup(html, "html.parser")).prettify()
                 cleaned_html = clean_attributes(tounicode(Document(selected_html)._html(True), method="html"))
-                markdown = html2text(cleaned_html).strip()
+                markdown = html2text(htmlmin.minify(cleaned_html, remove_empty_space=True), bodywidth=0).strip()
         else:
-            html_summary: str = html_doc.summary().strip()
-            markdown: str = html2text(html_summary).strip()
+            html_summary: str = self.fix_lazy_images(html_doc.summary().strip())
+            markdown: str = html2text(htmlmin.minify(html_summary, remove_empty_space=True), bodywidth=0).strip()
 
             log_body: dict = {
                 "len(html)": len(html),
@@ -204,7 +244,6 @@ class HTMLReaderV2(BaseFunction):
             }
             trace_info.info(log_body)
             span.set_attributes(log_body)
-            # $('#inline-expander').innerText
 
         if not markdown:
             with tracer.start_as_current_span("llm_extract_content"):

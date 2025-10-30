@@ -89,10 +89,7 @@ class FileReader(BaseFunction):
                 file_info = response.json()
                 return file_info
         except httpx.HTTPStatusError as e:
-            error_data = e.response.json()
-            if error_data.get('code') == 'file_not_found':
-                return None
-            raise
+            return None
 
 
     async def download(self, namespace_id: str, resource_id: str, target: str):

@@ -21,6 +21,8 @@ class CommonAI:
             self.title_system_prompt_template: str = f.read()
         with project_root.open("omnibox_wizard/resources/prompts/tag.md") as f:
             self.tag_system_prompt_template: str = f.read()
+        with project_root.open("omnibox_wizard/resources/prompts/property.md") as f:
+            self.property_system_prompt_template: str = f.read()
 
     @tracer.start_as_current_span("CommonAI._invoke")
     async def _invoke(
@@ -70,3 +72,9 @@ class CommonAI:
         Create tags according to the given text
         """
         return (await self._invoke(text, self.tag_system_prompt_template, "mini", lang, trace_info))["tags"]
+
+    async def properties(self, text: str, *, lang: str | None = None, trace_info: TraceInfo | None = None) -> dict:
+        """
+        Extract properties according to the given text
+        """
+        return await self._invoke(text, self.property_system_prompt_template, "mini", lang, trace_info)

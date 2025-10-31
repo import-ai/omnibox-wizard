@@ -234,6 +234,34 @@ class VideoProcessor:
             logger.error(f"Get video duration failed: {e}")
             return 0.0
 
+    @classmethod
+    async def get_video_resolution(cls, video_path: str) -> Tuple[int, int]:
+        """
+        Get video resolution (width, height)
+
+        Args:
+            video_path: Video file path
+
+        Returns:
+            Tuple of (width, height), or (1920, 1080) as default if failed
+        """
+        cmd = [
+            "ffprobe",
+            "-v", "error",
+            "-select_streams", "v:0",
+            "-show_entries", "stream=width,height",
+            "-of", "csv=p=0",
+            str(video_path)
+        ]
+
+        try:
+            code, stdout, stderr = await exec_cmd(cmd)
+            width, height = map(int, stdout.strip().split(','))
+            return width, height
+        except (subprocess.CalledProcessError, ValueError) as e:
+            logger.error(f"Get video resolution failed: {e}, using default 1920x1080")
+            return 1920, 1080
+
     @tracer.start_as_current_span('get_screenshot_image')
     async def get_screenshot_image(self, video_path: str, timestamp: int, idx: int,
                                    semaphore: asyncio.Semaphore) -> Image | None:
@@ -327,24 +355,38 @@ class VideoProcessor:
             video_path: str,
             chapter: dict,
             chapter_idx: int,
-            unit_width: int = 320,
-            unit_height: int = 180
+            max_unit_size: int = 320
     ) -> Image | None:
         """
         Create a 2x2 grid image for a chapter (first frame + 3 keyframes)
+        Automatically adjusts cell size based on video aspect ratio
 
         Args:
             video_path: Video file path
             chapter: Chapter dict with start_time, end_time, title, description
             chapter_idx: Chapter index (for naming)
-            unit_width: Width of each thumbnail
-            unit_height: Height of each thumbnail
+            max_unit_size: Maximum size for the longer dimension of each cell (default: 320)
 
         Returns:
             Image object with the 2x2 grid
         """
         start_time = int(chapter['start_time'])
         end_time = int(chapter['end_time'])
+
+        # Get video resolution to determine aspect ratio
+        video_width, video_height = await self.get_video_resolution(video_path)
+        aspect_ratio = video_width / video_height
+
+        # Calculate unit dimensions based on aspect ratio
+        if aspect_ratio >= 1:  # Landscape or square (e.g., 16:9, 4:3)
+            unit_width = max_unit_size
+            unit_height = int(max_unit_size / aspect_ratio)
+        else:  # Portrait (e.g., 9:16)
+            unit_width = int(max_unit_size * aspect_ratio)
+            unit_height = max_unit_size
+
+        logger.info(f"Video aspect ratio: {aspect_ratio:.2f} ({video_width}x{video_height}), "
+                   f"using cell size: {unit_width}x{unit_height}")
 
         # Generate first frame (chapter start)
         first_frame_path = await self.generate_screenshot(video_path, start_time, chapter_idx * 10)
@@ -378,14 +420,24 @@ class VideoProcessor:
             if not Path(frame_path).exists():
                 continue
 
-            # Open and resize image
+            # Open and resize image while maintaining aspect ratio
             img = PILImage.open(frame_path).convert("RGB")
-            img = img.resize((unit_width, unit_height), PILImage.Resampling.LANCZOS)
+
+            # Resize to fit within cell dimensions while maintaining aspect ratio
+            img.thumbnail((unit_width, unit_height), PILImage.Resampling.LANCZOS)
+
+            # Create a cell with black background
+            cell = PILImage.new("RGB", (unit_width, unit_height), (0, 0, 0))
+
+            # Center the image in the cell
+            offset_x = (unit_width - img.width) // 2
+            offset_y = (unit_height - img.height) // 2
+            cell.paste(img, (offset_x, offset_y))
 
             # Place in grid
             x = (idx % cols) * unit_width
             y = (idx // cols) * unit_height
-            grid_img.paste(img, (x, y))
+            grid_img.paste(cell, (x, y))
 
         # Save to memory buffer
         buffer = io.BytesIO()

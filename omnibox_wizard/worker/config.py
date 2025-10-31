@@ -26,7 +26,7 @@ class FunctionTimeoutConfig(BaseModel):
     delete_conversation: int = Field(default=60, description="Timeout for delete_conversation function")
     extract_tags: int = Field(default=60, description="Timeout for extract_tags function")
     generate_title: int = Field(default=60, description="Timeout for generate_title function")
-    generate_video_note: int = Field(default=None, description="Timeout for generate_video_note function")
+    generate_video_note: int = Field(default=1200, description="Timeout for generate_video_note function")
 
     def get_timeout(self, function_name: str) -> int | None:
         """Get timeout for a specific function, returns None if not configured."""

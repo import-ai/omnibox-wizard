@@ -7,7 +7,7 @@ import subprocess
 import uuid
 from pathlib import Path
 from typing import List, Optional, Tuple
-
+from PIL import Image as PILImage, ImageDraw, ImageFont
 from opentelemetry import trace
 
 from omnibox_wizard.worker.entity import Image
@@ -157,7 +157,7 @@ class VideoProcessor:
         if not self.check_ffmpeg():
             raise RuntimeError("ffmpeg is not installed, cannot generate screenshot")
 
-        filename = f"screenshot_{index:03d}_{timestamp}s_{uuid.uuid4().hex[:8]}.jpg"
+        filename = f"screenshot_{index:03d}_{timestamp}s_{uuid.uuid4().hex[:8]}.png"
         output_path = self.screenshot_dir / filename
 
         cmd = [
@@ -169,7 +169,9 @@ class VideoProcessor:
             str(output_path),
             "-y",  # Overwrite existing file
             "-hide_banner",  # Hide copyright information
-            "-loglevel", "error"  # Only show errors
+            "-loglevel", "error",  # Only show errors
+            "-strict","unofficial"
+
         ]
 
         await exec_cmd(cmd)
@@ -232,6 +234,34 @@ class VideoProcessor:
             logger.error(f"Get video duration failed: {e}")
             return 0.0
 
+    @classmethod
+    async def get_video_resolution(cls, video_path: str) -> Tuple[int, int]:
+        """
+        Get video resolution (width, height)
+
+        Args:
+            video_path: Video file path
+
+        Returns:
+            Tuple of (width, height), or (1920, 1080) as default if failed
+        """
+        cmd = [
+            "ffprobe",
+            "-v", "error",
+            "-select_streams", "v:0",
+            "-show_entries", "stream=width,height",
+            "-of", "csv=p=0",
+            str(video_path)
+        ]
+
+        try:
+            code, stdout, stderr = await exec_cmd(cmd)
+            width, height = map(int, stdout.strip().split(','))
+            return width, height
+        except (subprocess.CalledProcessError, ValueError) as e:
+            logger.error(f"Get video resolution failed: {e}, using default 1920x1080")
+            return 1920, 1080
+
     @tracer.start_as_current_span('get_screenshot_image')
     async def get_screenshot_image(self, video_path: str, timestamp: int, idx: int,
                                    semaphore: asyncio.Semaphore) -> Image | None:
@@ -257,6 +287,256 @@ class VideoProcessor:
                 span.record_exception(e)
                 return None
 
+    @tracer.start_as_current_span("extract_keyframes")
+    async def extract_keyframes(
+            self,
+            video_path: str,
+            start_time: int,
+            end_time: int,
+            num_frames: int = 3
+    ) -> List[str]:
+        """
+        Extract keyframes from video segment using ffmpeg thumbnail filter
+
+        Args:
+            video_path: Video file path
+            start_time: Segment start time (seconds)
+            end_time: Segment end time (seconds)
+            num_frames: Number of keyframes to extract (default: 3)
+
+        Returns:
+            List of extracted frame paths
+        """
+        if not self.check_ffmpeg():
+            logger.warning("ffmpeg is not installed, skipping keyframe extraction")
+            return []
+
+        duration = end_time - start_time
+        if duration <= 0:
+            logger.warning(f"Invalid segment duration: {duration}")
+            return []
+
+        frame_paths = []
+
+        # Calculate interval to get evenly distributed frames
+        interval = max(1, duration / (num_frames + 1))
+
+        for i in range(num_frames):
+            timestamp = start_time + (i + 1) * interval
+            if timestamp >= end_time:
+                timestamp = end_time - 1
+
+            output_path = self.frame_dir / f"keyframe_{start_time}_{i}_{uuid.uuid4().hex[:8]}.jpg"
+
+            cmd = [
+                "ffmpeg",
+                "-ss", str(timestamp),
+                "-i", str(video_path),
+                "-frames:v", "1",
+                "-q:v", "2",
+                str(output_path),
+                "-y",
+                "-hide_banner",
+                "-loglevel", "error"
+            ]
+
+            try:
+                await exec_cmd(cmd)
+                frame_paths.append(str(output_path))
+                logger.debug(f"Extracted keyframe at {timestamp}s: {output_path}")
+            except Exception as e:
+                logger.warning(f"Failed to extract keyframe at {timestamp}s: {e}")
+
+        return frame_paths
+
+    @tracer.start_as_current_span("create_chapter_grid")
+    async def create_chapter_grid(
+            self,
+            video_path: str,
+            chapter: dict,
+            chapter_idx: int,
+            max_unit_size: int = 320
+    ) -> Image | None:
+        """
+        Create a 2x2 grid image for a chapter (first frame + 3 keyframes)
+        Automatically adjusts cell size based on video aspect ratio
+
+        Args:
+            video_path: Video file path
+            chapter: Chapter dict with start_time, end_time, title, description
+            chapter_idx: Chapter index (for naming)
+            max_unit_size: Maximum size for the longer dimension of each cell (default: 320)
+
+        Returns:
+            Image object with the 2x2 grid
+        """
+        start_time = int(chapter['start_time'])
+        end_time = int(chapter['end_time'])
+
+        # Get video resolution to determine aspect ratio
+        video_width, video_height = await self.get_video_resolution(video_path)
+        aspect_ratio = video_width / video_height
+
+        # Calculate unit dimensions based on aspect ratio
+        if aspect_ratio >= 1:  # Landscape or square (e.g., 16:9, 4:3)
+            unit_width = max_unit_size
+            unit_height = int(max_unit_size / aspect_ratio)
+        else:  # Portrait (e.g., 9:16)
+            unit_width = int(max_unit_size * aspect_ratio)
+            unit_height = max_unit_size
+
+        logger.info(f"Video aspect ratio: {aspect_ratio:.2f} ({video_width}x{video_height}), "
+                   f"using cell size: {unit_width}x{unit_height}")
+
+        # Generate first frame (chapter start)
+        first_frame_path = await self.generate_screenshot(video_path, start_time, chapter_idx * 10)
+
+        # Extract 3 keyframes from the chapter
+        keyframe_paths = await self.extract_keyframes(video_path, start_time, end_time, num_frames=3)
+
+        # Combine all frames
+        all_frames = [first_frame_path] + keyframe_paths
+
+        if len(all_frames) < 4:
+            # Pad with duplicates if needed
+            while len(all_frames) < 4:
+                all_frames.append(all_frames[-1])
+
+        # Create 2x2 grid
+        cols, rows = 2, 2
+        grid_img = PILImage.new("RGB", (unit_width * cols, unit_height * rows), (0, 0, 0))
+
+        # Load font
+        font = None
+        try:
+            font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 14)
+        except:
+            try:
+                font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 14)
+            except:
+                font = ImageFont.load_default()
+
+        for idx, frame_path in enumerate(all_frames[:4]):
+            if not Path(frame_path).exists():
+                continue
+
+            # Open and resize image while maintaining aspect ratio
+            img = PILImage.open(frame_path).convert("RGB")
+
+            # Resize to fit within cell dimensions while maintaining aspect ratio
+            img.thumbnail((unit_width, unit_height), PILImage.Resampling.LANCZOS)
+
+            # Create a cell with black background
+            cell = PILImage.new("RGB", (unit_width, unit_height), (0, 0, 0))
+
+            # Center the image in the cell
+            offset_x = (unit_width - img.width) // 2
+            offset_y = (unit_height - img.height) // 2
+            cell.paste(img, (offset_x, offset_y))
+
+            # Place in grid
+            x = (idx % cols) * unit_width
+            y = (idx // cols) * unit_height
+            grid_img.paste(cell, (x, y))
+
+        # Save to memory buffer
+        buffer = io.BytesIO()
+        grid_img.save(buffer, format='JPEG', quality=85)
+        buffer.seek(0)
+
+        # Convert to base64
+        image_data = base64.b64encode(buffer.read()).decode('utf-8')
+
+        # Create Image object
+        chapter_title = chapter.get('title', f'Chapter {chapter_idx + 1}')
+        filename = f"chapter_{chapter_idx}_{uuid.uuid4().hex[:8]}.jpg"
+
+        chapter_image = Image(
+            name=filename,
+            link=filename,
+            data=image_data,
+            mimetype="image/jpeg"
+        )
+
+        logger.info(f"Created 2x2 grid for chapter {chapter_idx}: {chapter_title}")
+        return chapter_image
+
+    @tracer.start_as_current_span("generate_chapter_screenshots")
+    async def generate_chapter_screenshots(
+            self,
+            video_path: str,
+            chapters: List[dict],
+            markdown: str
+    ) -> tuple[str, list]:
+        """
+        Generate screenshot grids for each chapter and insert into markdown
+
+        Args:
+            video_path: Video file path
+            chapters: List of chapter dicts with start_time, end_time, title, description
+            markdown: Original markdown content with *Chapter-{index}* markers
+
+        Returns:
+            (processed markdown, Image object list)
+        """
+        span = trace.get_current_span()
+
+        if not self.check_ffmpeg():
+            logger.warning("ffmpeg is not installed, skipping chapter screenshots")
+            return markdown, []
+
+        if not chapters:
+            logger.info("No chapters provided, skipping chapter screenshots")
+            return markdown, []
+
+        span.set_attribute("chapter_count", len(chapters))
+
+        screenshots = []
+        processed_markdown = markdown
+
+        # Generate grids for each chapter concurrently
+        tasks = []
+        for idx, chapter in enumerate(chapters):
+            tasks.append(self.create_chapter_grid(video_path, chapter, idx))
+
+        # Wait for all grids to be generated
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Replace chapter markers with actual screenshots
+        for idx, (chapter, result) in enumerate(zip(chapters, results)):
+            if isinstance(result, Exception):
+                logger.error(f"Failed to create grid for chapter {idx}: {result}")
+                # Remove the marker if screenshot generation failed
+                marker = f"*Chapter-{idx}*"
+                processed_markdown = processed_markdown.replace(marker, "", 1)
+                continue
+
+            if result:
+                screenshots.append(result)
+
+                # Create markdown image with chapter info
+                chapter_desc = chapter.get('description', '')
+
+                # Format image markdown with optional description
+                if chapter_desc:
+                    img_markdown = f"![]({result.link})\n*{chapter_desc}*\n"
+                else:
+                    img_markdown = f"![]({result.link})\n"
+
+                # Replace the chapter marker with the image
+                marker = f"*Chapter-{idx}*"
+                if marker in processed_markdown:
+                    processed_markdown = processed_markdown.replace(marker, img_markdown, 1)
+                    logger.debug(f"Replaced marker '{marker}' with screenshot")
+                else:
+                    # If marker not found, try to append at the end as fallback
+                    logger.warning(f"Chapter marker '{marker}' not found in markdown, appending at end")
+                    processed_markdown += f"\n\n{img_markdown}"
+
+        span.set_attribute("processed_markdown", processed_markdown)
+        logger.info(f"Generated {len(screenshots)} chapter screenshot grids")
+        return processed_markdown, screenshots
+
     @tracer.start_as_current_span("extract_screenshots_as_images")
     async def extract_screenshots_as_images(
             self,
@@ -265,11 +545,11 @@ class VideoProcessor:
     ) -> tuple[str, list]:
         """
         Extract screenshot markers from Markdown and generate actual screenshots, returning Image object list
-        
+
         Args:
             markdown: Markdown text containing screenshot markers
             video_path: Video file path
-            
+
         Returns:
             (processed markdown, Image object list)
         """
@@ -334,12 +614,6 @@ class VideoProcessor:
         Returns:
             Image object list (always contains exactly one grid image)
         """
-
-        try:
-            from PIL import Image as PILImage, ImageDraw, ImageFont
-        except ImportError:
-            logger.error("PIL is not installed, cannot create thumbnail grid")
-            return None
 
         # Fixed 3x3 grid
         cols, rows = 3, 3

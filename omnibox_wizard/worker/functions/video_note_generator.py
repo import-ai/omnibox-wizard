@@ -70,6 +70,80 @@ class VideoNoteGenerator(BaseFunction):
         secs = seconds % 60
         return f"{hours:02d}:{minutes:02d}:{secs:02d}"
 
+    @staticmethod
+    def hms_to_seconds(time_str: str) -> int:
+        """
+        Convert time string (HH:MM:SS or MM:SS) to seconds
+
+        Args:
+            time_str: Time string in format "HH:MM:SS" or "MM:SS"
+
+        Returns:
+            Total seconds as integer
+        """
+        parts = time_str.strip().split(':')
+        if len(parts) == 3:  # HH:MM:SS
+            hours, minutes, seconds = map(int, parts)
+            return hours * 3600 + minutes * 60 + seconds
+        elif len(parts) == 2:  # MM:SS
+            minutes, seconds = map(int, parts)
+            return minutes * 60 + seconds
+        else:
+            raise ValueError(f"Invalid time format: {time_str}")
+
+    def _extract_chapters_from_markdown(self, markdown: str, trace_info: TraceInfo) -> tuple[str, list[dict]]:
+        """
+        Extract chapters information from markdown content if present
+
+        Args:
+            markdown: The markdown content that may contain chapters
+            trace_info: Trace information for logging
+
+        Returns:
+            Tuple of (cleaned_markdown, extracted_chapters)
+            - cleaned_markdown: Markdown with chapters section removed
+            - extracted_chapters: List of chapter dicts with start_time (seconds), end_time (seconds), title, description
+        """
+        # Pattern to match chapters between markers
+        pattern = r'===BEGIN_CHAPTERS===\s*(.*?)\s*===END_CHAPTERS==='
+        match = re.search(pattern, markdown, re.DOTALL)
+
+        if not match:
+            return markdown, []
+
+        try:
+            chapters_json = match.group(1).strip()
+            chapters_data = jsonlib.loads(chapters_json)
+
+            # Convert time strings to seconds
+            extracted_chapters = []
+            for chapter in chapters_data:
+                start_seconds = self.hms_to_seconds(chapter['start_time'])
+                end_seconds = self.hms_to_seconds(chapter['end_time'])
+                extracted_chapters.append({
+                    'title': chapter['title'],
+                    'start_time': start_seconds,
+                    'end_time': end_seconds,
+                    'description': chapter.get('description', '')
+                })
+
+            # Remove the chapters section from markdown
+            cleaned_markdown = re.sub(pattern, '', markdown, flags=re.DOTALL).strip()
+
+            trace_info.info({
+                "extracted_chapters_count": len(extracted_chapters),
+                "message": "Successfully extracted chapters from AI response"
+            })
+
+            return cleaned_markdown, extracted_chapters
+
+        except Exception as e:
+            trace_info.warning({
+                "error": str(e),
+                "message": "Failed to extract chapters from markdown, proceeding without chapters"
+            })
+            return markdown, []
+
     def _get_best_subtitle(self, subtitles: dict, language: str) -> str:
         """
         Intelligently select the best subtitle from available options
@@ -262,16 +336,25 @@ class VideoNoteGenerator(BaseFunction):
             include_links: bool,
             language: str,
             trace_info: TraceInfo
-    ) -> str:
+    ) -> tuple[str, list[dict]]:
+        """
+        Generate markdown notes from video content
+
+        Returns:
+            Tuple of (markdown, extracted_chapters)
+            - markdown: The generated markdown content
+            - extracted_chapters: List of chapters extracted from AI response (empty if chapters were provided or not extracted)
+        """
         # Check if we have transcript content
         transcript_text = transcript.get('full_text', '').strip()
 
         if not transcript_text:
             # No audio content, use fallback template without LLM call
             trace_info.info({"message": "No transcript available, generating fallback markdown without LLM"})
-            return self._generate_fallback_markdown(
+            fallback_markdown = self._generate_fallback_markdown(
                 video_info, include_screenshots, include_links, language
             )
+            return fallback_markdown, []
 
         # Use Jinja2 template with proper conditional rendering
         template = self.template_parser.get_template("video_note_generation.md")
@@ -290,7 +373,13 @@ class VideoNoteGenerator(BaseFunction):
 
         try:
             response = await self._call_ai_for_summary(prompt, trace_info)
-            return response
+
+            # Extract chapters from response if no chapters were provided
+            if not chapters:
+                markdown, extracted_chapters = self._extract_chapters_from_markdown(response, trace_info)
+                return markdown, extracted_chapters
+            else:
+                return response, []
 
         except Exception as e:
             trace_info.error({"error": str(e), "message": "Fail to generate AI note"})
@@ -338,6 +427,7 @@ class VideoNoteGenerator(BaseFunction):
         # 1. Audio transcription (only if audio_path is provided)
         transcript_dict = {"full_text": "", "segments": []}
         has_audio_content = False
+        span = trace.get_current_span()
 
         if len(subtitles) > 0:
             subtitle_text = self._get_best_subtitle(subtitles, language)
@@ -375,13 +465,25 @@ class VideoNoteGenerator(BaseFunction):
         trace_info.info({"message": "Starting note generation"})
         std_chapter = []
         for chapter in chapters:
-            chapter['start_time'] = self.seconds_to_hms(int(chapter['start_time']))
-            chapter['end_time'] = self.seconds_to_hms(int(chapter['end_time']))
+            chapter['start_time'] = int(chapter['start_time'])
+            chapter['end_time'] = int(chapter['end_time'])
             std_chapter.append(chapter)
 
-        markdown = await self._generate_markdown(
+        span.set_attribute("transcript_dict", transcript_dict)
+
+        markdown, extracted_chapters = await self._generate_markdown(
             video_info, transcript_dict, std_chapter, style, include_screenshots, include_links, language, trace_info
         )
+        span.set_attribute("generated markdown", markdown)
+        span.set_attribute("extracted_chapters", extracted_chapters)
+        # Use extracted chapters if original chapters were empty
+        if not chapters and extracted_chapters:
+            trace_info.info({
+                "extracted_chapters_count": len(extracted_chapters),
+                "message": "Using AI-generated chapters for screenshot extraction"
+            })
+            chapters = extracted_chapters
+
         trace_info.info({"markdown_length": len(markdown), "message": "Note generation completed"})
 
         # 3. Process screenshots and thumbnails
@@ -393,9 +495,26 @@ class VideoNoteGenerator(BaseFunction):
 
         if include_screenshots and video_path:
             trace_info.info({"message": "Processing screenshots"})
-            markdown, extracted_screenshots = await video_processor.extract_screenshots_as_images(
-                markdown, video_path
-            )
+            span.set_attribute("chapters", chapters)
+
+            # New logic: Generate chapter-based screenshots if chapters are available
+            if chapters:
+                trace_info.info({
+                    "chapter_count": len(chapters),
+                    "message": "Generating chapter-based screenshots (2x2 grids)"
+                })
+                markdown, extracted_screenshots = await video_processor.generate_chapter_screenshots(
+                    video_path, chapters, markdown
+                )
+                span.set_attribute("processed_markdown", markdown)
+            else:
+                # Fallback to old logic: Extract screenshots from markdown markers
+                trace_info.info({"message": "Generating screenshots from markdown markers"})
+                markdown, extracted_screenshots = await video_processor.extract_screenshots_as_images(
+                    markdown, video_path
+                )
+                span.set_attribute("processed_markdown_2", markdown)
+
             trace_info.info({
                 "screenshot_count": len(extracted_screenshots),
                 "message": "Screenshot processing completed"

@@ -425,16 +425,15 @@ class Agent(BaseSearchableAgent):
                         for r in self.yield_complete_message(system_message):
                             yield r
                         messages.append(MessageDto.model_validate({"message": system_message}))
-
-            user_message: MessageDto = MessageDto.model_validate({
-                "message": {"role": "user", "content": agent_request.query},
-                "attrs": agent_request.model_dump(exclude_none=True, mode="json"),
-            })
-            user_message = await UserQueryPreprocessor.with_related_resources_(user_message, tool_executor.config)
-
-            messages.append(user_message)
-            for r in self.yield_complete_message(user_message.message, user_message.attrs):
-                yield r
+            if messages[-1].message['role'] != 'user':
+                user_message: MessageDto = MessageDto.model_validate({
+                    "message": {"role": "user", "content": agent_request.query},
+                    "attrs": agent_request.model_dump(exclude_none=True, mode="json"),
+                })
+                messages.append(user_message)
+                for r in self.yield_complete_message(user_message.message, user_message.attrs):
+                    yield r
+            await UserQueryPreprocessor.with_related_resources_(messages[-1], tool_executor.config)
 
             while messages[-1].message['role'] != 'assistant':
                 async for chunk in self.chat(

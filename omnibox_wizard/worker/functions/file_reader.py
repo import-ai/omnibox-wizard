@@ -12,6 +12,7 @@ from omnibox_wizard.worker.functions.file_readers.audio_reader import ASRClient,
 from omnibox_wizard.worker.functions.file_readers.md_reader import MDReader
 from omnibox_wizard.worker.functions.file_readers.office_reader import OfficeReader, OfficeOperatorClient
 from omnibox_wizard.worker.functions.file_readers.pdf_reader import PDFReader, FileType
+from omnibox_wizard.worker.functions.file_readers.plain_reader import read_text_file
 from omnibox_wizard.worker.functions.file_readers.utils import guess_extension
 from omnibox_wizard.worker.functions.file_readers.video_reader import VideoReader
 
@@ -55,8 +56,7 @@ class Convertor:
         elif mime_ext == ".md":
             return self.md_reader.convert(filepath)
         elif mime_ext == ".plain":
-            with open(filepath, 'r') as f:
-                markdown: str = f.read()
+            markdown: str = read_text_file(filepath)
         elif mime_ext in [".wav", ".mp3", ".pcm", ".opus", ".webm", ".m4a"]:
             if mime_ext == ".m4a":
                 filepath = self.m4a_convertor.convert(filepath)
@@ -80,7 +80,6 @@ class FileReader(BaseFunction):
             worker_config=config,
         )
 
-
     async def get_file_info(self, namespace_id: str, resource_id: str):
         try:
             async with httpx.AsyncClient(base_url=self.base_url) as client:
@@ -90,7 +89,6 @@ class FileReader(BaseFunction):
                 return file_info
         except httpx.HTTPStatusError as e:
             return None
-
 
     async def download(self, namespace_id: str, resource_id: str, target: str):
         file_info = await self.get_file_info(namespace_id, resource_id)
@@ -105,7 +103,6 @@ class FileReader(BaseFunction):
                     async for chunk in response.aiter_bytes():
                         f.write(chunk)
 
-
     async def download_old(self, resource_id: str, target: str):
         async with httpx.AsyncClient(base_url=self.base_url) as client:
             async with client.stream('GET', f'/internal/api/v1/resources/files/{resource_id}') as response:
@@ -113,7 +110,6 @@ class FileReader(BaseFunction):
                 with open(target, 'wb') as f:
                     async for chunk in response.aiter_bytes():
                         f.write(chunk)
-
 
     async def run(self, task: Task, trace_info: TraceInfo) -> dict:
         task_input: dict = task.input

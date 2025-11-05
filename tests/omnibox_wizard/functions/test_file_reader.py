@@ -5,13 +5,16 @@ import tempfile
 import pytest
 from dotenv import load_dotenv
 
+from common.trace_info import TraceInfo
 from omnibox_wizard.common import project_root
 from omnibox_wizard.wizard.config import OpenAIConfig
 from omnibox_wizard.worker.entity import Task
 from omnibox_wizard.worker.functions.file_reader import Convertor
 from omnibox_wizard.worker.worker import Worker
 from tests.omnibox_wizard.helper.backend_client import BackendClient
-from tests.omnibox_wizard.helper.fixture import backend_client
+from tests.omnibox_wizard.helper.fixture import backend_client, remote_worker_config, trace_info
+from worker.config import WorkerConfig
+from worker.functions.file_readers.utils import guess_extension
 
 load_dotenv()
 
@@ -75,7 +78,7 @@ async def test_file_reader(worker: Worker, uploaded_file: str):
 
 
 @pytest.fixture(scope="function")
-def convertor() -> Convertor:
+def convertor(remote_worker_config: WorkerConfig) -> Convertor:
     return Convertor(
         office_operator_base_url=os.environ["OBW_TASK_OFFICE_OPERATOR_BASE_URL"],
         asr_config=OpenAIConfig(
@@ -84,16 +87,20 @@ def convertor() -> Convertor:
             base_url=os.environ["OBW_TASK_ASR_BASE_URL"],
         ),
         pdf_reader_base_url=os.environ["OBW_TASK_PDF_READER_BASE_URL"],
+        docling_base_url=os.environ["OBW_TASK_DOCLING_BASE_URL"],
+        worker_config=remote_worker_config,
     )
 
 
 @pytest.mark.parametrize("filename", [
     # "example.doc",
     # "test.mp3",
-    "test.docx",
+    # "test.docx",
+    "file_reader/example.txt",
 ])
-async def test_convertor(convertor: Convertor, filename):
+async def test_convertor(convertor: Convertor, filename, trace_info: TraceInfo):
     filepath: str = project_root.path(os.path.join("tests/omnibox_wizard/resources/files", filename))
     mimetype, _ = mimetypes.guess_type(filepath)
-    markdown, images = await convertor.convert(filepath, os.path.splitext(filepath)[1], mimetype)
+    mime_ext = guess_extension(mimetype)
+    markdown, images, d = await convertor.convert(filepath, mime_ext, mimetype, trace_info)
     print(markdown)

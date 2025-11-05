@@ -1,6 +1,7 @@
 import frontmatter
 
 from omnibox_wizard.worker.entity import Image
+from omnibox_wizard.worker.functions.file_readers.plain_reader import read_text_file
 
 
 def exclude_none(d: dict) -> dict:
@@ -22,8 +23,8 @@ def exclude_empty(d: dict) -> dict:
 class MDReader:
     @classmethod
     def convert(cls, file_path: str) -> tuple[str, list[Image], dict]:
-        with open(file_path, 'r', encoding='utf-8') as f:
-            post = frontmatter.load(f)
+        content = read_text_file(file_path)
+        post = frontmatter.loads(content)
 
         markdown_content = post.content
         metadata = dict(post.metadata)

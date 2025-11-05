@@ -2,6 +2,7 @@ import os
 import tempfile
 
 import httpx
+from httpx import AsyncHTTPTransport
 
 from omnibox_wizard.common.trace_info import TraceInfo
 from omnibox_wizard.wizard.config import OpenAIConfig
@@ -82,7 +83,7 @@ class FileReader(BaseFunction):
 
     async def get_file_info(self, namespace_id: str, resource_id: str):
         try:
-            async with httpx.AsyncClient(base_url=self.base_url) as client:
+            async with httpx.AsyncClient(base_url=self.base_url, transport=AsyncHTTPTransport(retries=3)) as client:
                 response = await client.get(f'/internal/api/v1/namespaces/{namespace_id}/resources/{resource_id}/file')
                 response.raise_for_status()
                 file_info = response.json()

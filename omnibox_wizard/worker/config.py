@@ -21,16 +21,25 @@ class FunctionTimeoutConfig(BaseModel):
     collect: int = Field(default=None, description="Timeout for collect function")
     upsert_index: int = Field(default=60, description="Timeout for upsert_index function")
     delete_index: int = Field(default=60, description="Timeout for delete_index function")
-    file_reader: int = Field(default=None, description="Timeout for file_reader function")
+    file_reader: int = Field(default=600, description="Timeout for file_reader function")
     upsert_message_index: int = Field(default=60, description="Timeout for upsert_message_index function")
     delete_conversation: int = Field(default=60, description="Timeout for delete_conversation function")
     extract_tags: int = Field(default=60, description="Timeout for extract_tags function")
     generate_title: int = Field(default=60, description="Timeout for generate_title function")
-    generate_video_note: int = Field(default=None, description="Timeout for generate_video_note function")
+    generate_video_note: int = Field(default=600, description="Timeout for generate_video_note function")
 
     def get_timeout(self, function_name: str) -> int | None:
         """Get timeout for a specific function, returns None if not configured."""
         return getattr(self, function_name, None)
+
+
+class FileUploaderConfig(BaseModel):
+    bucket: str = Field(default=None, description="S3/OSS bucket name")
+    access_key: str = Field(default=None, description="Access key ID")
+    secret_key: str = Field(default=None, description="Secret access key")
+    endpoint: str = Field(default=None, description="Endpoint URL (e.g., https://oss-cn-hangzhou.aliyuncs.com)")
+    prefix: str = Field(default="temp-uploads", description="Key prefix for uploaded files")
+    expire_hours: int = Field(default=24, description="Presigned URL expiration hours")
 
 
 class TaskConfig(BaseModel):
@@ -42,6 +51,8 @@ class TaskConfig(BaseModel):
     spliter: SpliterConfig = Field(default_factory=SpliterConfig)
     office_operator_base_url: str = Field(default=None)
     asr: OpenAIConfig = Field(default=None)
+    file_uploader: FileUploaderConfig = Field(
+        default_factory=FileUploaderConfig, description="File uploader configuration to oss")
     pdf_reader_base_url: str = Field(default=None)
     docling_base_url: str = Field(default=None)
     video_dl_base_url: str = Field(default=None, description="Base URL for yt-dlp service")

@@ -33,17 +33,8 @@ class BilibiliDownloader(BaseDownloader):
             # Download video first and get result
             video_download_result = await self._download_video(url, video_id, output_path, cookies)
 
-            # If video has subtitles, no need to extract/download audio
-            if len(video_download_result.subtitles) > 0:
-                return video_download_result, None
-
-            # No subtitles, need audio for ASR
-            if force_download_audio:
-                audio_path = await self._download_audio(url, video_id, output_path)
-                audio_path = audio_path.file_path
-            else:
-                video_processor = VideoProcessor(output_dir)
-                audio_path = await video_processor.extract_audio(video_download_result.file_path, output_format="wav")
+            video_processor = VideoProcessor(output_dir)
+            audio_path = await video_processor.extract_audio(video_download_result.file_path, output_format="wav")
 
             return video_download_result, audio_path
         else:

@@ -6,7 +6,7 @@ from httpx import AsyncHTTPTransport
 
 from omnibox_wizard.common.trace_info import TraceInfo
 from omnibox_wizard.wizard.config import OpenAIConfig
-from omnibox_wizard.worker.config import WorkerConfig
+from omnibox_wizard.worker.config import WorkerConfig, FileUploaderConfig
 from omnibox_wizard.worker.entity import Task, Image
 from omnibox_wizard.worker.functions.base_function import BaseFunction
 from omnibox_wizard.worker.functions.file_readers.audio_reader import ASRClient, M4AConvertor
@@ -23,6 +23,7 @@ class Convertor:
             self,
             office_operator_base_url: str,
             asr_config: OpenAIConfig,
+            file_upload_config: FileUploaderConfig,
             pdf_reader_base_url: str,
             docling_base_url: str,
             worker_config: WorkerConfig,
@@ -32,6 +33,7 @@ class Convertor:
         self.asr_client: ASRClient = ASRClient(
             model=asr_config.model,
             base_url=asr_config.base_url,
+            file_upload_config=file_upload_config,
             headers={"Authorization": f"Bearer {asr_config.api_key}"},
         )
         self.pdf_reader: PDFReader = PDFReader(base_url=pdf_reader_base_url)
@@ -61,7 +63,7 @@ class Convertor:
         elif mime_ext in [".wav", ".mp3", ".pcm", ".opus", ".webm", ".m4a"]:
             if mime_ext == ".m4a":
                 filepath = self.m4a_convertor.convert(filepath)
-            markdown: str = await self.asr_client.transcribe(filepath, mimetype)
+            markdown: str = await self.asr_client.transcribe(filepath)
         elif mime_ext in [".mp4", ".avi", ".mov", ".mkv", ".flv", ".wmv", ".webm"]:
             return await self.video_reader.convert(filepath, trace_info, **kwargs)
         else:
@@ -76,6 +78,7 @@ class FileReader(BaseFunction):
         self.convertor: Convertor = Convertor(
             office_operator_base_url=config.task.office_operator_base_url,
             asr_config=config.task.asr,
+            file_upload_config=config.task.file_uploader,
             pdf_reader_base_url=config.task.pdf_reader_base_url,
             docling_base_url=config.task.docling_base_url,
             worker_config=config,

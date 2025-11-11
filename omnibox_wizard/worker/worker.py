@@ -19,7 +19,6 @@ from omnibox_wizard.worker.functions.html_reader import HTMLReaderV2
 from omnibox_wizard.worker.functions.index import DeleteConversation, UpsertIndex, DeleteIndex, UpsertMessageIndex
 from omnibox_wizard.worker.functions.tag_extractor import TagExtractor
 from omnibox_wizard.worker.functions.title_generator import TitleGenerator
-from omnibox_wizard.worker.functions.video_note_generator import VideoNoteGenerator
 from omnibox_wizard.worker.health_tracker import HealthTracker
 from omnibox_wizard.worker.task_manager import TaskManager
 
@@ -34,16 +33,17 @@ class Worker:
         self.health_tracker = health_tracker
         self.task_manager = TaskManager(config)
 
+        self.file_reader: FileReader = FileReader(config)
+
         self.worker_dict: dict[str, BaseFunction] = {
             "collect": HTMLReaderV2(config),
             "upsert_index": UpsertIndex(config),
             "delete_index": DeleteIndex(config),
-            "file_reader": FileReader(config),
+            "file_reader": self.file_reader,
             "upsert_message_index": UpsertMessageIndex(config),
             "delete_conversation": DeleteConversation(config),
             "extract_tags": TagExtractor(config),
             "generate_title": TitleGenerator(config),
-            "generate_video_note": VideoNoteGenerator(config),
         }
 
         functions_enabled = set(self.worker_dict.keys())

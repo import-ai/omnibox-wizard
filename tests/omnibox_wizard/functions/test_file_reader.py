@@ -81,14 +81,7 @@ async def test_file_reader(worker: Worker, uploaded_file: str):
 def convertor(remote_worker_config: WorkerConfig) -> Convertor:
     return Convertor(
         office_operator_base_url=os.environ["OBW_TASK_OFFICE_OPERATOR_BASE_URL"],
-        asr_config=OpenAIConfig(
-            api_key=os.environ["OBW_TASK_ASR_API_KEY"],
-            model=os.environ["OBW_TASK_ASR_MODEL"],
-            base_url=os.environ["OBW_TASK_ASR_BASE_URL"],
-        ),
-        pdf_reader_base_url=os.environ["OBW_TASK_PDF_READER_BASE_URL"],
         docling_base_url=os.environ["OBW_TASK_DOCLING_BASE_URL"],
-        worker_config=remote_worker_config,
     )
 
 

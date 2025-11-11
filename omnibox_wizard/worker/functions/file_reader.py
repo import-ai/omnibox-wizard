@@ -5,67 +5,52 @@ import httpx
 from httpx import AsyncHTTPTransport
 
 from omnibox_wizard.common.trace_info import TraceInfo
-from omnibox_wizard.wizard.config import OpenAIConfig
-from omnibox_wizard.worker.config import WorkerConfig, FileUploaderConfig
+from omnibox_wizard.worker.config import WorkerConfig
 from omnibox_wizard.worker.entity import Task, Image
 from omnibox_wizard.worker.functions.base_function import BaseFunction
-from omnibox_wizard.worker.functions.file_readers.audio_reader import ASRClient, M4AConvertor
 from omnibox_wizard.worker.functions.file_readers.md_reader import MDReader
 from omnibox_wizard.worker.functions.file_readers.office_reader import OfficeReader, OfficeOperatorClient
-from omnibox_wizard.worker.functions.file_readers.pdf_reader import PDFReader, FileType
 from omnibox_wizard.worker.functions.file_readers.plain_reader import read_text_file
 from omnibox_wizard.worker.functions.file_readers.utils import guess_extension
-from omnibox_wizard.worker.functions.file_readers.video_reader import VideoReader
 
 
 class Convertor:
     def __init__(
             self,
-            office_operator_base_url: str,
-            asr_config: OpenAIConfig,
-            file_upload_config: FileUploaderConfig,
-            pdf_reader_base_url: str,
-            docling_base_url: str,
-            worker_config: WorkerConfig,
+            docling_base_url: str | None = None,
+            office_operator_base_url: str | None = None,
     ):
-        self.office_reader: OfficeReader = OfficeReader(base_url=docling_base_url)
-        self.office_operator_base_url: str = office_operator_base_url
-        self.asr_client: ASRClient = ASRClient(
-            model=asr_config.model,
-            base_url=asr_config.base_url,
-            file_upload_config=file_upload_config,
-            headers={"Authorization": f"Bearer {asr_config.api_key}"},
-        )
-        self.pdf_reader: PDFReader = PDFReader(base_url=pdf_reader_base_url)
-        self.m4a_convertor: M4AConvertor = M4AConvertor()
-        self.video_reader: VideoReader = VideoReader(worker_config)
+        self.office_reader: OfficeReader | None = OfficeReader(base_url=docling_base_url) if docling_base_url else None
+        self.office_operator_base_url: str | None = office_operator_base_url
         self.md_reader: MDReader = MDReader()
+
+    @property
+    def supported_extensions(self) -> list[str]:
+        extensions = ['.md', '.txt']
+        if self.office_reader:
+            extensions.extend(['.pptx', '.docx'])
+            if self.office_operator_base_url:
+                extensions.extend([".ppt", '.doc'])
+        return extensions
 
     async def convert(self, filepath: str, mime_ext: str, mimetype: str, trace_info: TraceInfo, **kwargs) -> tuple[
         str, list[Image], dict]:
-        if mime_ext in [".pptx", ".docx", ".ppt", ".doc"]:
+        if mime_ext in [".pptx", ".docx", ".ppt", ".doc"] and self.office_reader:
             path = filepath
             ext = mime_ext
             if mime_ext in [".ppt", ".doc"]:
+                if not self.office_operator_base_url:
+                    raise ValueError(f"unsupported_type: {mime_ext}")
                 path: str = filepath + "x"
                 ext = mime_ext + "x"
                 async with OfficeOperatorClient(base_url=self.office_operator_base_url) as client:
                     await client.migrate(filepath, mime_ext, path, mimetype)
             markdown, images = await self.office_reader.convert(path, ext, mimetype)
             return markdown, images, {}
-        elif mime_ext in [".pdf"]:
-            markdown, images = await self.pdf_reader.convert(filepath, page_type=FileType.IMAGE)
-            return markdown, images, {}
         elif mime_ext == ".md":
             return self.md_reader.convert(filepath)
         elif mime_ext == ".plain":
             markdown: str = read_text_file(filepath)
-        elif mime_ext in [".wav", ".mp3", ".pcm", ".opus", ".webm", ".m4a"]:
-            if mime_ext == ".m4a":
-                filepath = self.m4a_convertor.convert(filepath)
-            markdown: str = await self.asr_client.transcribe(filepath)
-        elif mime_ext in [".mp4", ".avi", ".mov", ".mkv", ".flv", ".wmv", ".webm"]:
-            return await self.video_reader.convert(filepath, trace_info, **kwargs)
         else:
             raise ValueError(f"unsupported_type: {mime_ext}")
         return markdown, [], {}
@@ -77,12 +62,12 @@ class FileReader(BaseFunction):
 
         self.convertor: Convertor = Convertor(
             office_operator_base_url=config.task.office_operator_base_url,
-            asr_config=config.task.asr,
-            file_upload_config=config.task.file_uploader,
-            pdf_reader_base_url=config.task.pdf_reader_base_url,
             docling_base_url=config.task.docling_base_url,
-            worker_config=config,
         )
+
+    @property
+    def supported_extensions(self) -> list[str]:
+        return self.convertor.supported_extensions
 
     async def get_file_info(self, namespace_id: str, resource_id: str):
         try:
@@ -91,7 +76,7 @@ class FileReader(BaseFunction):
                 response.raise_for_status()
                 file_info = response.json()
                 return file_info
-        except httpx.HTTPStatusError as e:
+        except httpx.HTTPStatusError:
             return None
 
     async def download(self, namespace_id: str, resource_id: str, target: str):

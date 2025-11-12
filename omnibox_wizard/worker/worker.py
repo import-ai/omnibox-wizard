@@ -20,6 +20,7 @@ from omnibox_wizard.worker.functions.index import DeleteConversation, UpsertInde
 from omnibox_wizard.worker.functions.tag_extractor import TagExtractor
 from omnibox_wizard.worker.functions.title_generator import TitleGenerator
 from omnibox_wizard.worker.functions.video_note_generator import VideoNoteGenerator
+from omnibox_wizard.worker.functions.property_generator import PropertyGenerator
 from omnibox_wizard.worker.health_tracker import HealthTracker
 from omnibox_wizard.worker.task_manager import TaskManager
 
@@ -44,6 +45,7 @@ class Worker:
             "extract_tags": TagExtractor(config),
             "generate_title": TitleGenerator(config),
             "generate_video_note": VideoNoteGenerator(config),
+            "generate_properties": PropertyGenerator(config),
         }
 
         functions_enabled = set(self.worker_dict.keys())

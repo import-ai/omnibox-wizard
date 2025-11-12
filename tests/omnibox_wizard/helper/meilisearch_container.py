@@ -4,7 +4,7 @@ import tomllib
 import httpx
 from testcontainers.core.container import DockerContainer
 
-from omnibox_wizard.common import project_root
+from common import project_root
 
 
 class MeiliSearchContainer(DockerContainer):

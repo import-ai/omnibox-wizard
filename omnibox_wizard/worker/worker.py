@@ -7,9 +7,9 @@ import httpx
 from opentelemetry import trace, propagate
 from opentelemetry.trace import Status, StatusCode
 
-from omnibox_wizard.common.exception import CommonException
-from omnibox_wizard.common.logger import get_logger
-from omnibox_wizard.common.trace_info import TraceInfo
+from common.exception import CommonException
+from common.logger import get_logger
+from common.trace_info import TraceInfo
 from omnibox_wizard.worker.callback_util import CallbackUtil
 from omnibox_wizard.worker.config import WorkerConfig
 from omnibox_wizard.worker.entity import Task

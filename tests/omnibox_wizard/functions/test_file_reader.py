@@ -6,7 +6,7 @@ import pytest
 from dotenv import load_dotenv
 
 from common.trace_info import TraceInfo
-from omnibox_wizard.common import project_root
+from common import project_root
 from omnibox_wizard.worker.entity import Task
 from omnibox_wizard.worker.functions.file_reader import Convertor
 from omnibox_wizard.worker.worker import Worker

@@ -13,7 +13,7 @@ from meilisearch_python_sdk.models.settings import (
 from openai import AsyncOpenAI
 from opentelemetry import propagate, trace
 
-from omnibox_wizard.common.trace_info import TraceInfo
+from common.trace_info import TraceInfo
 from omnibox_wizard.wizard.config import VectorConfig
 from omnibox_wizard.wizard.grimoire.entity.chunk import Chunk, ResourceChunkRetrieval
 from omnibox_wizard.wizard.grimoire.entity.index_record import IndexRecord, IndexRecordType

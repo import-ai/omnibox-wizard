@@ -2,8 +2,8 @@ import os
 
 import httpx
 
-from omnibox_wizard.common.logger import get_logger
-from omnibox_wizard.common.trace_info import TraceInfo
+from common.logger import get_logger
+from common.trace_info import TraceInfo
 from tests.omnibox_wizard.helper.fixture import client, worker_config
 from tests.omnibox_wizard.helper.fixture import trace_info
 from omnibox_wizard.worker.config import WorkerConfig, ENV_PREFIX

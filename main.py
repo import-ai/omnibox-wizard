@@ -9,9 +9,9 @@ from opentelemetry.sdk.resources import Resource, SERVICE_NAME, DEPLOYMENT_ENVIR
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
-from omnibox_wizard.common import project_root
-from omnibox_wizard.common.config_loader import Loader
-from omnibox_wizard.common.logger import get_logger
+from common import project_root
+from common.config_loader import Loader
+from common.logger import get_logger
 from omnibox_wizard.worker.config import WorkerConfig, ENV_PREFIX
 from omnibox_wizard.worker.health_server import HealthServer
 from omnibox_wizard.worker.health_tracker import HealthTracker

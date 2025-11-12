@@ -6,8 +6,8 @@ from typing import Literal
 import httpx
 from opentelemetry import trace
 
-from omnibox_wizard.common.exception import CommonException
-from omnibox_wizard.common.trace_info import TraceInfo
+from common.exception import CommonException
+from common.trace_info import TraceInfo
 from omnibox_wizard.wizard.grimoire.entity.retrieval import Citation, BaseRetrieval
 from omnibox_wizard.wizard.grimoire.entity.tools import BaseTool
 from omnibox_wizard.wizard.grimoire.retriever.base import BaseRetriever, SearchFunction

@@ -4,10 +4,10 @@ from typing import Literal
 from openai.types.chat import ChatCompletion
 from opentelemetry import propagate, trace
 
-from omnibox_wizard.common import project_root
-from omnibox_wizard.common.json_parser import parse_json
-from omnibox_wizard.common.template_render import render_template
-from omnibox_wizard.common.trace_info import TraceInfo
+from common import project_root
+from common.json_parser import parse_json
+from common.template_render import render_template
+from common.trace_info import TraceInfo
 from omnibox_wizard.wizard.config import GrimoireOpenAIConfig
 
 tracer = trace.get_tracer(__name__)

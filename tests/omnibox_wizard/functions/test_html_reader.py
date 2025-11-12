@@ -4,8 +4,8 @@ import os
 import pandas as pd
 import pytest
 
-from omnibox_wizard.common import project_root
-from omnibox_wizard.common.trace_info import TraceInfo
+from common import project_root
+from common.trace_info import TraceInfo
 from omnibox_wizard.worker.entity import Task
 from omnibox_wizard.worker.functions.html_reader import HTMLReaderV2
 from tests.omnibox_wizard.helper.fixture import trace_info, remote_worker_config

@@ -4,8 +4,8 @@ from typing import AsyncIterable
 from openai.types.chat import ChatCompletionAssistantMessageParam
 from opentelemetry import trace
 
-from omnibox_wizard.common.model_dump import model_dump
-from omnibox_wizard.common.trace_info import TraceInfo
+from common.model_dump import model_dump
+from common.trace_info import TraceInfo
 from omnibox_wizard.wizard.grimoire.entity.api import (
     ChatBaseResponse, ChatEOSResponse, ChatBOSResponse, ChatDeltaResponse, MessageDto
 )

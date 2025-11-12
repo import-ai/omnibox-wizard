@@ -4,7 +4,7 @@ import tempfile
 import httpx
 from httpx import AsyncHTTPTransport
 
-from omnibox_wizard.common.trace_info import TraceInfo
+from common.trace_info import TraceInfo
 from omnibox_wizard.worker.config import WorkerConfig
 from omnibox_wizard.worker.entity import Task, Image
 from omnibox_wizard.worker.functions.base_function import BaseFunction

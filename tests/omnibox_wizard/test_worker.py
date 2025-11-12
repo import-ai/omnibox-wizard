@@ -1,7 +1,7 @@
 import httpx
 import pytest
 
-from omnibox_wizard.common import project_root
+from common import project_root
 from omnibox_wizard.worker.config import WorkerConfig
 from omnibox_wizard.worker.entity import Task
 from omnibox_wizard.worker.worker import Worker

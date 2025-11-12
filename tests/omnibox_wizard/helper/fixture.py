@@ -7,10 +7,10 @@ import pytest
 from dotenv import load_dotenv
 from fastapi.testclient import TestClient
 
-from omnibox_wizard.common import project_root
-from omnibox_wizard.common.config_loader import Loader
-from omnibox_wizard.common.logger import get_logger
-from omnibox_wizard.common.trace_info import TraceInfo
+from common import project_root
+from common.config_loader import Loader
+from common.logger import get_logger
+from common.trace_info import TraceInfo
 from tests.omnibox_wizard.helper.backend_client import BackendClient
 from tests.omnibox_wizard.helper.chroma_container import ChromaContainer
 from tests.omnibox_wizard.helper.meilisearch_container import MeiliSearchContainer

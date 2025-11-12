@@ -3,7 +3,7 @@ from urllib.parse import urlparse
 
 from pydantic import BaseModel, Field
 
-from omnibox_wizard.common.utils import remove_continuous_break_lines
+from common.utils import remove_continuous_break_lines
 
 
 def get_domain(url: str) -> str:

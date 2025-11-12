@@ -2,7 +2,7 @@ from typing import List
 
 from langchain_text_splitters import MarkdownTextSplitter
 
-from omnibox_wizard.common.trace_info import TraceInfo
+from common.trace_info import TraceInfo
 from omnibox_wizard.worker.config import WorkerConfig
 from omnibox_wizard.worker.entity import Task
 from omnibox_wizard.wizard.grimoire.entity.chunk import Chunk, ChunkType

@@ -4,8 +4,8 @@ from typing import Callable, Any
 import httpx
 from opentelemetry import trace
 
-from omnibox_wizard.common.exception import CommonException
-from omnibox_wizard.common.trace_info import TraceInfo
+from common.exception import CommonException
+from common.trace_info import TraceInfo
 from omnibox_wizard.worker.config import WorkerConfig
 from omnibox_wizard.worker.entity import Task
 

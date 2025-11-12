@@ -1,4 +1,4 @@
-from omnibox_wizard.common.trace_info import TraceInfo
+from common.trace_info import TraceInfo
 from omnibox_wizard.wizard.grimoire.common_ai import CommonAI
 from omnibox_wizard.worker.config import WorkerConfig
 from omnibox_wizard.worker.entity import Task

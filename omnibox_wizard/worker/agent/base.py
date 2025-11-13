@@ -8,9 +8,9 @@ from openai.types.chat import ChatCompletionChunk
 from opentelemetry import propagate
 from pydantic import BaseModel
 
-from omnibox_wizard.common import project_root
-from omnibox_wizard.common.template_parser import TemplateParser
-from omnibox_wizard.common.trace_info import TraceInfo
+from common import project_root
+from common.template_parser import TemplateParser
+from common.trace_info import TraceInfo
 from omnibox_wizard.wizard.config import OpenAIConfig
 
 InputType = TypeVar("InputType", bound=BaseModel)

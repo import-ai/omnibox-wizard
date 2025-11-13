@@ -3,8 +3,8 @@ from json import dumps as lib_dumps
 
 from fastapi import APIRouter, Depends
 
-from omnibox_wizard.common.config_loader import Loader
-from omnibox_wizard.common.trace_info import TraceInfo
+from common.config_loader import Loader
+from common.trace_info import TraceInfo
 from omnibox_wizard.wizard.api.depends import get_trace_info
 from omnibox_wizard.wizard.api.entity import (
     SearchRequest,

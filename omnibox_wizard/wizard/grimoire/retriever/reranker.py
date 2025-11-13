@@ -5,7 +5,7 @@ import httpx
 from opentelemetry import trace
 from pydantic import BaseModel
 
-from omnibox_wizard.common.trace_info import TraceInfo
+from common.trace_info import TraceInfo
 from omnibox_wizard.wizard.config import OpenAIConfig, RerankerConfig
 from omnibox_wizard.wizard.grimoire.entity.retrieval import BaseRetrieval
 from omnibox_wizard.wizard.grimoire.entity.tools import ToolExecutorConfig

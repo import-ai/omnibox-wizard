@@ -6,8 +6,8 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sse_starlette import EventSourceResponse
 
-from omnibox_wizard.common.config_loader import Loader
-from omnibox_wizard.common.trace_info import TraceInfo
+from common.config_loader import Loader
+from common.trace_info import TraceInfo
 from omnibox_wizard.wizard.api.depends import get_trace_info
 from omnibox_wizard.wizard.config import Config, ENV_PREFIX
 from omnibox_wizard.wizard.grimoire.agent.ask import Ask

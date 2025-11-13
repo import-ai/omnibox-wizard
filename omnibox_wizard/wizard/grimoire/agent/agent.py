@@ -10,10 +10,10 @@ from openai.types.chat import ChatCompletionChunk
 from openai.types.chat.chat_completion_chunk import ChoiceDeltaToolCall
 from opentelemetry import propagate, trace
 
-from omnibox_wizard.common import project_root
-from omnibox_wizard.common.template_parser import TemplateParser
-from omnibox_wizard.common.trace_info import TraceInfo
-from omnibox_wizard.common.utils import remove_continuous_break_lines
+from common import project_root
+from common.template_parser import TemplateParser
+from common.trace_info import TraceInfo
+from common.utils import remove_continuous_break_lines
 from omnibox_wizard.wizard.config import Config
 from omnibox_wizard.wizard.grimoire.agent.stream_parser import StreamParser, DeltaOperation
 from omnibox_wizard.wizard.grimoire.agent.tool_executor import ToolExecutor

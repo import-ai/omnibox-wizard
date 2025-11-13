@@ -5,7 +5,7 @@ import httpcore
 import httpx
 import shortuuid
 
-from omnibox_wizard.common.utils import remove_continuous_break_lines
+from common.utils import remove_continuous_break_lines
 from omnibox_wizard.worker.entity import Image
 from omnibox_wizard.worker.functions.file_readers.utils import guess_extension
 

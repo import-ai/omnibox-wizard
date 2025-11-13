@@ -13,8 +13,8 @@ from opentelemetry.sdk.resources import Resource, SERVICE_NAME, DEPLOYMENT_ENVIR
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
-from omnibox_wizard.common import project_root
-from omnibox_wizard.common.exception import CommonException
+from common import project_root
+from common.exception import CommonException
 
 
 def patch_open_telemetry(app: FastAPI):

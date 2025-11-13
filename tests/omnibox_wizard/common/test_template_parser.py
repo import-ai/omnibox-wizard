@@ -1,5 +1,5 @@
-from omnibox_wizard.common import project_root
-from omnibox_wizard.common.template_parser import TemplateParser
+from common import project_root
+from common.template_parser import TemplateParser
 
 
 def test_template_parser():

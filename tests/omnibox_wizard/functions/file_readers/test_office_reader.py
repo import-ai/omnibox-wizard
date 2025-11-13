@@ -4,7 +4,7 @@ import os
 import pytest
 from dotenv import load_dotenv
 
-from omnibox_wizard.common import project_root
+from common import project_root
 from omnibox_wizard.worker.functions.file_readers.office_reader import OfficeReader
 
 load_dotenv()

@@ -12,7 +12,7 @@ from opentelemetry import trace
 from readability import Document
 from readability.cleaners import clean_attributes
 
-from omnibox_wizard.common.trace_info import TraceInfo
+from common.trace_info import TraceInfo
 from omnibox_wizard.worker.agent.html_content_extractor import HTMLContentExtractor
 from omnibox_wizard.worker.agent.html_title_extractor import HTMLTitleExtractor
 from omnibox_wizard.worker.config import WorkerConfig

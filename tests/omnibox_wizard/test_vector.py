@@ -3,7 +3,7 @@ from typing import List, Tuple
 
 import pytest
 
-from omnibox_wizard.common.config_loader import Loader
+from common.config_loader import Loader
 from omnibox_wizard.wizard.config import Config, ENV_PREFIX
 from omnibox_wizard.wizard.grimoire.entity.chunk import Chunk, ChunkType
 from tests.omnibox_wizard.helper.fixture import meilisearch_endpoint

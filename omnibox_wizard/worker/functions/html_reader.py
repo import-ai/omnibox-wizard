@@ -23,6 +23,7 @@ from omnibox_wizard.worker.functions.html_reader_processors.green_note import Gr
 from omnibox_wizard.worker.functions.html_reader_processors.okjike_m import OKJikeMProcessor
 from omnibox_wizard.worker.functions.html_reader_processors.okjike_web import OKJikeWebProcessor
 from omnibox_wizard.worker.functions.html_reader_processors.red_note import RedNoteProcessor
+from omnibox_wizard.worker.functions.html_reader_processors.x import XProcessor
 
 json_dumps = partial(jsonlib.dumps, separators=(",", ":"), ensure_ascii=False)
 tracer = trace.get_tracer("HTMLReaderV2")
@@ -70,6 +71,7 @@ class HTMLReaderV2(BaseFunction):
             RedNoteProcessor(config=config),
             OKJikeWebProcessor(config=config),
             OKJikeMProcessor(config=config),
+            XProcessor(config=config),
         ]
 
     @classmethod
@@ -229,9 +231,9 @@ class HTMLReaderV2(BaseFunction):
         raw_title: str = html_doc.title()
         if domain in self.CONTENT_SELECTOR:
             with tracer.start_as_current_span("content_selector"):
-                selected_html = self.content_selector(domain, BeautifulSoup(html, "html.parser")).prettify()
-                cleaned_html = clean_attributes(tounicode(Document(selected_html)._html(True), method="html"))
-                markdown = html2text(htmlmin.minify(cleaned_html, remove_empty_space=True), bodywidth=0).strip()
+                selected_html: str = self.content_selector(domain, BeautifulSoup(html, "html.parser")).prettify()
+                cleaned_html: str = clean_attributes(tounicode(Document(selected_html)._html(True), method="html"))
+                markdown: str = html2text(htmlmin.minify(cleaned_html, remove_empty_space=True), bodywidth=0).strip()
         else:
             html_summary: str = self.fix_lazy_images(html_doc.summary().strip())
             markdown: str = html2text(htmlmin.minify(html_summary, remove_empty_space=True), bodywidth=0).strip()

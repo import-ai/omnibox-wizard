@@ -11,25 +11,14 @@ from common import project_root
 from common.config_loader import Loader
 from common.logger import get_logger
 from common.trace_info import TraceInfo
-from tests.omnibox_wizard.helper.backend_client import BackendClient
-from tests.omnibox_wizard.helper.chroma_container import ChromaContainer
-from tests.omnibox_wizard.helper.meilisearch_container import MeiliSearchContainer
 from omnibox_wizard.wizard.api.server import app
 from omnibox_wizard.wizard.config import Config, ENV_PREFIX
 from omnibox_wizard.worker.config import WorkerConfig
 from omnibox_wizard.worker.worker import Worker
+from tests.omnibox_wizard.helper.backend_client import BackendClient
+from tests.omnibox_wizard.helper.meilisearch_container import MeiliSearchContainer
 
 logger = get_logger("fixture")
-
-
-@pytest.fixture(scope="function")
-def chromadb_endpoint() -> str:
-    with ChromaContainer(image="chromadb/chroma:1.0.7") as chromadb:
-        server_info: dict = chromadb.get_config()
-        endpoint: str = server_info["endpoint"]
-        os.environ[f"{ENV_PREFIX}_VECTOR_HOST"] = server_info["host"]
-        os.environ[f"{ENV_PREFIX}_VECTOR_PORT"] = server_info["port"]
-        yield endpoint
 
 
 @pytest.fixture(scope="function")
@@ -94,9 +83,6 @@ def worker_config(meilisearch_endpoint: str) -> WorkerConfig:
 @pytest.fixture(scope="function")
 def remote_config() -> Config:
     load_dotenv()
-
-    os.environ[f"{ENV_PREFIX}_VECTOR_HOST"], os.environ[f"{ENV_PREFIX}_VECTOR_PORT"] = "chromadb:8001".split(":")
-
     loader = Loader(Config, env_prefix=ENV_PREFIX)
     config = loader.load()
     yield config
@@ -105,9 +91,6 @@ def remote_config() -> Config:
 @pytest.fixture(scope="function")
 def remote_worker_config() -> WorkerConfig:
     load_dotenv()
-
-    os.environ[f"{ENV_PREFIX}_VECTOR_HOST"], os.environ[f"{ENV_PREFIX}_VECTOR_PORT"] = "chromadb:8001".split(":")
-
     loader = Loader(WorkerConfig, env_prefix=ENV_PREFIX)
     config = loader.load()
     yield config

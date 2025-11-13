@@ -262,4 +262,4 @@ def test_ask(client: httpx.Client, vector_db_init: bool, namespace_id: str, quer
 ])
 def test_condition(condition: dict):
     condition = Condition.model_validate(condition)
-    print(condition.to_chromadb_where())
+    print(condition.to_meili_where())

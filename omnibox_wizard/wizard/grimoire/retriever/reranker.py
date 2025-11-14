@@ -44,7 +44,7 @@ class RerankResponse(BaseModel):
 
 class Reranker:
     def __init__(self, config: RerankerConfig):
-        self.config: OpenAIConfig = config.openai
+        self.config: OpenAIConfig | None = config.openai
         self.k: int | None = config.k
         self.threshold: float | None = config.threshold
 
@@ -63,6 +63,8 @@ class Reranker:
                 unique_retrievals.append(retrieval)
         if not unique_retrievals:
             return []
+        if not self.config:
+            return unique_retrievals
 
         k = k or self.k
         threshold = threshold or self.threshold
@@ -125,7 +127,7 @@ def get_merged_description(tools: list[dict]) -> str:
 
 def get_tool_executor_config(
         tool_executor_config_list: list[ToolExecutorConfig],
-        reranker: Reranker | None = None,
+        reranker: Reranker,
 ) -> ToolExecutorConfig:
     funcs = [config["func"] for config in tool_executor_config_list]
     name = "search"

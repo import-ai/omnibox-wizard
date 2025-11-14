@@ -72,7 +72,7 @@ class SearXNGConfig(BaseModel):
 
 class ToolsConfig(BaseModel):
     searxng: SearXNGConfig
-    reranker: RerankerConfig = Field(default=None)
+    reranker: RerankerConfig = Field(default_factory=RerankerConfig)
 
 
 class Config(BaseModel):

@@ -173,7 +173,7 @@ class BaseSearchableAgent(BaseStreamable, ABC):
             base_url=config.tools.searxng.base_url, engines=config.tools.searxng.engines
         )
 
-        self.reranker: Reranker | None = Reranker(config.tools.reranker) if config.tools.reranker else None
+        self.reranker: Reranker = Reranker(config.tools.reranker)
 
         self.retriever_mapping: dict[str, BaseRetriever] = {
             each.name: each
@@ -195,7 +195,7 @@ class BaseSearchableAgent(BaseStreamable, ABC):
 
         if options.merge_search:
             tool_executor_config_list = [get_tool_executor_config(tool_executor_config_list, self.reranker)]
-        elif self.reranker and wrap_reranker:  # Add rerank to tool executor config if reranker_config is provided
+        elif wrap_reranker:
             for tool_executor_config in tool_executor_config_list:
                 tool_executor_config["func"] = self.reranker.wrap(
                     func=tool_executor_config["func"],

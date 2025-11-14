@@ -65,7 +65,7 @@ class HealthConfig(BaseModel):
 
 class WorkerConfig(BaseModel):
     vector: VectorConfig
-    task: TaskConfig
+    task: TaskConfig = Field(default_factory=TaskConfig)
     backend: BackendConfig
     callback: CallbackConfig = Field(default_factory=CallbackConfig)
     grimoire: GrimoireConfig = Field(default=None)

@@ -79,7 +79,7 @@ class FileReader(BaseFunction):
             await self.download_old(resource_id, target)
             return
 
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(transport=AsyncHTTPTransport(retries=3)) as client:
             async with client.stream('GET', file_info['public_url']) as response:
                 response.raise_for_status()
                 with open(target, 'wb') as f:

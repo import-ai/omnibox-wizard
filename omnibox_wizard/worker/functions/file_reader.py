@@ -2,7 +2,7 @@ import os
 import tempfile
 
 import httpx
-from httpx import AsyncHTTPTransport
+from httpx import AsyncHTTPTransport, Timeout
 
 from common.trace_info import TraceInfo
 from omnibox_wizard.worker.config import WorkerConfig
@@ -79,7 +79,7 @@ class FileReader(BaseFunction):
             await self.download_old(resource_id, target)
             return
 
-        async with httpx.AsyncClient(transport=AsyncHTTPTransport(retries=3)) as client:
+        async with httpx.AsyncClient(transport=AsyncHTTPTransport(retries=3), timeout=Timeout(30)) as client:
             async with client.stream('GET', file_info['public_url']) as response:
                 response.raise_for_status()
                 with open(target, 'wb') as f:

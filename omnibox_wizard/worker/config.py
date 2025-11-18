@@ -13,8 +13,7 @@ class SpliterConfig(BaseModel):
 
 
 class CallbackConfig(BaseModel):
-    chunk_size: int = Field(default=5242880, description="Chunk size for large callback payloads (default: 5MB)")
-    use_chunked: bool = Field(default=True, description="Enable chunked callback for large payloads")
+    payload_size_threshold: int = Field(default=5, description="Size threshold in MB for uploading payload to S3")
 
 
 class FunctionTimeoutConfig(BaseModel):

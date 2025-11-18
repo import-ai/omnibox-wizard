@@ -99,7 +99,7 @@ class Worker:
                     }
             ):
                 processed_task: Task = await self.process_task(task, trace_info)
-                await self.callback_util.send_callback(processed_task, trace_info)
+                await self.callback_util.send_callback(processed_task)
 
             if self.health_tracker:
                 self.health_tracker.update_worker_status(self.worker_id, "idle", datetime.now())

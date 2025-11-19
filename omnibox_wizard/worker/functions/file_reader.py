@@ -80,7 +80,7 @@ class FileReader(BaseFunction):
             return
 
         async with httpx.AsyncClient(transport=AsyncHTTPTransport(retries=3), timeout=Timeout(30)) as client:
-            async with client.stream('GET', file_info['public_url']) as response:
+            async with client.stream('GET', file_info['internal_url']) as response:
                 response.raise_for_status()
                 with open(target, 'wb') as f:
                     async for chunk in response.aiter_bytes():

@@ -8,8 +8,8 @@ from omnibox_wizard.wizard.api.wizard import init as grimoire_init
 
 app: FastAPI = app_factory(init_funcs=[grimoire_init, internal_init])
 
-if setup_opentelemetry("omnibox-wizard"):
-    fastapi_patch_opentelemetry(app)
-
 app.include_router(v1_router, tags=["Wizard API"])
 app.include_router(internal_router, tags=["Internal API"])
+
+if setup_opentelemetry("omnibox-wizard"):
+    fastapi_patch_opentelemetry(app)

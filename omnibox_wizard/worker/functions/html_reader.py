@@ -24,7 +24,7 @@ from omnibox_wizard.worker.functions.html_reader_processors.okjike_m import OKJi
 from omnibox_wizard.worker.functions.html_reader_processors.okjike_web import OKJikeWebProcessor
 from omnibox_wizard.worker.functions.html_reader_processors.red_note import RedNoteProcessor
 from omnibox_wizard.worker.functions.html_reader_processors.x import XProcessor
-from worker.functions.html_reader_processors.green_notice import GreenNoticeProcessor
+from omnibox_wizard.worker.functions.html_reader_processors.green_notice import GreenNoticeProcessor
 
 json_dumps = partial(jsonlib.dumps, separators=(",", ":"), ensure_ascii=False)
 tracer = trace.get_tracer("HTMLReaderV2")

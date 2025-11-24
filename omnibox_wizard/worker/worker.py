@@ -85,6 +85,7 @@ class Worker:
             trace_info.info({"message": "fetch_task"} | task.model_dump(include={"created_at", "started_at"}))
             trace_headers = task.payload.get("trace_headers", {}) if task.payload else {}
             parent_context = propagate.extract(trace_headers)
+            resource_id: str = task.payload.get("resource_id", None)
 
             with tracer.start_as_current_span(
                     f"worker.process_task.{task.function}",
@@ -96,7 +97,7 @@ class Worker:
                         "task.user_id": task.user_id,
                         "task.priority": task.priority,
                         "worker.id": str(self.worker_id),
-                    }
+                    } | ({"task.resource_id": resource_id} if resource_id else {}),
             ):
                 processed_task: Task = await self.process_task(task, trace_info)
                 await self.callback_util.send_callback(processed_task)

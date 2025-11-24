@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
 import httpx
-from httpx import AsyncClient
+from httpx import AsyncClient, AsyncHTTPTransport
 from opentelemetry import trace
 from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 from opentelemetry.trace import Status, StatusCode
@@ -22,7 +22,11 @@ class CallbackUtil:
 
     @asynccontextmanager
     async def backend_client(self) -> AsyncGenerator[AsyncClient, None]:
-        async with httpx.AsyncClient(base_url=self.config.backend.base_url) as client:
+        async with httpx.AsyncClient(
+                base_url=self.config.backend.base_url,
+                transport=AsyncHTTPTransport(retries=3),
+                timeout=30,
+        ) as client:
             HTTPXClientInstrumentor.instrument_client(client)
             yield client
 

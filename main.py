@@ -1,17 +1,11 @@
 import asyncio
-import os
 import tomllib
 from argparse import Namespace, ArgumentParser
-
-from opentelemetry import trace
-from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
-from opentelemetry.sdk.resources import Resource, SERVICE_NAME, DEPLOYMENT_ENVIRONMENT
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
 from common import project_root
 from common.config_loader import Loader
 from common.logger import get_logger
+from common.tracing import setup_opentelemetry
 from omnibox_wizard.worker.config import WorkerConfig, ENV_PREFIX
 from omnibox_wizard.worker.health_server import HealthServer
 from omnibox_wizard.worker.health_tracker import HealthTracker
@@ -19,24 +13,6 @@ from omnibox_wizard.worker.worker import Worker
 
 with project_root.open("pyproject.toml", "rb") as f:
     version = tomllib.load(f)["project"]["version"]
-
-
-def setup_opentelemetry():
-    if (base_endpoint := os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT", None)) is None:
-        return  # Skip OpenTelemetry setup if endpoint is not configured
-
-    resource = Resource.create(attributes={
-        SERVICE_NAME: "omnibox-wizard-worker",
-        DEPLOYMENT_ENVIRONMENT: os.environ.get("ENV", "unknown")
-    })
-    trace_provider = TracerProvider(resource=resource)
-
-    endpoint = base_endpoint + "/v1/traces"
-    otlp_exporter = OTLPSpanExporter(endpoint=endpoint)
-    span_processor = BatchSpanProcessor(otlp_exporter)
-
-    trace_provider.add_span_processor(span_processor)
-    trace.set_tracer_provider(trace_provider)
 
 
 def get_args() -> Namespace:
@@ -47,7 +23,7 @@ def get_args() -> Namespace:
 
 
 async def main():
-    setup_opentelemetry()
+    setup_opentelemetry("omnibox-wizard-worker")
 
     args = get_args()
     logger = get_logger("main")

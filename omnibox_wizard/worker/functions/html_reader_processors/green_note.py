@@ -14,7 +14,7 @@ class GreenNoteProcessor(HTMLReaderBaseProcessor):
     def hit(self, html: str, url: str) -> bool:
         parsed = urlparse(url)
         if parsed.netloc == 'mp.weixin.qq.com':
-            if parsed.path.startswith('/s/'):
+            if parsed.path.startswith('/s'):
                 soup = BeautifulSoup(html, "html.parser")
                 if soup.select("p#js_image_desc") or soup.select("div#js_image_content h1"):
                     return True
@@ -28,10 +28,7 @@ class GreenNoteProcessor(HTMLReaderBaseProcessor):
         h1_selection = soup.select("div#js_image_content h1")
         images = await self.img_selection_to_image(image_selection)
 
-        if h1_selection:
-            title: str = h1_selection[0].text.strip()
-        else:
-            title = "微信图文"
+        title: str = h1_selection[0].text.strip() if h1_selection else None
         markdown: str = "\n\n".join([f"![{i + 1}]({image.link})" for i, image in enumerate(images)])
         if content:
             markdown = markdown + "\n\n" + html2text(content.prettify())

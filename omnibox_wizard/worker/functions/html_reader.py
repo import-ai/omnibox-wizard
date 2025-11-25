@@ -24,6 +24,7 @@ from omnibox_wizard.worker.functions.html_reader_processors.okjike_m import OKJi
 from omnibox_wizard.worker.functions.html_reader_processors.okjike_web import OKJikeWebProcessor
 from omnibox_wizard.worker.functions.html_reader_processors.red_note import RedNoteProcessor
 from omnibox_wizard.worker.functions.html_reader_processors.x import XProcessor
+from omnibox_wizard.worker.functions.html_reader_processors.green_notice import GreenNoticeProcessor
 
 json_dumps = partial(jsonlib.dumps, separators=(",", ":"), ensure_ascii=False)
 tracer = trace.get_tracer("HTMLReaderV2")
@@ -68,6 +69,7 @@ class HTMLReaderV2(BaseFunction):
         self.html_content_extractor = HTMLContentExtractor(config.grimoire.openai.get_config("mini"))
         self.processors: list[HTMLReaderBaseProcessor] = [
             GreenNoteProcessor(config=config),
+            GreenNoticeProcessor(config=config),
             RedNoteProcessor(config=config),
             OKJikeWebProcessor(config=config),
             OKJikeMProcessor(config=config),

@@ -13,7 +13,7 @@ class RedNoteProcessor(HTMLReaderBaseProcessor):
     def hit(self, html: str, url: str) -> bool:
         parsed = urlparse(url)
         if parsed.netloc == 'www.xiaohongshu.com':
-            if parsed.path.startswith('/explore/'):
+            if parsed.path.startswith('/explore/') or parsed.path.startswith('/discovery/'):
                 return True
         return False
 
@@ -55,17 +55,20 @@ class RedNoteProcessor(HTMLReaderBaseProcessor):
     @tracer.start_as_current_span("RedNoteProcessor.convert")
     async def convert(self, html: str, url: str) -> GeneratedContent:
         soup = BeautifulSoup(html, "html.parser")
-        image_selection = soup.select("img.note-slider-img")
+        image_selection = soup.select('meta[name="og:image"]')
         title_selection = soup.select("div.note-content div#detail-title")
         content_selection = soup.select("div.note-content div#detail-desc span.note-text")
 
-        images = await self.img_selection_to_image(image_selection)
+        image_links = []
+        for image_tag in image_selection:
+            if url := image_tag.get('content'):
+                if 'sns-webpic-qc.xhscdn.com' in url:
+                    image_links.append(url)
 
-        markdown: str = "\n\n".join([f"![{i + 1}]({image.link})" for i, image in enumerate(images)])
+        images = await self.get_images([(src, str(i + 1)) for i, src in enumerate(image_links)])
+
+        markdown: str = "\n\n".join([f"![{image.name}]({image.link})" for image in images])
         if content_selection:
             markdown = markdown + "\n\n" + self.content_to_md(content_selection[0])
-        if title_selection:
-            title: str = title_selection[0].text.strip()
-        else:
-            title = "小红书笔记"
+        title: str = title_selection[0].text.strip() if title_selection else None
         return GeneratedContent(title=title, markdown=markdown, images=images or None)

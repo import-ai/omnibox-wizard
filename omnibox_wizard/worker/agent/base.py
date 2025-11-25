@@ -176,7 +176,7 @@ class BaseAgent(Generic[InputType, OutputType]):
         response = self.parse_output(str_response, trace_info=trace_info)
         return response
 
-    async def astream(self, context: dict | InputType, trace_info: TraceInfo) -> AsyncIterator[str]:
+    async def astream(self, context: dict | InputType, trace_info: TraceInfo | None = None) -> AsyncIterator[str]:
         response: str = ''
         messages: list[dict[str, str]] = self.prepare_messages(self.prepare_context(context))
         headers = {}

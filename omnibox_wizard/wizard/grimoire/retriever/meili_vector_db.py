@@ -12,6 +12,7 @@ from meilisearch_python_sdk.models.settings import (
     FilterableAttributes,
     UserProvidedEmbedder,
 )
+from meilisearch_python_sdk.models.task import TaskInfo
 from openai import AsyncOpenAI
 from opentelemetry import propagate, trace
 
@@ -48,7 +49,7 @@ def to_filterable_attributes(
     )
 
 
-def sharded_index_uid(idx: int):
+def sharded_index_uid(idx: int) -> str:
     return f"omnibox-index-{idx}"
 
 
@@ -83,22 +84,13 @@ class MeiliVectorDB:
             self.meili = client
         return self.meili
 
-    async def get_old_index(self):
-        """Get the old unsharded index for backward compatibility reads."""
-        client = await self.get_or_init_client()
-        if not self.has_old_index:
-            return None
-        return client.index(self.index_uid)
-
-    async def get_sharded_index(self, namespace_id: str):
-        """Get the sharded index for a specific namespace."""
+    def get_shard(self, namespace_id: str):
         if not namespace_id:
             raise ValueError("namespace_id is required")
         h = md5(namespace_id.encode("utf-8")).digest()
         idx = int.from_bytes(h[:4], byteorder="big")
         idx %= self.num_shards
-        client = await self.get_or_init_client()
-        return client.index(sharded_index_uid(idx))
+        return sharded_index_uid(idx)
 
     async def init_shard_index(self, client: AsyncClient, index_uid: str):
         """Initialize a single shard index with proper settings."""
@@ -162,7 +154,8 @@ class MeiliVectorDB:
 
     @tracer.start_as_current_span("MeiliVectorDB.insert_chunks")
     async def insert_chunks(self, namespace_id: str, chunk_list: List[Chunk]):
-        index = await self.get_sharded_index(namespace_id)
+        client = await self.get_or_init_client()
+        index = client.index(self.get_shard(namespace_id))
         for i in range(0, len(chunk_list), self.batch_size):
             raw_batch = chunk_list[i : i + self.batch_size]
 
@@ -196,7 +189,8 @@ class MeiliVectorDB:
 
     @tracer.start_as_current_span("MeiliVectorDB.upsert_message")
     async def upsert_message(self, namespace_id: str, user_id: str, message: Message):
-        index = await self.get_sharded_index(namespace_id)
+        client = await self.get_or_init_client()
+        index = client.index(self.get_shard(namespace_id))
         record_id = "message_{}".format(message.message_id)
 
         if not message.message.content.strip():
@@ -272,16 +266,22 @@ class MeiliVectorDB:
         vector_params: dict,
         **search_kwargs,
     ) -> List[dict]:
-        hits = []
+        client = await self.get_or_init_client()
 
-        old_index = await self.get_old_index()
-        if old_index:
+        hits = []
+        if self.has_old_index:
+            old_index = client.index(self.index_uid)
             result = await old_index.search(
-                query, filter=filter_, limit=limit, **vector_params, **search_kwargs
+                query,
+                filter=filter_,
+                limit=limit,
+                **vector_params,
+                **search_kwargs,
+                show_ranking_score=True,
             )
             hits.extend(result.hits)
 
-        index = await self.get_sharded_index(namespace_id)
+        index = client.index(self.get_shard(namespace_id))
         result = await index.search(
             query,
             filter=filter_,
@@ -301,11 +301,18 @@ class MeiliVectorDB:
         namespace_id: str,
         filter_: List[str | List[str]],
     ):
-        old_index = await self.get_old_index()
-        if old_index:
-            await old_index.delete_documents_by_filter(filter=filter_)
-        index = await self.get_sharded_index(namespace_id)
-        await index.delete_documents_by_filter(filter=filter_)
+        client = await self.get_or_init_client()
+
+        tasks: List[TaskInfo] = []
+        if self.has_old_index:
+            old_index = client.index(self.index_uid)
+            tasks.append(await old_index.delete_documents_by_filter(filter=filter_))
+
+        index = client.index(self.get_shard(namespace_id))
+        tasks.append(await index.delete_documents_by_filter(filter=filter_))
+
+        for task in tasks:
+            await client.wait_for_task(task.task_uid)
 
     @tracer.start_as_current_span("MeiliVectorDB.search")
     async def search(

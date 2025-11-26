@@ -44,7 +44,7 @@ async def db(meilisearch_endpoint: str) -> MeiliVectorDB:
 async def test_db_query(db: MeiliVectorDB, query: str, k: int, rank: int, expected_text: str,
                         expected_resource_id: str):
     result_list: List[Tuple[Chunk, float]] = await db.query_chunks(
-        query, k, Condition(namespace_id=namespace_id).to_meili_where())
+        namespace_id, query, k, Condition(namespace_id=namespace_id).to_meili_where())
     assert len(result_list) == k
     assert result_list[rank][0].text == expected_text
     assert result_list[rank][0].resource_id == expected_resource_id

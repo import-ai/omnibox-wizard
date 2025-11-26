@@ -357,7 +357,7 @@ class MeiliVectorDB:
             namespace_id,
             query,
             combined_filters,
-            k * 2,
+            k,
             vector_params,
         )
         output: List[Tuple[Chunk, float]] = []

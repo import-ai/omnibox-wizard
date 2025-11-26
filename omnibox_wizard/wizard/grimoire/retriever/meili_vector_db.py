@@ -275,7 +275,12 @@ class MeiliVectorDB:
 
         index = await self.get_sharded_index(namespace_id)
         result = await index.search(
-            query, filter=filter_, limit=limit, **vector_params, **search_kwargs
+            query,
+            filter=filter_,
+            limit=limit,
+            **vector_params,
+            **search_kwargs,
+            show_ranking_score=True,
         )
         hits.extend(result.hits)
 
@@ -339,7 +344,6 @@ class MeiliVectorDB:
             combined_filters,
             k * 2,
             vector_params,
-            show_ranking_score=True,
         )
         output: List[Tuple[Chunk, float]] = []
         for hit in hits:

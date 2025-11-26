@@ -48,6 +48,10 @@ def to_filterable_attributes(
     )
 
 
+def sharded_index_uid(idx: int):
+    return f"omnibox-index-{idx}"
+
+
 class MeiliVectorDB:
     def __init__(self, config: VectorConfig):
         self.config: VectorConfig = config
@@ -65,9 +69,8 @@ class MeiliVectorDB:
         """Get the initialized MeiliSearch client."""
         if self.meili is ...:
             client = AsyncClient(self.config.host, self.config.meili_api_key)
-            for shard_num in range(self.num_shards):
-                shard_index_uid = f"omniboxIndex_shard_{shard_num}"
-                await self.init_shard_index(client, shard_index_uid)
+            for i in range(self.num_shards):
+                await self.init_shard_index(client, sharded_index_uid(i))
             self.meili = client
         return self.meili
 
@@ -85,12 +88,11 @@ class MeiliVectorDB:
         """Get the sharded index for a specific namespace."""
         if not namespace_id:
             raise ValueError("namespace_id is required")
-        hash_bytes = md5(namespace_id.encode("utf-8")).digest()
-        hash_int = int.from_bytes(hash_bytes[:4], byteorder="big")
-        shard_num = hash_int % self.num_shards
-        index_uid = f"omniboxIndex_shard_{shard_num}"
+        h = md5(namespace_id.encode("utf-8")).digest()
+        idx = int.from_bytes(h[:4], byteorder="big")
+        idx %= self.num_shards
         client = await self.get_client()
-        return client.index(index_uid)
+        return client.index(sharded_index_uid(idx))
 
     async def init_shard_index(self, client: AsyncClient, index_uid: str):
         """Initialize a single shard index with proper settings."""

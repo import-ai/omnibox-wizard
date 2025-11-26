@@ -64,11 +64,20 @@ class MeiliVectorDB:
         self.num_shards = 20
         self.embedder_name = "omniboxEmbed"
         self.embedder_dimensions = 1024
+        self.has_old_index = False
 
-    async def get_client(self) -> AsyncClient:
+    async def get_or_init_client(self) -> AsyncClient:
         """Get the initialized MeiliSearch client."""
         if self.meili is ...:
             client = AsyncClient(self.config.host, self.config.meili_api_key)
+            try:
+                await client.get_index(self.index_uid)
+                self.has_old_index = True
+            except MeilisearchApiError as e:
+                if e.status_code == 404:
+                    self.has_old_index = False
+                else:
+                    raise
             for i in range(self.num_shards):
                 await self.init_shard_index(client, sharded_index_uid(i))
             self.meili = client
@@ -76,13 +85,10 @@ class MeiliVectorDB:
 
     async def get_old_index(self):
         """Get the old unsharded index for backward compatibility reads."""
-        client = await self.get_client()
-        try:
-            return client.index(self.index_uid)
-        except MeilisearchApiError as e:
-            if e.status_code == 404:
-                return None
-            raise
+        client = await self.get_or_init_client()
+        if not self.has_old_index:
+            return None
+        return client.index(self.index_uid)
 
     async def get_sharded_index(self, namespace_id: str):
         """Get the sharded index for a specific namespace."""
@@ -91,7 +97,7 @@ class MeiliVectorDB:
         h = md5(namespace_id.encode("utf-8")).digest()
         idx = int.from_bytes(h[:4], byteorder="big")
         idx %= self.num_shards
-        client = await self.get_client()
+        client = await self.get_or_init_client()
         return client.index(sharded_index_uid(idx))
 
     async def init_shard_index(self, client: AsyncClient, index_uid: str):

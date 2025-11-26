@@ -83,6 +83,8 @@ class MeiliVectorDB:
 
     async def get_sharded_index(self, namespace_id: str):
         """Get the sharded index for a specific namespace."""
+        if not namespace_id:
+            raise ValueError("namespace_id is required")
         hash_bytes = md5(namespace_id.encode("utf-8")).digest()
         hash_int = int.from_bytes(hash_bytes[:4], byteorder="big")
         shard_num = hash_int % self.num_shards
@@ -152,8 +154,6 @@ class MeiliVectorDB:
 
     @tracer.start_as_current_span("MeiliVectorDB.insert_chunks")
     async def insert_chunks(self, namespace_id: str, chunk_list: List[Chunk]):
-        if not namespace_id:
-            raise ValueError("namespace_id is required for insert_chunks")
         index = await self.get_sharded_index(namespace_id)
         for i in range(0, len(chunk_list), self.batch_size):
             raw_batch = chunk_list[i : i + self.batch_size]
@@ -188,8 +188,6 @@ class MeiliVectorDB:
 
     @tracer.start_as_current_span("MeiliVectorDB.upsert_message")
     async def upsert_message(self, namespace_id: str, user_id: str, message: Message):
-        if not namespace_id:
-            raise ValueError("namespace_id is required for upsert_message")
         index = await self.get_sharded_index(namespace_id)
         record_id = "message_{}".format(message.message_id)
 
@@ -219,28 +217,24 @@ class MeiliVectorDB:
 
     @tracer.start_as_current_span("MeiliVectorDB.remove_conversation")
     async def remove_conversation(self, namespace_id: str, conversation_id: str):
-        if not namespace_id:
-            raise ValueError("namespace_id is required for remove_conversation")
-        index = await self.get_sharded_index(namespace_id)
-        await index.delete_documents_by_filter(
-            filter=[
+        await self.delete_from_both_indexes(
+            namespace_id,
+            filter_=[
                 "type = {}".format(IndexRecordType.message.value),
                 "namespace_id = {}".format(namespace_id),
                 "message.conversation_id = {}".format(conversation_id),
-            ]
+            ],
         )
 
     @tracer.start_as_current_span("MeiliVectorDB.remove_chunks")
     async def remove_chunks(self, namespace_id: str, resource_id: str):
-        if not namespace_id:
-            raise ValueError("namespace_id is required for remove_chunks")
-        index = await self.get_sharded_index(namespace_id)
-        await index.delete_documents_by_filter(
-            filter=[
+        await self.delete_from_both_indexes(
+            namespace_id,
+            filter_=[
                 "type = {}".format(IndexRecordType.chunk.value),
                 "namespace_id = {}".format(namespace_id),
                 "chunk.resource_id = {}".format(resource_id),
-            ]
+            ],
         )
 
     @tracer.start_as_current_span("MeiliVectorDB.vector_params")
@@ -260,7 +254,8 @@ class MeiliVectorDB:
             }
         return {}
 
-    async def _query_both_indexes(
+    @tracer.start_as_current_span("MeiliVectorDB.query_both_indexes")
+    async def query_both_indexes(
         self,
         namespace_id: str,
         query: str,
@@ -269,7 +264,6 @@ class MeiliVectorDB:
         vector_params: dict,
         **search_kwargs,
     ) -> List[dict]:
-        """Query both old and new sharded indexes, deduplicate and sort by ranking score."""
         hits = []
 
         old_index = await self.get_old_index()
@@ -288,19 +282,28 @@ class MeiliVectorDB:
         hits.sort(key=lambda x: x.get("_rankingScore", 0), reverse=True)
         return hits[:limit]
 
+    @tracer.start_as_current_span("MeiliVectorDB.delete_from_both_indexes")
+    async def delete_from_both_indexes(
+        self,
+        namespace_id: str,
+        filter_: List[str | List[str]],
+    ):
+        old_index = await self.get_old_index()
+        if old_index:
+            await old_index.delete_documents_by_filter(filter=filter_)
+        index = await self.get_sharded_index(namespace_id)
+        await index.delete_documents_by_filter(filter=filter_)
+
     @tracer.start_as_current_span("MeiliVectorDB.search")
     async def search(
         self,
         query: str,
-        namespace_id: str | None,
+        namespace_id: str,
         user_id: str | None,
         record_type: IndexRecordType | None,
         offset: int,
         limit: int,
     ) -> List[IndexRecord]:
-        if not namespace_id:
-            raise ValueError("namespace_id is required for search")
-
         filter_: List[str | List[str]] = []
         filter_.append("namespace_id = {}".format(namespace_id))
         if user_id:
@@ -311,7 +314,7 @@ class MeiliVectorDB:
             filter_.append("type = {}".format(record_type.value))
         vector_params: dict = await self.vector_params(query)
 
-        hits = await self._query_both_indexes(
+        hits = await self.query_both_indexes(
             namespace_id,
             query,
             filter_,
@@ -323,16 +326,14 @@ class MeiliVectorDB:
     @tracer.start_as_current_span("MeiliVectorDB.query_chunks")
     async def query_chunks(
         self,
+        namespace_id: str,
         query: str,
         k: int,
         filter_: List[str | List[str]],
-        namespace_id: str | None = None,
     ) -> List[Tuple[Chunk, float]]:
-        if not namespace_id:
-            raise ValueError("namespace_id is required for query_chunks")
         combined_filters = filter_ + ["type = {}".format(IndexRecordType.chunk.value)]
         vector_params: dict = await self.vector_params(query)
-        hits = await self._query_both_indexes(
+        hits = await self.query_both_indexes(
             namespace_id,
             query,
             combined_filters,
@@ -408,7 +409,9 @@ class MeiliVectorRetriever(BaseRetriever):
             )
             return []
 
-        recall_result_list = await self.vector_db.query_chunks(query, k, where)
+        recall_result_list = await self.vector_db.query_chunks(
+            private_search_tool.namespace_id, query, k, where
+        )
         retrievals: List[ResourceChunkRetrieval] = [
             ResourceChunkRetrieval(
                 chunk=chunk,

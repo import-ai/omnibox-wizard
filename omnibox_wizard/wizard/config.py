@@ -10,9 +10,13 @@ class OpenAIConfig(BaseModel):
     model: str = Field(default=None)
     base_url: str = Field(default=None)
 
-    async def chat(self, *, model: str = None, **kwargs) -> ChatCompletion | AsyncStream[ChatCompletionChunk]:
+    async def chat(
+        self, *, model: str = None, **kwargs
+    ) -> ChatCompletion | AsyncStream[ChatCompletionChunk]:
         client = AsyncOpenAI(api_key=self.api_key, base_url=self.base_url)
-        return await client.chat.completions.create(**(kwargs | {"model": model or self.model}))
+        return await client.chat.completions.create(
+            **(kwargs | {"model": model or self.model})
+        )
 
 
 class VectorConfig(BaseModel):
@@ -36,10 +40,10 @@ class GrimoireOpenAIConfig(BaseModel):
     large_thinking: OpenAIConfig = Field(default=None)
 
     def get_config(
-            self,
-            key: GrimoireOpenAIConfigKey,
-            thinking: bool = False,
-            default: OpenAIConfig | None | NotGiven = NOT_GIVEN
+        self,
+        key: GrimoireOpenAIConfigKey,
+        thinking: bool = False,
+        default: OpenAIConfig | None | NotGiven = NOT_GIVEN,
     ) -> OpenAIConfig | None:
         k = key if not thinking else f"{key}_thinking"
         openai_config: OpenAIConfig = getattr(self, k, None)
@@ -50,7 +54,7 @@ class GrimoireOpenAIConfig(BaseModel):
         return OpenAIConfig(
             base_url=openai_config.base_url or self.default.base_url,
             api_key=openai_config.api_key or self.default.api_key,
-            model=openai_config.model or self.default.model
+            model=openai_config.model or self.default.model,
         )
 
 

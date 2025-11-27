@@ -23,12 +23,12 @@ class HealthTracker:
     def register_worker(self, worker_id: int):
         with self._lock:
             self._workers[worker_id] = WorkerHealth(
-                worker_id=worker_id,
-                status="idle",
-                last_heartbeat=datetime.now()
+                worker_id=worker_id, status="idle", last_heartbeat=datetime.now()
             )
 
-    def update_worker_status(self, worker_id: int, status: str, last_task_at: Optional[datetime] = None):
+    def update_worker_status(
+        self, worker_id: int, status: str, last_task_at: Optional[datetime] = None
+    ):
         with self._lock:
             if worker_id in self._workers:
                 worker = self._workers[worker_id]
@@ -59,15 +59,19 @@ class HealthTracker:
                 if is_healthy:
                     healthy_workers += 1
 
-                worker_details.append({
-                    "worker_id": worker.worker_id,
-                    "status": worker.status,
-                    "healthy": is_healthy,
-                    "last_heartbeat": worker.last_heartbeat.isoformat(),
-                    "last_task_at": worker.last_task_at.isoformat() if worker.last_task_at else None,
-                    "error_count": worker.error_count,
-                    "total_tasks": worker.total_tasks
-                })
+                worker_details.append(
+                    {
+                        "worker_id": worker.worker_id,
+                        "status": worker.status,
+                        "healthy": is_healthy,
+                        "last_heartbeat": worker.last_heartbeat.isoformat(),
+                        "last_task_at": worker.last_task_at.isoformat()
+                        if worker.last_task_at
+                        else None,
+                        "error_count": worker.error_count,
+                        "total_tasks": worker.total_tasks,
+                    }
+                )
 
             overall_healthy = healthy_workers == total_workers and total_workers > 0
 
@@ -78,6 +82,6 @@ class HealthTracker:
                 "workers": {
                     "total": total_workers,
                     "healthy": healthy_workers,
-                    "details": worker_details
-                }
+                    "details": worker_details,
+                },
             }

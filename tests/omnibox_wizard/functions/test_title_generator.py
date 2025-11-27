@@ -15,7 +15,9 @@ async def test_title_generator_success(worker_config, trace_info):
         namespace_id="test_namespace",
         user_id="test_user",
         function="generate_title",
-        input={"text": "This is a comprehensive guide on machine learning algorithms and their practical applications in modern software development."}
+        input={
+            "text": "This is a comprehensive guide on machine learning algorithms and their practical applications in modern software development."
+        },
     )
 
     result = await title_generator.run(task, trace_info)
@@ -37,7 +39,7 @@ async def test_title_generator_empty_text(worker_config, trace_info):
         namespace_id="test_namespace",
         user_id="test_user",
         function="generate_title",
-        input={"text": ""}
+        input={"text": ""},
     )
 
     with pytest.raises(ValueError, match="Text input is required for title generation"):
@@ -55,7 +57,7 @@ async def test_title_generator_no_text_input(worker_config, trace_info):
         namespace_id="test_namespace",
         user_id="test_user",
         function="generate_title",
-        input={}
+        input={},
     )
 
     with pytest.raises(ValueError, match="Text input is required for title generation"):
@@ -66,7 +68,10 @@ async def test_title_generator_no_text_input(worker_config, trace_info):
 async def test_title_generator_with_long_text(worker_config, trace_info):
     """Test title generation with long text"""
     title_generator = TitleGenerator(worker_config)
-    long_text = "This is a very long article about artificial intelligence, machine learning, deep learning, neural networks, and various other advanced computational techniques used in modern data science. " * 50
+    long_text = (
+        "This is a very long article about artificial intelligence, machine learning, deep learning, neural networks, and various other advanced computational techniques used in modern data science. "
+        * 50
+    )
 
     task = Task(
         id="test_task",
@@ -74,7 +79,7 @@ async def test_title_generator_with_long_text(worker_config, trace_info):
         namespace_id="test_namespace",
         user_id="test_user",
         function="generate_title",
-        input={"text": long_text}
+        input={"text": long_text},
     )
 
     result = await title_generator.run(task, trace_info)
@@ -96,7 +101,7 @@ async def test_title_generator_short_text(worker_config, trace_info):
         namespace_id="test_namespace",
         user_id="test_user",
         function="generate_title",
-        input={"text": "Python programming basics"}
+        input={"text": "Python programming basics"},
     )
 
     result = await title_generator.run(task, trace_info)
@@ -118,7 +123,9 @@ async def test_title_generator_chinese_text(worker_config, trace_info):
         namespace_id="test_namespace",
         user_id="test_user",
         function="generate_title",
-        input={"text": "这是一篇关于人工智能和机器学习在现代科技发展中的重要作用的文章。"}
+        input={
+            "text": "这是一篇关于人工智能和机器学习在现代科技发展中的重要作用的文章。"
+        },
     )
 
     result = await title_generator.run(task, trace_info)

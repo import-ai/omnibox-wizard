@@ -6,7 +6,12 @@ from typing import Optional, Literal
 import shortuuid
 from pydantic import Field
 
-from omnibox_wizard.wizard.grimoire.entity.retrieval import BaseRetrieval, Citation, to_prompt, PromptContext
+from omnibox_wizard.wizard.grimoire.entity.retrieval import (
+    BaseRetrieval,
+    Citation,
+    to_prompt,
+    PromptContext,
+)
 from omnibox_wizard.wizard.grimoire.entity.tools import PrivateSearchResourceType
 
 
@@ -17,12 +22,16 @@ class ChunkType(str, Enum):
     keyword: str = "keyword"
 
 
-def timestamp_to_datetime(timestamp: float, date_format: str = "%Y-%m-%d %H:%M:%S") -> str:
+def timestamp_to_datetime(
+    timestamp: float, date_format: str = "%Y-%m-%d %H:%M:%S"
+) -> str:
     return datetime.fromtimestamp(timestamp).strftime(date_format)
 
 
 class Chunk(PromptContext):
-    title: str | None = Field(default=None, description="Chunk title, usually the title of the document")
+    title: str | None = Field(
+        default=None, description="Chunk title, usually the title of the document"
+    )
     resource_id: str
     text: str | None = Field(default=None, description="Chunk content")
     chunk_type: ChunkType = Field(description="Chunk type")
@@ -31,11 +40,19 @@ class Chunk(PromptContext):
     parent_id: str
 
     chunk_id: str = Field(description="ID of chunk", default_factory=shortuuid.uuid)
-    created_at: float = Field(description="Unix timestamp in float format", default_factory=time.time)
-    updated_at: float = Field(description="Unix timestamp in float format", default_factory=time.time)
+    created_at: float = Field(
+        description="Unix timestamp in float format", default_factory=time.time
+    )
+    updated_at: float = Field(
+        description="Unix timestamp in float format", default_factory=time.time
+    )
 
-    start_index: Optional[int] = Field(description="The start char index of this chunk", default=None)
-    end_index: Optional[int] = Field(description="The end char index of this chunk, index excluded", default=None)
+    start_index: Optional[int] = Field(
+        description="The start char index of this chunk", default=None
+    )
+    end_index: Optional[int] = Field(
+        description="The end char index of this chunk, index excluded", default=None
+    )
 
     @property
     def metadata(self) -> dict:
@@ -51,8 +68,12 @@ class Chunk(PromptContext):
 
 
 class ResourceChunkRetrieval(BaseRetrieval):
-    folder: str | None = Field(default=None, description="The folder of the chunk, if any")
-    type: PrivateSearchResourceType | None = Field(default=None, description="The type of the resource")
+    folder: str | None = Field(
+        default=None, description="The folder of the chunk, if any"
+    )
+    type: PrivateSearchResourceType | None = Field(
+        default=None, description="The type of the resource"
+    )
     chunk: Chunk
     source: Literal["private"] = "private"
 

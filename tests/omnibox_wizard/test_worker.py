@@ -6,7 +6,6 @@ from omnibox_wizard.worker.config import WorkerConfig
 from omnibox_wizard.worker.entity import Task
 from omnibox_wizard.worker.worker import Worker
 from tests.omnibox_wizard.helper.backend_client import BackendClient
-from tests.omnibox_wizard.helper.fixture import worker_config, backend_client
 
 fake_html: bool = True
 
@@ -23,13 +22,16 @@ def html() -> str:
 
 @pytest.fixture(scope="function")
 def task_id(backend_client: BackendClient, html: str) -> int:
-    response: httpx.Response = backend_client.post("/api/v1/wizard/collect", json={
-        "url": "https://example.com",
-        "html": html,
-        "title": "Test",
-        "namespace_id": backend_client.namespace_id,
-        "parentId": backend_client.private_root_id,
-    })
+    response: httpx.Response = backend_client.post(
+        "/api/v1/wizard/collect",
+        json={
+            "url": "https://example.com",
+            "html": html,
+            "title": "Test",
+            "namespace_id": backend_client.namespace_id,
+            "parentId": backend_client.private_root_id,
+        },
+    )
 
     json_response: dict = response.json()
     assert response.status_code == 201, json_response

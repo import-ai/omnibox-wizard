@@ -1,4 +1,4 @@
-from omnibox_wizard.wizard.config import OpenAIConfig, ToolsConfig, VectorConfig, Config
+from omnibox_wizard.wizard.config import Config
 from omnibox_wizard.wizard.grimoire.agent.agent import Agent
 
 

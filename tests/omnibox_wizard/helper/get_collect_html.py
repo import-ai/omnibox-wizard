@@ -17,11 +17,13 @@ def get_collect_html(object_path: str) -> str:
 
     parsed = urlparse(s3_url)
     config = {
-        'endpoint': f"{parsed.scheme}://{parsed.hostname}:{parsed.port}" if parsed.port else f"{parsed.scheme}://{parsed.hostname}",
-        'access_key': parsed.username,
-        'secret_key': parsed.password,
-        'bucket_name': parsed.path.lstrip('/'),
-        'secure': parsed.scheme == 'https'
+        "endpoint": f"{parsed.scheme}://{parsed.hostname}:{parsed.port}"
+        if parsed.port
+        else f"{parsed.scheme}://{parsed.hostname}",
+        "access_key": parsed.username,
+        "secret_key": parsed.password,
+        "bucket_name": parsed.path.lstrip("/"),
+        "secure": parsed.scheme == "https",
     }
 
     minio_path = f"/{config['bucket_name']}/{object_path}"
@@ -34,7 +36,9 @@ def get_collect_html(object_path: str) -> str:
     # Build AWS v2 signature
     sig_string = f"GET\n\n{content_type}\n{date_str}\n{minio_path}"
     signature = base64.b64encode(
-        hmac.new(config['secret_key'].encode(), sig_string.encode(), hashlib.sha1).digest()
+        hmac.new(
+            config["secret_key"].encode(), sig_string.encode(), hashlib.sha1
+        ).digest()
     ).decode()
 
     headers = {

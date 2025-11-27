@@ -25,7 +25,9 @@ class TitleGenerator(BaseFunction):
             title = await self.common_ai.title(text, trace_info=trace_info, lang=lang)
 
             result_dict = {"title": title}
-            trace_info.info({"generated_title": title, "message": "Title generation completed"})
+            trace_info.info(
+                {"generated_title": title, "message": "Title generation completed"}
+            )
             return result_dict
 
         except Exception as e:

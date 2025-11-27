@@ -14,7 +14,6 @@ tracer = trace.get_tracer("HTMLReaderBaseProcessor")
 
 
 class HTMLReaderBaseProcessor(ABC):
-
     def __init__(self, config: WorkerConfig):
         self.config = config
 
@@ -31,7 +30,9 @@ class HTMLReaderBaseProcessor(ABC):
         for img in image_selection:
             if src := img.get("src"):
                 if not any(x[0] == src for x in tuple_images):
-                    tuple_images.append((src, img.get("alt", cls.get_name_from_url(src))))
+                    tuple_images.append(
+                        (src, img.get("alt", cls.get_name_from_url(src)))
+                    )
 
         images = await cls.get_images(tuple_images)
         return images
@@ -59,18 +60,25 @@ class HTMLReaderBaseProcessor(ABC):
 
     @classmethod
     async def get_images(cls, tuple_images: list[tuple[str, str]]) -> list[Image]:
-        fetched_imgs = await asyncio.gather(*[cls.fetch_img(src) for src, _ in tuple_images])
+        fetched_imgs = await asyncio.gather(
+            *[cls.fetch_img(src) for src, _ in tuple_images]
+        )
         images: list[Image] = []
 
         for (src, alt), pair in zip(tuple_images, fetched_imgs):
             if pair:
                 mimetype, base64_data = pair
-                images.append(Image.model_validate({
-                    "name": alt or HTMLReaderBaseProcessor.get_name_from_url(src),
-                    "link": src,
-                    "data": base64_data,
-                    "mimetype": mimetype,
-                }))
+                images.append(
+                    Image.model_validate(
+                        {
+                            "name": alt
+                            or HTMLReaderBaseProcessor.get_name_from_url(src),
+                            "link": src,
+                            "data": base64_data,
+                            "mimetype": mimetype,
+                        }
+                    )
+                )
         return images
 
     @classmethod

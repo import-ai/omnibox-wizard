@@ -25,7 +25,10 @@ class HealthServer:
 
         @self.app.get("/")
         async def root():
-            return {"message": "Worker Health Check Server", "timestamp": datetime.now().isoformat()}
+            return {
+                "message": "Worker Health Check Server",
+                "timestamp": datetime.now().isoformat(),
+            }
 
     async def start(self):
         config = uvicorn.Config(
@@ -33,7 +36,7 @@ class HealthServer:
             host="0.0.0.0",
             port=self.port,
             log_level="warning",
-            access_log=False
+            access_log=False,
         )
         server = uvicorn.Server(config)
         await server.serve()

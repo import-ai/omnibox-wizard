@@ -39,9 +39,7 @@ async def title(
 ):
     return TitleResponse(
         title=await common_ai.title(
-            request.text, 
-            lang=request.lang, 
-            trace_info=trace_info
+            request.text, lang=request.lang, trace_info=trace_info
         )
     )
 
@@ -52,9 +50,7 @@ async def tags(
 ):
     return TagsResponse(
         tags=await common_ai.tags(
-            request.text, 
-            lang=request.lang, 
-            trace_info=trace_info
+            request.text, lang=request.lang, trace_info=trace_info
         )
     )
 

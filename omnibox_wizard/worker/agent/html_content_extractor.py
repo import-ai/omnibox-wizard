@@ -11,8 +11,10 @@ class HTMLContentExtractInput(BaseModel):
 class HTMLContentExtractor(BaseAgent[HTMLContentExtractInput, str]):
     def __init__(self, config):
         super().__init__(
-            config, HTMLContentExtractInput, str,
+            config,
+            HTMLContentExtractInput,
+            str,
             examples=None,
             system_prompt_template="html_content_extract.j2",
-            user_prompt_template=Template("{{ html }}")
+            user_prompt_template=Template("{{ html }}"),
         )

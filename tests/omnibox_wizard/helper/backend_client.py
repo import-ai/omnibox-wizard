@@ -12,12 +12,15 @@ class BackendClient(httpx.Client):
         self.email: str = shortuuid.uuid() + "@example.com"
         self.password: str = shortuuid.uuid()
 
-        response: httpx.Response = self.post("/internal/api/v1/sign-up", json={
-            "username": self.username,
-            "password": self.password,
-            "password_repeat": self.password,
-            "email": self.email
-        })
+        response: httpx.Response = self.post(
+            "/internal/api/v1/sign-up",
+            json={
+                "username": self.username,
+                "password": self.password,
+                "password_repeat": self.password,
+                "email": self.email,
+            },
+        )
         signup_result: dict = response.json()
         assert response.status_code == 201, signup_result
 
@@ -34,7 +37,9 @@ class BackendClient(httpx.Client):
         namespace: dict = namespace_list_result[0]
         self.namespace_id: str = namespace["id"]
 
-        response: httpx.Response = self.get(f"/api/v1/namespaces/{self.namespace_id}/root")
+        response: httpx.Response = self.get(
+            f"/api/v1/namespaces/{self.namespace_id}/root"
+        )
         assert response.is_success, response.text
         json_response: dict = response.json()
         self.private_root_id: str = json_response["private"]["id"]
@@ -49,7 +54,8 @@ class BackendClient(httpx.Client):
             assert response.status_code == 200, response.json()
 
     def parent_id(self, space_type: str) -> str:
-        response = self.get(f'/api/v1/namespaces/{self.namespace_id}/resources/root', params={
-            'namespace_id': self.namespace_id, 'space_type': space_type
-        })
-        return response.json()['id']
+        response = self.get(
+            f"/api/v1/namespaces/{self.namespace_id}/resources/root",
+            params={"namespace_id": self.namespace_id, "space_type": space_type},
+        )
+        return response.json()["id"]

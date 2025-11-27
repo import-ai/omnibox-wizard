@@ -1,7 +1,7 @@
 import frontmatter
 
 from omnibox_wizard.worker.entity import Image
-from omnibox_wizard.worker.functions.file_readers.plain_reader import read_text_file
+from common.plain_reader import read_text_file
 
 
 def exclude_none(d: dict) -> dict:

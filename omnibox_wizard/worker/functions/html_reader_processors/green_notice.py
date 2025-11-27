@@ -5,7 +5,9 @@ from html2text import html2text
 from opentelemetry import trace
 
 from omnibox_wizard.worker.entity import GeneratedContent
-from omnibox_wizard.worker.functions.html_reader_processors.base import HTMLReaderBaseProcessor
+from omnibox_wizard.worker.functions.html_reader_processors.base import (
+    HTMLReaderBaseProcessor,
+)
 
 tracer = trace.get_tracer("GreenNoticeProcessor")
 
@@ -13,8 +15,8 @@ tracer = trace.get_tracer("GreenNoticeProcessor")
 class GreenNoticeProcessor(HTMLReaderBaseProcessor):
     def hit(self, html: str, url: str) -> bool:
         parsed = urlparse(url)
-        if parsed.netloc == 'mp.weixin.qq.com':
-            if parsed.path.startswith('/s'):
+        if parsed.netloc == "mp.weixin.qq.com":
+            if parsed.path.startswith("/s"):
                 soup = BeautifulSoup(html, "html.parser")
                 if soup.select("p#js_text_desc"):
                     return True

@@ -40,12 +40,10 @@ class BaseRetriever(ABC):
                     "properties": {
                         "query": {
                             "type": "string",
-                            "description": "The query to search for."
+                            "description": "The query to search for.",
                         }
                     },
-                    "required": [
-                        "query"
-                    ]
-                }
-            }
+                    "required": ["query"],
+                },
+            },
         }

@@ -34,7 +34,10 @@ async def main():
 
     # Initialize health tracking
     health_tracker = HealthTracker()
-    workers = [Worker(config=config, worker_id=i, health_tracker=health_tracker) for i in range(args.workers)]
+    workers = [
+        Worker(config=config, worker_id=i, health_tracker=health_tracker)
+        for i in range(args.workers)
+    ]
 
     # Create tasks list
     tasks = [worker.run() for worker in workers]

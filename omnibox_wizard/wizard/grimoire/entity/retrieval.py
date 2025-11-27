@@ -16,14 +16,16 @@ class PromptContext(BaseModel, ABC):
         raise NotImplementedError("Subclasses should implement this method.")
 
 
-def to_prompt(tag_attrs: dict, body_attrs: dict, i: int | None = None, tag_name: str = "cite") -> str:
+def to_prompt(
+    tag_attrs: dict, body_attrs: dict, i: int | None = None, tag_name: str = "cite"
+) -> str:
     if i is not None:
         tag_attrs = {"id": str(i)} | tag_attrs
     header_attrs: str = " ".join([f'{k}="{v}"' for k, v in tag_attrs.items() if v])
     contents: list[str] = [
         f"<{tag_name}{' ' if header_attrs else ''}{header_attrs}>",
         *[f"<{k}>{v}</{k}>" for k, v in body_attrs.items() if v],
-        f"</{tag_name}>"
+        f"</{tag_name}>",
     ]
     return remove_continuous_break_lines("\n".join(contents))
 
@@ -45,12 +47,16 @@ class Citation(PromptCite):
 
     def to_prompt(self, exclude_id: bool = False) -> str:
         attrs: dict = self.model_dump(exclude_none=True, exclude={"snippet", "link"})
-        if self.link and self.link.startswith("http") and (host := get_domain(self.link)):
+        if (
+            self.link
+            and self.link.startswith("http")
+            and (host := get_domain(self.link))
+        ):
             attrs["host"] = host
         return to_prompt(
             attrs,
             self.model_dump(exclude_none=True, include={"snippet"}),
-            i=None if exclude_id else self.id
+            i=None if exclude_id else self.id,
         )
 
 

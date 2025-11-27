@@ -20,7 +20,9 @@ class Task(Base):
 
     function: str
     input: dict
-    payload: dict | None = Field(default=None, description="Task payload, would pass through to the webhook")
+    payload: dict | None = Field(
+        default=None, description="Task payload, would pass through to the webhook"
+    )
 
     output: dict | None = None
     exception: dict | None = None

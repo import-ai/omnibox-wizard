@@ -1,4 +1,4 @@
-from typing import TypedDict, Literal, List
+from typing import TypedDict, List
 
 
 class DeltaOperation(TypedDict):
@@ -14,7 +14,9 @@ class StreamParser:
         self._buffer = ""
         self._tag_stack = []
 
-        self._tags = sum([[f"<{tag}>", f"</{tag}>"] for tag in tags or ["think", "tool_call"]], [])
+        self._tags = sum(
+            [[f"<{tag}>", f"</{tag}>"] for tag in tags or ["think", "tool_call"]], []
+        )
 
     def parse(self, token: str) -> List[DeltaOperation]:
         ops: List[DeltaOperation] = []
@@ -43,7 +45,9 @@ class StreamParser:
                         # It's a closing tag
                         self._tag_stack.pop() if self._tag_stack else None
                         # After closing, revert to previous or default to self._default
-                        self._current = self._tag_stack[-1] if self._tag_stack else self._default
+                        self._current = (
+                            self._tag_stack[-1] if self._tag_stack else self._default
+                        )
                     else:
                         # It's an opening tag
                         name = tag[1:-1]

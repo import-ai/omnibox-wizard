@@ -4,36 +4,45 @@ import httpx
 
 from common.logger import get_logger
 from common.trace_info import TraceInfo
-from tests.omnibox_wizard.helper.fixture import client, worker_config
-from tests.omnibox_wizard.helper.fixture import trace_info
 from omnibox_wizard.worker.config import WorkerConfig, ENV_PREFIX
 from omnibox_wizard.worker.worker import Worker
 
 logger = get_logger("tests")
 
 
-async def test_tasks(client: httpx.Client, worker_config: WorkerConfig, trace_info: TraceInfo):
-    enable_callback: bool = os.environ.get(f"{ENV_PREFIX}_TESTS_ENABLE_WORKER_CALLBACK", "false").lower() == "true"
+async def test_tasks(
+    client: httpx.Client, worker_config: WorkerConfig, trace_info: TraceInfo
+):
+    enable_callback: bool = (
+        os.environ.get(f"{ENV_PREFIX}_TESTS_ENABLE_WORKER_CALLBACK", "false").lower()
+        == "true"
+    )
     namespace_id: str = "foo"
     user_id: str = "bar"
 
     task_ids: [str] = []
 
     for i in range(3):
-        json_response: dict = client.post("/api/v1/tasks", json={
-            "function": "collect",
-            "input": {
-                "html": "<p>Hello World!</p>",
-                "url": "foo"
-            },
-            "namespace_id": namespace_id,
-            "user_id": user_id
-        }).raise_for_status().json()
+        json_response: dict = (
+            client.post(
+                "/api/v1/tasks",
+                json={
+                    "function": "collect",
+                    "input": {"html": "<p>Hello World!</p>", "url": "foo"},
+                    "namespace_id": namespace_id,
+                    "user_id": user_id,
+                },
+            )
+            .raise_for_status()
+            .json()
+        )
 
         task_id: str = json_response["task_id"]
         assert len(task_id) == 22
 
-        json_task: dict = client.get(f"/api/v1/tasks/{task_id}").raise_for_status().json()
+        json_task: dict = (
+            client.get(f"/api/v1/tasks/{task_id}").raise_for_status().json()
+        )
         assert json_task["task_id"] == task_id
         assert json_task["namespace_id"] == namespace_id
         assert json_task["created_at"] is not None
@@ -51,7 +60,9 @@ async def test_tasks(client: httpx.Client, worker_config: WorkerConfig, trace_in
         assert task is not None
         assert task.id == task_id
 
-        json_task: dict = client.get(f"/api/v1/tasks/{task_id}").raise_for_status().json()
+        json_task: dict = (
+            client.get(f"/api/v1/tasks/{task_id}").raise_for_status().json()
+        )
         assert json_task["task_id"] == task_id
         assert json_task["namespace_id"] == namespace_id
         assert json_task["created_at"] is not None
@@ -60,7 +71,9 @@ async def test_tasks(client: httpx.Client, worker_config: WorkerConfig, trace_in
 
         task = await worker.process_task(task, trace_info)
 
-        json_task: dict = client.get(f"/api/v1/tasks/{task_id}").raise_for_status().json()
+        json_task: dict = (
+            client.get(f"/api/v1/tasks/{task_id}").raise_for_status().json()
+        )
         assert json_task["task_id"] == task_id
         assert json_task["namespace_id"] == namespace_id
         assert json_task["created_at"] is not None

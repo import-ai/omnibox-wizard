@@ -52,10 +52,14 @@ async def base_url() -> str:
 
         while not health_check():  # 等待服务起来
             if api_process.poll() is not None:
-                raise RuntimeError(f"api_process exit with code {api_process.returncode}")
+                raise RuntimeError(
+                    f"api_process exit with code {api_process.returncode}"
+                )
             time.sleep(1)
 
-        logger.debug({"base_url": base_url, "env": {"OBW_DB_URL": os.getenv("OBW_DB_URL")}})
+        logger.debug(
+            {"base_url": base_url, "env": {"OBW_DB_URL": os.getenv("OBW_DB_URL")}}
+        )
         yield base_url
 
         api_process.terminate()
@@ -106,7 +110,9 @@ def remote_client(remote_config: Config) -> httpx.Client:
 async def worker_init(config: Config) -> bool:
     env: dict = os.environ.copy()
     cwd: str = project_root.path()
-    worker_process = subprocess.Popen(["python3", "main.py", "--workers", "1"], cwd=cwd, env=env)
+    worker_process = subprocess.Popen(
+        ["python3", "main.py", "--workers", "1"], cwd=cwd, env=env
+    )
     if worker_process.poll() is not None:
         raise RuntimeError(f"worker_process exit with code {worker_process.returncode}")
     yield True

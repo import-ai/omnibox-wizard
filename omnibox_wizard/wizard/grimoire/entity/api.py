@@ -13,9 +13,15 @@ class BaseChatRequest(BaseModel):
 class ChatRequestOptions(BaseModel):
     tools: list[PrivateSearchTool | WebSearchTool] | None = Field(default=None)
     enable_thinking: bool | None = Field(default=None)
-    merge_search: bool | None = Field(default=None, description="Whether to merge search results from multiple tools.")
-    force_search: bool | None = Field(default=None, description="Whether to force search.")
-    lang: Literal["简体中文", "English"] | None = Field(default=None, description="Language of the response.")
+    merge_search: bool | None = Field(
+        default=None, description="Whether to merge search results from multiple tools."
+    )
+    force_search: bool | None = Field(
+        default=None, description="Whether to force search."
+    )
+    lang: Literal["简体中文", "English"] | None = Field(
+        default=None, description="Language of the response."
+    )
 
 
 class MessageAttrs(ChatRequestOptions):
@@ -55,7 +61,9 @@ class DeltaOpenAIMessage(BaseModel):
 class ChatDeltaResponse(ChatBaseResponse):
     response_type: Literal["delta"] = "delta"
     message: DeltaOpenAIMessage
-    attrs: MessageAttrs | None = Field(default=None, description="Attributes of the message.")
+    attrs: MessageAttrs | None = Field(
+        default=None, description="Attributes of the message."
+    )
 
 
 class ChatCitationsResponse(ChatBaseResponse):

@@ -9,5 +9,7 @@ ChatResponse = TypeVar("ChatResponse", bound=ChatBaseResponse)
 
 class BaseStreamable:
     @abstractmethod
-    async def astream(self, trace_info: TraceInfo, request: BaseChatRequest) -> AsyncIterable[ChatResponse]:
+    async def astream(
+        self, trace_info: TraceInfo, request: BaseChatRequest
+    ) -> AsyncIterable[ChatResponse]:
         raise NotImplementedError

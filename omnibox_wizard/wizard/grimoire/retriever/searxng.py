@@ -26,10 +26,10 @@ class SearXNGRetrieval(BaseRetrieval):
     def to_citation(self) -> Citation:
         citation: Citation = Citation(
             id=self.id,
-            link=self.result['url'],
-            title=self.result['title'],
-            snippet=self.result['content'],
-            updated_at=format_date(self.result.get('publishedDate', None)),
+            link=self.result["url"],
+            title=self.result["title"],
+            snippet=self.result["content"],
+            updated_at=format_date(self.result.get("publishedDate", None)),
             source=self.source,
         )
         return citation
@@ -54,52 +54,60 @@ class SearXNG(BaseRetriever):
         self.engines: str | None = engines
 
     @tracer.start_as_current_span("SearXNG.search_once")
-    async def search_once(self, query: str, *, page_number: int = 1,
-                          trace_info: TraceInfo | None = None) -> list[SearXNGRetrieval]:
+    async def search_once(
+        self, query: str, *, page_number: int = 1, trace_info: TraceInfo | None = None
+    ) -> list[SearXNGRetrieval]:
         try:
             async with httpx.AsyncClient(base_url=self.base_url) as c:
                 httpx_response: httpx.Response = await c.get(
-                    "/search", params={"q": query, "pageno": page_number, "format": "json"} | (
-                        {"engines": self.engines} if self.engines else {}
-                    )
+                    "/search",
+                    params={"q": query, "pageno": page_number, "format": "json"}
+                    | ({"engines": self.engines} if self.engines else {}),
                 )
                 httpx_response.raise_for_status()
             search_result: dict = httpx_response.json()
-            results: list[dict] = search_result['results']
-            retrievals: list[SearXNGRetrieval] = [SearXNGRetrieval(result=result) for result in results]
+            results: list[dict] = search_result["results"]
+            retrievals: list[SearXNGRetrieval] = [
+                SearXNGRetrieval(result=result) for result in results
+            ]
         except Exception as e:
             retrievals: list[SearXNGRetrieval] = []
-            trace_info.warning({
-                "query": query,
-                "page_number": page_number,
-                "error": CommonException.parse_exception(e),
-            }) if trace_info else None
+            trace_info.warning(
+                {
+                    "query": query,
+                    "page_number": page_number,
+                    "error": CommonException.parse_exception(e),
+                }
+            ) if trace_info else None
         trace_info.debug({"len(retrievals)": len(retrievals)}) if trace_info else None
         return retrievals
 
     @tracer.start_as_current_span("SearXNG.search")
     async def search(
-            self,
-            query: str,
-            *,
-            page_number: int = 1,
-            k: int | None = None,
-            retry_cnt: int = 3,  # First time may fail due to cold start, retry a few times
-            retry_sleep: float = 1,
-            trace_info: TraceInfo | None = None,
+        self,
+        query: str,
+        *,
+        page_number: int = 1,
+        k: int | None = None,
+        retry_cnt: int = 3,  # First time may fail due to cold start, retry a few times
+        retry_sleep: float = 1,
+        trace_info: TraceInfo | None = None,
     ) -> list[SearXNGRetrieval]:
         for i in range(retry_cnt or 1):
             retrievals: list[SearXNGRetrieval] = await self.search_once(
-                query, page_number=page_number, trace_info=trace_info)
+                query, page_number=page_number, trace_info=trace_info
+            )
             if retrievals:
                 return retrievals[:k] if k else retrievals
             if trace_info:
-                trace_info.warning({
-                    "message": f"Search failed, retrying {i + 1}/{retry_cnt + 1}",
-                    "query": query,
-                    "page_number": page_number,
-                    "k": k
-                })
+                trace_info.warning(
+                    {
+                        "message": f"Search failed, retrying {i + 1}/{retry_cnt + 1}",
+                        "query": query,
+                        "page_number": page_number,
+                        "k": k,
+                    }
+                )
             await asyncio.sleep(retry_sleep)
         return []
 
@@ -110,5 +118,5 @@ class SearXNG(BaseRetriever):
     def get_schema(cls) -> dict:
         return cls.generate_schema(
             "web_search",
-            "Search the web for public information. Return in <cite id=\"\"></cite> format."
+            'Search the web for public information. Return in <cite id=""></cite> format.',
         )

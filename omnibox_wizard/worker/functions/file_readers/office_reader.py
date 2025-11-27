@@ -5,6 +5,7 @@ from pathlib import Path
 import httpx
 import shortuuid
 
+from common.trim_md_table import trim_md_table
 from common.utils import remove_continuous_break_lines
 from omnibox_wizard.worker.entity import Image
 from omnibox_wizard.worker.functions.file_readers.utils import (
@@ -54,7 +55,8 @@ class OfficeReader(httpx.AsyncClient):
                 Image(data=base64_data, mimetype=mimetype, link=link, name=link)
             )
             markdown = markdown.replace(match.group(0), link)
-        return remove_continuous_break_lines(markdown), images
+        formatted_markdown = trim_md_table(markdown)
+        return remove_continuous_break_lines(formatted_markdown), images
 
 
 class OfficeOperatorClient(httpx.AsyncClient):

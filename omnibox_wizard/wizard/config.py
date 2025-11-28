@@ -26,6 +26,7 @@ class VectorConfig(BaseModel):
     meili_api_key: str = Field(default=None)
     batch_size: int = Field(default=1)
     max_results: int = Field(default=10)
+    wait_timeout: int = Field(default=0)
 
 
 GrimoireOpenAIConfigKey = Literal["mini", "default", "large"]

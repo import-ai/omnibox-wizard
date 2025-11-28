@@ -1,3 +1,4 @@
+import asyncio
 from functools import partial
 from hashlib import md5
 from typing import List, Tuple
@@ -311,8 +312,15 @@ class MeiliVectorDB:
         index = client.index(self.get_shard(namespace_id))
         tasks.append(await index.delete_documents_by_filter(filter=filter_))
 
-        for task in tasks:
-            await client.wait_for_task(task.task_uid)
+        if self.config.wait_timeout > 0:
+            await asyncio.gather(
+                *[
+                    client.wait_for_task(
+                        task.task_uid, timeout_in_ms=self.config.wait_timeout
+                    )
+                    for task in tasks
+                ]
+            )
 
     @tracer.start_as_current_span("MeiliVectorDB.search")
     async def search(

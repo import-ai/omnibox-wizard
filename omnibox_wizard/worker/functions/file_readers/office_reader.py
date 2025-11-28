@@ -26,7 +26,7 @@ class OfficeReader(httpx.AsyncClient):
             bytes_content: bytes = f.read()
 
         ext = ext or Path(file_path).suffix.lower()
-        mimetype = mimetype or guess_mimetype(ext)
+        mimetype = mimetype or guess_mimetype(file_path)
 
         response: httpx.Response = await self.post(
             "/v1/convert/file",

@@ -27,6 +27,7 @@ class VectorConfig(BaseModel):
     batch_size: int = Field(default=1)
     max_results: int = Field(default=10)
     wait_timeout: int = Field(default=0)
+    embedder_dimensions: int = Field(default=1536)
 
 
 GrimoireOpenAIConfigKey = Literal["mini", "default", "large"]

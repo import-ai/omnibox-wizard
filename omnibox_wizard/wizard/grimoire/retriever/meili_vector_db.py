@@ -65,7 +65,7 @@ class MeiliVectorDB:
         self.index_uid = "omniboxIndex"
         self.num_shards = 20
         self.embedder_name = "omniboxEmbed"
-        self.embedder_dimensions = 1024
+        self.embedder_dimensions = config.embedder_dimensions
         self.has_old_index = False
 
     async def get_or_init_client(self) -> AsyncClient:

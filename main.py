@@ -1,17 +1,18 @@
 import asyncio
 import tomllib
 from argparse import ArgumentParser, Namespace
-from typing import Set
 
-from aiokafka import AIOKafkaConsumer, ConsumerRecord, TopicPartition
+from aiokafka import AIOKafkaConsumer
 
 from common import project_root
 from common.config_loader import Loader
 from common.logger import get_logger
 from common.tracing import setup_opentelemetry
 from omnibox_wizard.worker.config import ENV_PREFIX, WorkerConfig
+from omnibox_wizard.worker.entity import Message
 from omnibox_wizard.worker.health_server import HealthServer
 from omnibox_wizard.worker.health_tracker import HealthTracker
+from omnibox_wizard.worker.worker import Worker
 
 with project_root.open("pyproject.toml", "rb") as f:
     version = tomllib.load(f)["project"]["version"]
@@ -24,54 +25,17 @@ def get_args() -> Namespace:
     return args
 
 
-async def process(msg: ConsumerRecord):
-    pass
-
-
-class MessageConsumer:
-    def __init__(self, topic: str, group_id: str, concurrency: int):
-        self.consumer = AIOKafkaConsumer(
-            topic, group_id=group_id, enable_auto_commit=False
-        )
-        self.concurrency = concurrency
-        self.queue: asyncio.Queue[ConsumerRecord] = asyncio.Queue(maxsize=concurrency)
-        self.processing_messages: Set[tuple[str, int, int]] = set()
-
-    def get_smallest_offset(self, topic: str, partition: int) -> int:
-        return min(
-            (
-                offset
-                for t, p, offset in self.processing_messages
-                if t == topic and p == partition
-            ),
-            default=0,
-        )
-
-    async def receive_messages(self):
-        while True:
-            msg = await self.consumer.getone()
-            await self.queue.put(msg)
-
-    async def worker(self):
-        while True:
-            msg = await self.queue.get()
-            msg_info = (msg.topic, msg.partition, msg.offset)
-            self.processing_messages.add(msg_info)
-
-            await process(msg)
-
-            offset = self.get_smallest_offset(msg.topic, msg.partition)
-            tp = TopicPartition(msg.topic, msg.partition)
-            await self.consumer.commit({tp: offset + 1})
-            self.processing_messages.discard(msg_info)
-
-    async def run(self):
-        await self.consumer.start()
-        tasks = [
-            asyncio.create_task(self.receive_messages()),
-            *[asyncio.create_task(self.worker()) for _ in range(self.concurrency)],
-        ]
-        await asyncio.gather(*tasks)
+async def run_worker(config: WorkerConfig, id: int, health_tracker: HealthTracker):
+    consumer = AIOKafkaConsumer(
+        config.consumer.topic,
+        group_id=config.consumer.group,
+        enable_auto_commit=True,
+    )
+    await consumer.start()
+    worker = Worker(config, id, health_tracker)
+    async for msg in consumer:
+        message = Message.model_validate_json(msg.value)
+        await worker.run_once(message)
 
 
 async def main():
@@ -87,12 +51,10 @@ async def main():
     # Initialize health tracking
     health_tracker = HealthTracker()
 
-    message_consumer = MessageConsumer(
-        topic=config.consumer.topic,
-        group_id=config.consumer.group,
-        concurrency=config.consumer.concurrency,
-    )
-    tasks = [message_consumer.run()]
+    tasks = [
+        run_worker(config, i, health_tracker)
+        for i in range(config.consumer.concurrency)
+    ]
 
     # Add health server if enabled
     if config.health.enabled:

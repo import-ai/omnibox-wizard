@@ -91,7 +91,11 @@ class HealthConfig(BaseModel):
 class ConsumerConfig(BaseModel):
     topic: str = Field(default="omnibox-tasks")
     group: str = Field(default="omnibox-wizard")
-    concurrency: int = Field(default=100)
+    concurrency: int = Field(default=10)
+
+
+class RateLimiterConfig(BaseModel):
+    file_reader: int = Field(default=2)
 
 
 class WorkerConfig(BaseModel):
@@ -102,6 +106,7 @@ class WorkerConfig(BaseModel):
     grimoire: GrimoireConfig = Field(default=None)
     health: HealthConfig = Field(default_factory=HealthConfig)
     consumer: ConsumerConfig = Field(default_factory=ConsumerConfig)
+    rate: RateLimiterConfig = Field(default_factory=RateLimiterConfig)
 
 
 ENV_PREFIX: str = "OBW"

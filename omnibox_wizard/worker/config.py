@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field
 
-from omnibox_wizard.wizard.config import VectorConfig, GrimoireConfig
+from omnibox_wizard.wizard.config import GrimoireConfig, VectorConfig
 
 
 class BackendConfig(BaseModel):
@@ -88,6 +88,12 @@ class HealthConfig(BaseModel):
     port: int = Field(default=8000, description="Port for health check server")
 
 
+class ConsumerConfig(BaseModel):
+    topic: str = Field(default="omnibox-tasks")
+    group: str = Field(default="omnibox-wizard")
+    concurrency: int = Field(default=100)
+
+
 class WorkerConfig(BaseModel):
     vector: VectorConfig
     task: TaskConfig = Field(default_factory=TaskConfig)
@@ -95,6 +101,7 @@ class WorkerConfig(BaseModel):
     callback: CallbackConfig = Field(default_factory=CallbackConfig)
     grimoire: GrimoireConfig = Field(default=None)
     health: HealthConfig = Field(default_factory=HealthConfig)
+    consumer: ConsumerConfig = Field(default_factory=ConsumerConfig)
 
 
 ENV_PREFIX: str = "OBW"

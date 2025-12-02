@@ -2,6 +2,7 @@ import asyncio
 import traceback
 from contextlib import asynccontextmanager
 from datetime import datetime
+from pathlib import Path
 from typing import AsyncGenerator, Callable
 
 import httpx
@@ -91,11 +92,18 @@ class Worker:
     @tracer.start_as_current_span("worker._start_task")
     async def _start_task(self, task_id: str) -> Task | None:
         async with self._backend_client() as client:
-            response = await client.post(
-                f"/internal/api/v1/wizard/tasks/{task_id}/start"
-            )
-            response.raise_for_status()
-            return Task.model_validate(response.json())
+            try:
+                response = await client.post(
+                    f"/internal/api/v1/wizard/tasks/{task_id}/start"
+                )
+                response.raise_for_status()
+                return Task.model_validate(response.json())
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 422:
+                    data = e.response.json()
+                    if data.get("code") == "task_finished":
+                        return None
+                raise
 
     def get_trace_info(self, task: Task) -> TraceInfo:
         return TraceInfo(
@@ -110,37 +118,45 @@ class Worker:
 
     @tracer.start_as_current_span("worker.run_once")
     async def run_once(self, msg: Message):
+        if msg.function not in self.supported_functions:
+            return
+        if msg.function == "file_reader":
+            file_name = msg.meta.get("file_name", "")
+            file_ext = Path(file_name).suffix.lower()
+            if file_ext not in self.file_reader.supported_extensions:
+                return
+
         if self.health_tracker:
             self.health_tracker.update_worker_status(self.worker_id, "running")
 
         task = await self._start_task(msg.task_id)
-        if task is None:
-            return
+        if task is not None:
+            trace_info: TraceInfo = self.get_trace_info(task)
+            trace_info.info(
+                {"message": "fetch_task"}
+                | task.model_dump(include={"created_at", "started_at"})
+            )
+            trace_headers = (
+                task.payload.get("trace_headers", {}) if task.payload else {}
+            )
+            parent_context = propagate.extract(trace_headers)
+            resource_id: str = task.payload.get("resource_id", None)
 
-        trace_info: TraceInfo = self.get_trace_info(task)
-        trace_info.info(
-            {"message": "fetch_task"}
-            | task.model_dump(include={"created_at", "started_at"})
-        )
-        trace_headers = task.payload.get("trace_headers", {}) if task.payload else {}
-        parent_context = propagate.extract(trace_headers)
-        resource_id: str = task.payload.get("resource_id", None)
-
-        with tracer.start_as_current_span(
-            f"worker.process_task.{task.function}",
-            context=parent_context,
-            attributes={
-                "task.id": task.id,
-                "task.function": task.function,
-                "task.namespace_id": task.namespace_id,
-                "task.user_id": task.user_id,
-                "task.priority": task.priority,
-                "worker.id": str(self.worker_id),
-            }
-            | ({"task.resource_id": resource_id} if resource_id else {}),
-        ):
-            processed_task: Task = await self.process_task(task, trace_info)
-            await self.callback_util.send_callback(processed_task)
+            with tracer.start_as_current_span(
+                f"worker.process_task.{task.function}",
+                context=parent_context,
+                attributes={
+                    "task.id": task.id,
+                    "task.function": task.function,
+                    "task.namespace_id": task.namespace_id,
+                    "task.user_id": task.user_id,
+                    "task.priority": task.priority,
+                    "worker.id": str(self.worker_id),
+                }
+                | ({"task.resource_id": resource_id} if resource_id else {}),
+            ):
+                processed_task: Task = await self.process_task(task, trace_info)
+                await self.callback_util.send_callback(processed_task)
 
         if self.health_tracker:
             self.health_tracker.update_worker_status(

@@ -95,6 +95,8 @@ jobs:
           platforms: |
             linux/amd64
             linux/arm64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
       - name: Set output
         id: set_output
@@ -147,6 +149,8 @@ jobs:
           platforms: |
             linux/amd64
             linux/arm64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
   webhook:
     runs-on: ubuntu-latest

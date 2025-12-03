@@ -5,8 +5,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import AsyncGenerator, Callable
 
-import httpx
-from httpx import AsyncClient, AsyncHTTPTransport
+from httpx import AsyncClient, AsyncHTTPTransport, HTTPStatusError
 from opentelemetry import propagate, trace
 from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 from opentelemetry.trace import Status, StatusCode
@@ -87,7 +86,7 @@ class Worker:
 
     @asynccontextmanager
     async def _backend_client(self) -> AsyncGenerator[AsyncClient, None]:
-        async with httpx.AsyncClient(
+        async with AsyncClient(
             base_url=self.config.backend.base_url,
             transport=AsyncHTTPTransport(retries=3),
             timeout=30,
@@ -104,7 +103,7 @@ class Worker:
                 )
                 response.raise_for_status()
                 return Task.model_validate(response.json())
-            except httpx.HTTPStatusError as e:
+            except HTTPStatusError as e:
                 data = e.response.json()
                 if data.get("code") in [
                     "task_ended",

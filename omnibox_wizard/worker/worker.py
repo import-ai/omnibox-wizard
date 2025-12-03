@@ -40,8 +40,8 @@ class Worker:
         self,
         config: WorkerConfig,
         worker_id: int,
-        health_tracker: HealthTracker = None,
-        rate_limiter: RateLimiter = None,
+        health_tracker: HealthTracker,
+        rate_limiter: RateLimiter,
     ):
         self.config: WorkerConfig = config
         self.worker_id = worker_id

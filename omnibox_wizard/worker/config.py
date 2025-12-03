@@ -88,10 +88,11 @@ class HealthConfig(BaseModel):
     port: int = Field(default=8000, description="Port for health check server")
 
 
-class ConsumerConfig(BaseModel):
+class KafkaConfig(BaseModel):
+    broker: str
     topic: str = Field(default="omnibox-tasks")
     group: str = Field(default="omnibox-wizard")
-    concurrency: int = Field(default=10)
+    num_worker: int = Field(default=10)
 
 
 class RateLimiterConfig(BaseModel):
@@ -107,7 +108,7 @@ class WorkerConfig(BaseModel):
     callback: CallbackConfig = Field(default_factory=CallbackConfig)
     grimoire: GrimoireConfig = Field(default=None)
     health: HealthConfig = Field(default_factory=HealthConfig)
-    consumer: ConsumerConfig = Field(default_factory=ConsumerConfig)
+    kafka: KafkaConfig = Field(default_factory=KafkaConfig)
     rate: RateLimiterConfig = Field(default_factory=RateLimiterConfig)
 
 

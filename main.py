@@ -1,6 +1,5 @@
 import asyncio
 import tomllib
-from argparse import ArgumentParser, Namespace
 
 from aiokafka import AIOKafkaConsumer
 
@@ -19,13 +18,6 @@ with project_root.open("pyproject.toml", "rb") as f:
     version = tomllib.load(f)["project"]["version"]
 
 
-def get_args() -> Namespace:
-    parser = ArgumentParser()
-    parser.add_argument("--workers", type=int, default=1)
-    args = parser.parse_args()
-    return args
-
-
 async def run_worker(
     config: WorkerConfig,
     id: int,
@@ -33,8 +25,9 @@ async def run_worker(
     rate_limiter: RateLimiter,
 ):
     consumer = AIOKafkaConsumer(
-        config.consumer.topic,
-        group_id=config.consumer.group,
+        config.kafka.topic,
+        bootstrap_servers=config.kafka.broker,
+        group_id=config.kafka.group,
         enable_auto_commit=True,
     )
     await consumer.start()
@@ -47,9 +40,8 @@ async def run_worker(
 async def main():
     setup_opentelemetry("omnibox-wizard-worker")
 
-    args = get_args()
     logger = get_logger("main")
-    logger.info(f"Starting Wizard {version} with {args.workers} workers")
+    logger.info(f"Starting Wizard {version}")
 
     loader = Loader(WorkerConfig, env_prefix=ENV_PREFIX)
     config = loader.load()
@@ -58,7 +50,7 @@ async def main():
     rate_limiter = RateLimiter(config.rate)
     tasks = [
         run_worker(config, i, health_tracker, rate_limiter)
-        for i in range(config.consumer.concurrency)
+        for i in range(config.kafka.num_worker)
     ]
 
     # Add health server if enabled

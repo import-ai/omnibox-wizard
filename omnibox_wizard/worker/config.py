@@ -92,7 +92,6 @@ class KafkaConfig(BaseModel):
     broker: str
     topic: str = Field(default="omnibox-tasks")
     group: str = Field(default="omnibox-wizard")
-    num_worker: int = Field(default=10)
 
 
 class RateLimiterConfig(BaseModel):

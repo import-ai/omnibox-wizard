@@ -95,7 +95,9 @@ class ConsumerConfig(BaseModel):
 
 
 class RateLimiterConfig(BaseModel):
-    file_reader: int = Field(default=2)
+    file_reader_doc: int = Field(default=2)
+    file_reader_md: int = Field(default=2)
+    file_reader_txt: int = Field(default=2)
 
 
 class WorkerConfig(BaseModel):

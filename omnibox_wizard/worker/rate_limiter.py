@@ -1,4 +1,5 @@
 import asyncio
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from omnibox_wizard.worker.config import RateLimiterConfig
@@ -41,3 +42,11 @@ class RateLimiter:
         if semaphore is None:
             return
         semaphore.release()
+
+    @asynccontextmanager
+    async def limit(self, msg: Message):
+        await self.acquire(msg)
+        try:
+            yield
+        finally:
+            self.release(msg)

@@ -12,6 +12,7 @@ from omnibox_wizard.worker.config import ENV_PREFIX, WorkerConfig
 from omnibox_wizard.worker.entity import Message
 from omnibox_wizard.worker.health_server import HealthServer
 from omnibox_wizard.worker.health_tracker import HealthTracker
+from omnibox_wizard.worker.rate_limiter import RateLimiter
 from omnibox_wizard.worker.worker import Worker
 
 with project_root.open("pyproject.toml", "rb") as f:
@@ -25,17 +26,22 @@ def get_args() -> Namespace:
     return args
 
 
-async def run_worker(config: WorkerConfig, id: int, health_tracker: HealthTracker):
+async def run_worker(
+    config: WorkerConfig,
+    id: int,
+    health_tracker: HealthTracker,
+    rate_limiter: RateLimiter,
+):
     consumer = AIOKafkaConsumer(
         config.consumer.topic,
         group_id=config.consumer.group,
         enable_auto_commit=True,
     )
     await consumer.start()
-    worker = Worker(config, id, health_tracker)
+    worker = Worker(config, id, health_tracker, rate_limiter)
     async for msg in consumer:
         message = Message.model_validate_json(msg.value)
-        await worker.run_once(message)
+        await worker.process_message(message)
 
 
 async def main():
@@ -48,11 +54,10 @@ async def main():
     loader = Loader(WorkerConfig, env_prefix=ENV_PREFIX)
     config = loader.load()
 
-    # Initialize health tracking
     health_tracker = HealthTracker()
-
+    rate_limiter = RateLimiter(config.rate)
     tasks = [
-        run_worker(config, i, health_tracker)
+        run_worker(config, i, health_tracker, rate_limiter)
         for i in range(config.consumer.concurrency)
     ]
 

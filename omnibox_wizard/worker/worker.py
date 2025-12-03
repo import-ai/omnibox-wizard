@@ -105,10 +105,13 @@ class Worker:
                 response.raise_for_status()
                 return Task.model_validate(response.json())
             except httpx.HTTPStatusError as e:
-                if e.response.status_code == 422:
-                    data = e.response.json()
-                    if data.get("code") == "task_finished":
-                        return None
+                data = e.response.json()
+                if data.get("code") in [
+                    "task_ended",
+                    "task_canceled",
+                    "task_not_found",
+                ]:
+                    return None
                 raise
 
     def get_trace_info(self, task: Task) -> TraceInfo:

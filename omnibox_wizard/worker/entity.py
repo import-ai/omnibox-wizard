@@ -54,4 +54,4 @@ class GeneratedContent(BaseModel):
 class Message(BaseModel):
     task_id: str
     function: str
-    meta: dict[str, str]
+    meta: dict[str, str] = Field(default_factory=dict)

@@ -3,11 +3,11 @@ from typing import List
 from langchain_text_splitters import MarkdownTextSplitter
 
 from common.trace_info import TraceInfo
-from omnibox_wizard.worker.config import WorkerConfig
-from omnibox_wizard.worker.entity import Task
 from omnibox_wizard.wizard.grimoire.entity.chunk import Chunk, ChunkType
 from omnibox_wizard.wizard.grimoire.entity.message import Message
 from omnibox_wizard.wizard.grimoire.retriever.meili_vector_db import MeiliVectorDB
+from omnibox_wizard.worker.config import WorkerConfig
+from omnibox_wizard.worker.entity import Task
 from omnibox_wizard.worker.functions.base_function import BaseFunction
 
 
@@ -19,7 +19,9 @@ class DeleteIndex(BaseFunction):
         input_data = task.input
         namespace_id: str = task.namespace_id
         resource_id: str = input_data["resource_id"]
-        await self.vector_db.remove_chunks(namespace_id, resource_id)
+        tasks = []
+        await self.vector_db.remove_chunks(namespace_id, resource_id, tasks)
+        await self.vector_db.wait_for_tasks(tasks)
         return {"success": True}
 
 
@@ -34,7 +36,8 @@ class UpsertIndex(DeleteIndex):
     async def run(self, task: Task, trace_info: TraceInfo) -> dict:
         input_data = task.input
         resource_id: str = input_data["meta_info"]["resource_id"]
-        await self.vector_db.remove_chunks(task.namespace_id, resource_id)
+        tasks = []
+        await self.vector_db.remove_chunks(task.namespace_id, resource_id, tasks)
 
         title: str = input_data.get("title", "")
         content: str = input_data.get("content", "")
@@ -55,7 +58,8 @@ class UpsertIndex(DeleteIndex):
             )
             for chunk in chunks
         ]
-        await self.vector_db.insert_chunks(task.namespace_id, chunk_list)
+        await self.vector_db.insert_chunks(task.namespace_id, chunk_list, tasks)
+        await self.vector_db.wait_for_tasks(tasks)
         return {"success": True}
 
 
@@ -66,7 +70,11 @@ class UpsertMessageIndex(BaseFunction):
 
     async def run(self, task: Task, trace_info: TraceInfo) -> dict:
         message = Message(**task.input)
-        await self.vector_db.upsert_message(task.namespace_id, task.user_id, message)
+        tasks = []
+        await self.vector_db.upsert_message(
+            task.namespace_id, task.user_id, message, tasks
+        )
+        await self.vector_db.wait_for_tasks(tasks)
         return {"success": True}
 
 
@@ -79,7 +87,11 @@ class DeleteConversation(BaseFunction):
         conversation_id: str = task.input.get("conversation_id", "")
         if conversation_id == "":
             return {"success": False, "error": "conversation_id is required"}
-        await self.vector_db.remove_conversation(task.namespace_id, conversation_id)
+        tasks = []
+        await self.vector_db.remove_conversation(
+            task.namespace_id, conversation_id, tasks
+        )
+        await self.vector_db.wait_for_tasks(tasks)
         return {"success": True}
 
 

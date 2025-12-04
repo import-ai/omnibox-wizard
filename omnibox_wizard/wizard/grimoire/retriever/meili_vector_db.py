@@ -154,7 +154,9 @@ class MeiliVectorDB:
             )
 
     @tracer.start_as_current_span("MeiliVectorDB.insert_chunks")
-    async def insert_chunks(self, namespace_id: str, chunk_list: List[Chunk]):
+    async def insert_chunks(
+        self, namespace_id: str, chunk_list: List[Chunk], tasks: List[TaskInfo]
+    ):
         client = await self.get_or_init_client()
         index = client.index(self.get_shard(namespace_id))
         for i in range(0, len(chunk_list), self.batch_size):
@@ -186,10 +188,12 @@ class MeiliVectorDB:
                     },
                 )
                 records.append(record.model_dump(by_alias=True))
-            await index.add_documents(records, primary_key="id")
+            tasks.append(await index.add_documents(records, primary_key="id"))
 
     @tracer.start_as_current_span("MeiliVectorDB.upsert_message")
-    async def upsert_message(self, namespace_id: str, user_id: str, message: Message):
+    async def upsert_message(
+        self, namespace_id: str, user_id: str, message: Message, tasks: List[TaskInfo]
+    ):
         client = await self.get_or_init_client()
         index = client.index(self.get_shard(namespace_id))
         record_id = "message_{}".format(message.message_id)
@@ -216,10 +220,15 @@ class MeiliVectorDB:
                 self.embedder_name: embedding.data[0].embedding,
             },
         )
-        await index.add_documents([record.model_dump(by_alias=True)], primary_key="id")
+        task = await index.add_documents(
+            [record.model_dump(by_alias=True)], primary_key="id"
+        )
+        tasks.append(task)
 
     @tracer.start_as_current_span("MeiliVectorDB.remove_conversation")
-    async def remove_conversation(self, namespace_id: str, conversation_id: str):
+    async def remove_conversation(
+        self, namespace_id: str, conversation_id: str, tasks: List[TaskInfo]
+    ):
         await self.delete_from_both_indexes(
             namespace_id,
             filter_=[
@@ -227,10 +236,13 @@ class MeiliVectorDB:
                 "namespace_id = {}".format(namespace_id),
                 "message.conversation_id = {}".format(conversation_id),
             ],
+            tasks=tasks,
         )
 
     @tracer.start_as_current_span("MeiliVectorDB.remove_chunks")
-    async def remove_chunks(self, namespace_id: str, resource_id: str):
+    async def remove_chunks(
+        self, namespace_id: str, resource_id: str, tasks: List[TaskInfo]
+    ):
         await self.delete_from_both_indexes(
             namespace_id,
             filter_=[
@@ -238,6 +250,7 @@ class MeiliVectorDB:
                 "namespace_id = {}".format(namespace_id),
                 "chunk.resource_id = {}".format(resource_id),
             ],
+            tasks=tasks,
         )
 
     @tracer.start_as_current_span("MeiliVectorDB.vector_params")
@@ -298,29 +311,16 @@ class MeiliVectorDB:
 
     @tracer.start_as_current_span("MeiliVectorDB.delete_from_both_indexes")
     async def delete_from_both_indexes(
-        self,
-        namespace_id: str,
-        filter_: List[str | List[str]],
+        self, namespace_id: str, filter_: List[str | List[str]], tasks: List[TaskInfo]
     ):
         client = await self.get_or_init_client()
 
-        tasks: List[TaskInfo] = []
         if self.has_old_index:
             old_index = client.index(self.index_uid)
             tasks.append(await old_index.delete_documents_by_filter(filter=filter_))
 
         index = client.index(self.get_shard(namespace_id))
         tasks.append(await index.delete_documents_by_filter(filter=filter_))
-
-        if self.config.wait_timeout > 0:
-            await asyncio.gather(
-                *[
-                    client.wait_for_task(
-                        task.task_uid, timeout_in_ms=self.config.wait_timeout
-                    )
-                    for task in tasks
-                ]
-            )
 
     @tracer.start_as_current_span("MeiliVectorDB.search")
     async def search(
@@ -376,6 +376,18 @@ class MeiliVectorDB:
                 chunk = Chunk(**chunk_data)
                 output.append((chunk, score))
         return output
+
+    async def wait_for_tasks(self, tasks: List[TaskInfo]):
+        if self.config.wait_timeout > 0:
+            client = await self.get_or_init_client()
+            await asyncio.gather(
+                *[
+                    client.wait_for_task(
+                        task.task_uid, timeout_in_ms=self.config.wait_timeout
+                    )
+                    for task in tasks
+                ]
+            )
 
 
 class MeiliVectorRetriever(BaseRetriever):

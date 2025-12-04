@@ -1,10 +1,13 @@
 import asyncio
 import traceback
+from contextlib import asynccontextmanager
 from datetime import datetime
-from typing import Optional, Callable
+from pathlib import Path
+from typing import AsyncGenerator, Callable
 
-import httpx
-from opentelemetry import trace, propagate
+from httpx import AsyncClient, AsyncHTTPTransport, HTTPStatusError
+from opentelemetry import propagate, trace
+from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 from opentelemetry.trace import Status, StatusCode
 
 from common.exception import CommonException
@@ -12,19 +15,20 @@ from common.logger import get_logger
 from common.trace_info import TraceInfo
 from omnibox_wizard.worker.callback_util import CallbackUtil
 from omnibox_wizard.worker.config import WorkerConfig
-from omnibox_wizard.worker.entity import Task
+from omnibox_wizard.worker.entity import Message, Task
 from omnibox_wizard.worker.functions.base_function import BaseFunction
 from omnibox_wizard.worker.functions.file_reader import FileReader
 from omnibox_wizard.worker.functions.html_reader import HTMLReaderV2
 from omnibox_wizard.worker.functions.index import (
     DeleteConversation,
-    UpsertIndex,
     DeleteIndex,
+    UpsertIndex,
     UpsertMessageIndex,
 )
 from omnibox_wizard.worker.functions.tag_extractor import TagExtractor
 from omnibox_wizard.worker.functions.title_generator import TitleGenerator
 from omnibox_wizard.worker.health_tracker import HealthTracker
+from omnibox_wizard.worker.rate_limiter import RateLimiter
 from omnibox_wizard.worker.task_manager import TaskManager
 
 tracer = trace.get_tracer(__name__)
@@ -32,13 +36,18 @@ tracer = trace.get_tracer(__name__)
 
 class Worker:
     def __init__(
-        self, config: WorkerConfig, worker_id: int, health_tracker: HealthTracker = None
+        self,
+        config: WorkerConfig,
+        worker_id: int,
+        health_tracker: HealthTracker,
+        rate_limiter: RateLimiter,
     ):
         self.config: WorkerConfig = config
         self.worker_id = worker_id
         self.callback_util = CallbackUtil(config)
         self.health_tracker = health_tracker
         self.task_manager = TaskManager(config)
+        self.rate_limiter = rate_limiter
 
         self.file_reader: FileReader = FileReader(config)
 
@@ -75,6 +84,35 @@ class Worker:
         if self.health_tracker:
             self.health_tracker.register_worker(self.worker_id)
 
+    @asynccontextmanager
+    async def _backend_client(self) -> AsyncGenerator[AsyncClient, None]:
+        async with AsyncClient(
+            base_url=self.config.backend.base_url,
+            transport=AsyncHTTPTransport(retries=3),
+            timeout=30,
+        ) as client:
+            HTTPXClientInstrumentor.instrument_client(client)
+            yield client
+
+    @tracer.start_as_current_span("worker._start_task")
+    async def _start_task(self, task_id: str) -> Task | None:
+        async with self._backend_client() as client:
+            try:
+                response = await client.post(
+                    f"/internal/api/v1/wizard/tasks/{task_id}/start"
+                )
+                response.raise_for_status()
+                return Task.model_validate(response.json())
+            except HTTPStatusError as e:
+                data = e.response.json()
+                if data.get("code") in [
+                    "task_ended",
+                    "task_canceled",
+                    "task_not_found",
+                ]:
+                    return None
+                raise
+
     def get_trace_info(self, task: Task) -> TraceInfo:
         return TraceInfo(
             task.id,
@@ -86,103 +124,53 @@ class Worker:
             },
         )
 
-    async def run_once(self):
-        task: Task | None = await self.fetch_task()
-        if task:
-            if self.health_tracker:
-                self.health_tracker.update_worker_status(self.worker_id, "running")
+    @tracer.start_as_current_span("worker.process_message")
+    async def process_message(self, msg: Message):
+        if msg.function not in self.supported_functions:
+            return
+        if msg.function == "file_reader":
+            file_name = msg.meta.get("file_name", "")
+            file_ext = Path(file_name).suffix.lower()
+            if file_ext not in self.file_reader.supported_extensions:
+                return
 
-            trace_info: TraceInfo = self.get_trace_info(task)
-            trace_info.info(
-                {"message": "fetch_task"}
-                | task.model_dump(include={"created_at", "started_at"})
-            )
-            trace_headers = (
-                task.payload.get("trace_headers", {}) if task.payload else {}
-            )
-            parent_context = propagate.extract(trace_headers)
-            resource_id: str = task.payload.get("resource_id", None)
+        if self.health_tracker:
+            self.health_tracker.update_worker_status(self.worker_id, "running")
 
-            with tracer.start_as_current_span(
-                f"worker.process_task.{task.function}",
-                context=parent_context,
-                attributes={
-                    "task.id": task.id,
-                    "task.function": task.function,
-                    "task.namespace_id": task.namespace_id,
-                    "task.user_id": task.user_id,
-                    "task.priority": task.priority,
-                    "worker.id": str(self.worker_id),
-                }
-                | ({"task.resource_id": resource_id} if resource_id else {}),
-            ):
-                processed_task: Task = await self.process_task(task, trace_info)
-                await self.callback_util.send_callback(processed_task)
-
-            if self.health_tracker:
-                self.health_tracker.update_worker_status(
-                    self.worker_id, "idle", datetime.now()
+        async with self.rate_limiter.limit(msg):
+            task = await self._start_task(msg.task_id)
+            if task is not None:
+                trace_info: TraceInfo = self.get_trace_info(task)
+                trace_info.info(
+                    {"message": "fetch_task"}
+                    | task.model_dump(include={"created_at", "started_at"})
                 )
-        else:
-            if self.health_tracker:
-                self.health_tracker.update_worker_status(self.worker_id, "idle")
+                trace_headers = (
+                    task.payload.get("trace_headers", {}) if task.payload else {}
+                )
+                parent_context = propagate.extract(trace_headers)
+                resource_id: str = task.payload.get("resource_id", None)
 
-    async def run(self):
-        while True:
-            try:
-                await self.run_once()
-            except httpx.ConnectError as e:
-                self.logger.warning(
-                    {
-                        "message": "Failed to connect to backend",
-                        "error": CommonException.parse_exception(e),
+                with tracer.start_as_current_span(
+                    f"worker.process_task.{task.function}",
+                    context=parent_context,
+                    attributes={
+                        "task.id": task.id,
+                        "task.function": task.function,
+                        "task.namespace_id": task.namespace_id,
+                        "task.user_id": task.user_id,
+                        "task.priority": task.priority,
+                        "worker.id": str(self.worker_id),
                     }
-                )
-            except Exception as e:
-                if self.health_tracker:
-                    self.health_tracker.increment_error_count(self.worker_id)
-                    self.health_tracker.update_worker_status(self.worker_id, "error")
-                self.logger.exception({"error": CommonException.parse_exception(e)})
-            await asyncio.sleep(1)
+                    | ({"task.resource_id": resource_id} if resource_id else {}),
+                ):
+                    processed_task: Task = await self.process_task(task, trace_info)
+                    await self.callback_util.send_callback(processed_task)
 
-    async def fetch_task(self) -> Optional[Task]:
-        task: Optional[Task] = None
-        try:
-            async with httpx.AsyncClient(
-                base_url=self.config.backend.base_url
-            ) as client:
-                http_response: httpx.Response = await client.get(
-                    "/internal/api/v1/wizard/task",
-                    params={
-                        "functions": ",".join(self.supported_functions),
-                        "file_extensions": ",".join(
-                            self.file_reader.supported_extensions
-                        ),
-                    },
-                )
-                logging_func: Callable = (
-                    self.logger.debug if http_response.is_success else self.logger.error
-                )
-                if http_response.status_code == 204:
-                    return None
-                json_response = http_response.json()
-                logging_func(
-                    {
-                        "status_code": http_response.status_code,
-                        "response": json_response,
-                    }
-                )
-                return Task.model_validate(json_response)
-        except httpx.ConnectError:
-            self.logger.warning(
-                {
-                    "message": "Failed to connect",
-                    "backend_base_url": self.config.backend.base_url,
-                }
+        if self.health_tracker:
+            self.health_tracker.update_worker_status(
+                self.worker_id, "idle", datetime.now()
             )
-        except Exception as e:
-            self.logger.exception({"error": CommonException.parse_exception(e)})
-        return task
 
     async def process_task(self, task: Task, trace_info: TraceInfo) -> Task:
         logging_func: Callable[[dict], None] = trace_info.info

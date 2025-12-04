@@ -49,3 +49,9 @@ class GeneratedContent(BaseModel):
     title: str | None = Field(default=None)
     markdown: str
     images: list[Image] | None = Field(default=None)
+
+
+class Message(BaseModel):
+    task_id: str
+    function: str
+    meta: dict[str, str] = Field(default_factory=dict)

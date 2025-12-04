@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field
 
-from omnibox_wizard.wizard.config import VectorConfig, GrimoireConfig
+from omnibox_wizard.wizard.config import GrimoireConfig, VectorConfig
 
 
 class BackendConfig(BaseModel):
@@ -88,6 +88,18 @@ class HealthConfig(BaseModel):
     port: int = Field(default=8000, description="Port for health check server")
 
 
+class KafkaConfig(BaseModel):
+    broker: str
+    topic: str = Field(default="omnibox-tasks")
+    group: str = Field(default="omnibox-wizard")
+
+
+class RateLimiterConfig(BaseModel):
+    file_reader_doc: int = Field(default=2)
+    file_reader_md: int = Field(default=2)
+    file_reader_txt: int = Field(default=2)
+
+
 class WorkerConfig(BaseModel):
     vector: VectorConfig
     task: TaskConfig = Field(default_factory=TaskConfig)
@@ -95,6 +107,8 @@ class WorkerConfig(BaseModel):
     callback: CallbackConfig = Field(default_factory=CallbackConfig)
     grimoire: GrimoireConfig = Field(default=None)
     health: HealthConfig = Field(default_factory=HealthConfig)
+    kafka: KafkaConfig = Field(default_factory=KafkaConfig)
+    rate: RateLimiterConfig = Field(default_factory=RateLimiterConfig)
 
 
 ENV_PREFIX: str = "OBW"

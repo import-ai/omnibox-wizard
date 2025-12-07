@@ -1,7 +1,7 @@
 from jinja2 import Template
 from pydantic import BaseModel, Field
 
-from .base import BaseAgent
+from omnibox_wizard.worker.agent.base import BaseAgent
 
 
 class HTMLContentExtractInput(BaseModel):

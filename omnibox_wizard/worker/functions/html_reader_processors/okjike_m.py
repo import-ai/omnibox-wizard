@@ -35,7 +35,7 @@ class OKJikeMProcessor(HTMLReaderBaseProcessor):
             image_selection: list[Tag] = images_dom.select("img")
             for img in image_selection:
                 img["src"] = self.remove_query_params(img["src"])
-            images = await self.img_selection_to_image(image_selection)
+            images = await self.img_selection_to_image(url, image_selection)
         else:
             images = []
         markdown: str = "\n\n".join(

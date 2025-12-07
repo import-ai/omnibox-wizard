@@ -171,13 +171,15 @@ class HTMLReaderV2(BaseFunction):
         domain: str = urlparse(url).netloc
         trace_info = trace_info.bind(domain=domain)
 
-        result: GeneratedContent = await self.convert(domain, html, trace_info)
+        result: GeneratedContent = await self.convert(
+            url=url, domain=domain, html=html, trace_info=trace_info
+        )
         result_dict: dict = result.model_dump(exclude_none=True)
         trace_info.info({k: v for k, v in result_dict.items() if k != "markdown"})
         return result_dict
 
     @tracer.start_as_current_span("get_images")
-    async def get_images(self, html: str, markdown: str) -> list[Image]:
+    async def get_images(self, url: str, html: str, markdown: str) -> list[Image]:
         extracted_images = self.extract_images(html)
         fetch_src_list: list[tuple[str, str]] = []
 
@@ -185,7 +187,7 @@ class HTMLReaderV2(BaseFunction):
             if src in markdown:
                 fetch_src_list.append((src, alt))
 
-        return await HTMLReaderBaseProcessor.get_images(fetch_src_list)
+        return await HTMLReaderBaseProcessor.get_images(url, fetch_src_list)
 
     @tracer.start_as_current_span("get_title")
     async def get_title(
@@ -249,7 +251,7 @@ class HTMLReaderV2(BaseFunction):
 
     @tracer.start_as_current_span("convert")
     async def convert(
-        self, domain: str, html: str, trace_info: TraceInfo
+        self, url: str, domain: str, html: str, trace_info: TraceInfo
     ) -> GeneratedContent:
         span = trace.get_current_span()
         html_doc = Document(html)
@@ -300,7 +302,7 @@ class HTMLReaderV2(BaseFunction):
                 )
 
         images, title = await asyncio.gather(
-            self.get_images(selected_html or html, markdown),
+            self.get_images(url=url, html=selected_html or html, markdown=markdown),
             self.get_title(markdown, raw_title, trace_info),
         )
         return GeneratedContent(title=title, markdown=markdown, images=images or None)

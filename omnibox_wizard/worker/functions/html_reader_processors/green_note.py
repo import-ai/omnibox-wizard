@@ -32,7 +32,7 @@ class GreenNoteProcessor(HTMLReaderBaseProcessor):
         )
         content = soup.find("p", attrs={"id": "js_image_desc"})
         h1_selection = soup.select("div#js_image_content h1")
-        images = await self.img_selection_to_image(image_selection)
+        images = await self.img_selection_to_image(url, image_selection)
 
         title: str = h1_selection[0].text.strip() if h1_selection else None
         markdown: str = "\n\n".join(

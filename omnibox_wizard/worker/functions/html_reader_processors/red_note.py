@@ -73,12 +73,12 @@ class RedNoteProcessor(HTMLReaderBaseProcessor):
 
         image_links = []
         for image_tag in image_selection:
-            if url := image_tag.get("content"):
-                if "sns-webpic-qc.xhscdn.com" in url:
-                    image_links.append(url)
+            if src := image_tag.get("content"):
+                if "sns-webpic-qc.xhscdn.com" in src:
+                    image_links.append(src)
 
         images = await self.get_images(
-            [(src, str(i + 1)) for i, src in enumerate(image_links)]
+            url, [(src, str(i + 1)) for i, src in enumerate(image_links)]
         )
 
         markdown: str = "\n\n".join(

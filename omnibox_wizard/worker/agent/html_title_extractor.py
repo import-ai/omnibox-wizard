@@ -1,7 +1,7 @@
 from jinja2 import Template
 from pydantic import BaseModel, Field
 
-from .base import BaseAgent
+from omnibox_wizard.worker.agent.base import BaseAgent
 
 
 class HTMLTitleExtractInput(BaseModel):
@@ -32,10 +32,10 @@ examples = [
     ),
     (
         {
-            "title": "全国夏粮小麦收获加速推进 夏种夏管有序进行_腾讯新闻",
+            "title": '全国夏粮小麦收获加速推进 "夏种夏管"有序进行_腾讯新闻',
             "snippet": "人民网记者 李栋\n夏粮产量占全年粮食总产量的1/4，其中小麦产量占夏粮产量的九成以上。当前，全国夏粮小麦收获加速推进，夏种夏管有序进行。\n中原熟，天下足。从5月19日开始大规模麦收，到6月9日基本结束，历时22天的河南全省麦收基本结束。数据显示，今年麦收期间，河南共投入联合收割机约21万台，累计收获小麦8464万亩，约占种植面积99.4%，机收率达99.8%。“三夏”机收任务圆满完成。",
         },
-        {"title": "全国夏粮小麦收获加速推进 夏种夏管有序进行"},
+        {"title": '全国夏粮小麦收获加速推进 "夏种夏管"有序进行'},
     ),
 ]
 

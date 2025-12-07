@@ -78,7 +78,7 @@ class RedNoteProcessor(HTMLReaderBaseProcessor):
                     image_links.append(src)
 
         images = await self.get_images(
-            url, [(src, str(i + 1)) for i, src in enumerate(image_links)]
+            [(src, str(i + 1)) for i, src in enumerate(image_links)]
         )
 
         markdown: str = "\n\n".join(

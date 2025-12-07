@@ -18,8 +18,8 @@ class HealthServer:
         async def health_check(response: Response):
             health_status = self.health_tracker.get_health_status()
 
-            if health_status["status"] == "unhealthy":
-                response.status_code = 503
+            # if health_status["status"] == "unhealthy":
+            #     response.status_code = 503
 
             return health_status
 

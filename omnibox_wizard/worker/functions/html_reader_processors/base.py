@@ -2,7 +2,7 @@ import asyncio
 import base64
 import os
 from abc import abstractmethod, ABC
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urljoin
 
 import httpx
 from opentelemetry import trace
@@ -24,7 +24,7 @@ class HTMLReaderBaseProcessor(ABC):
         return filename
 
     @classmethod
-    async def img_selection_to_image(cls, image_selection) -> list[Image]:
+    async def img_selection_to_image(cls, url: str, image_selection) -> list[Image]:
         tuple_images: list[tuple[str, str]] = []
 
         for img in image_selection:
@@ -34,22 +34,20 @@ class HTMLReaderBaseProcessor(ABC):
                         (src, img.get("alt", cls.get_name_from_url(src)))
                     )
 
-        images = await cls.get_images(tuple_images)
+        images = await cls.get_images(url, tuple_images)
         return images
 
     @classmethod
     @tracer.start_as_current_span("fetch_img")
-    async def fetch_img(cls, url: str) -> tuple[str, str] | None:
+    async def fetch_img(cls, url: str, src: str) -> tuple[str, str] | None:
         span = trace.get_current_span()
-        span.set_attribute("url", url)
-        if url.startswith("//:"):
-            url = "https:" + url
-            span.set_attribute("url", url)
-        if not url.startswith("http"):
-            return None
+        download_link: str = urljoin(url, src)
+        span.set_attributes({"image.src": src, "image.link": download_link})
         try:
-            async with httpx.AsyncClient(timeout=3) as client:
-                httpx_response = await client.get(url)
+            async with httpx.AsyncClient(
+                timeout=5, transport=httpx.AsyncHTTPTransport(retries=3)
+            ) as client:
+                httpx_response = await client.get(download_link)
                 if httpx_response.is_success:
                     mimetype = httpx_response.headers.get("Content-Type", "image/jpeg")
                     base64_data = base64.b64encode(httpx_response.content).decode()
@@ -59,9 +57,11 @@ class HTMLReaderBaseProcessor(ABC):
         return None
 
     @classmethod
-    async def get_images(cls, tuple_images: list[tuple[str, str]]) -> list[Image]:
+    async def get_images(
+        cls, url: str, tuple_images: list[tuple[str, str]]
+    ) -> list[Image]:
         fetched_imgs = await asyncio.gather(
-            *[cls.fetch_img(src) for src, _ in tuple_images]
+            *[cls.fetch_img(url=url, src=src) for src, _ in tuple_images]
         )
         images: list[Image] = []
 

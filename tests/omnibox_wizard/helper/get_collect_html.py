@@ -9,8 +9,27 @@ from urllib.parse import urlparse
 
 import httpx
 
+from common import project_root
 
-def get_collect_html(object_path: str) -> str:
+
+def decompress_html(bytes_gzip: bytes) -> str:
+    with gzip.GzipFile(fileobj=BytesIO(bytes_gzip)) as gz_file:
+        decompressed_bytes = gz_file.read()
+        decompressed_string = decompressed_bytes.decode("utf-8")
+    return decompressed_string
+
+
+def get_collect_html_from_local(object_path: str) -> str:
+    local_path = project_root.path(
+        os.path.join("tests/omnibox_wizard/resources/files", object_path)
+    )
+    if os.path.exists(local_path):
+        with open(local_path, "rb") as local_file:
+            return decompress_html(local_file.read())
+    raise FileNotFoundError
+
+
+def get_collect_html_from_s3(object_path: str) -> str:
     s3_url = os.environ.get("TEST_S3_URL")
     if not s3_url:
         raise RuntimeError("TEST_S3_URL environment variable is not set")
@@ -53,7 +72,11 @@ def get_collect_html(object_path: str) -> str:
         response.raise_for_status()
         compressed_data = response.content
 
-    with gzip.GzipFile(fileobj=BytesIO(compressed_data)) as gz_file:
-        decompressed_bytes = gz_file.read()
-        decompressed_string = decompressed_bytes.decode("utf-8")
-    return decompressed_string
+    return decompress_html(compressed_data)
+
+
+def get_collect_html(object_path: str) -> str:
+    try:
+        return get_collect_html_from_local(object_path)
+    except FileNotFoundError:
+        return get_collect_html_from_s3(object_path)

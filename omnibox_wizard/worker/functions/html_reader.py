@@ -50,6 +50,7 @@ class HTMLReaderV2(BaseFunction):
         "mp.weixin.qq.com": {"name": "div", "class_": "rich_media_content"},
         "news.qq.com": {"name": "div", "class_": "content-article"},
         "zhuanlan.zhihu.com": {"name": "article"},
+        "www.zhihu.com": {"class_": "RichText", "select_all": True},
         "www.163.com": {"name": "div", "class_": "post_body"},
         "x.com": {"name": "div", "attrs": {"data-testid": "tweetText"}},
         "www.reddit.com": {"name": "shreddit-post-text-body"},
@@ -74,6 +75,13 @@ class HTMLReaderV2(BaseFunction):
     @classmethod
     def content_selector(cls, domain: str, soup: BeautifulSoup) -> Tag:
         if selector := cls.CONTENT_SELECTOR.get(domain, None):
+            if selector.get("select_all", False):
+                items = soup.find_all(**selector)
+                standalone_soup = BeautifulSoup("", "html.parser")
+                div = standalone_soup.new_tag("div")
+                for item in items:
+                    div.append(item)
+                return div
             if content := soup.find(**selector):
                 if domain == "mp.weixin.qq.com":  # Special handling for WeChat articles
                     for img in content.find_all("img"):

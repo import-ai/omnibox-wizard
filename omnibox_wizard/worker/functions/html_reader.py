@@ -24,6 +24,9 @@ from omnibox_wizard.worker.functions.html_reader_processors.base import (
 from omnibox_wizard.worker.functions.html_reader_processors.green_note import (
     GreenNoteProcessor,
 )
+from omnibox_wizard.worker.functions.html_reader_processors.green_notice import (
+    GreenNoticeProcessor,
+)
 from omnibox_wizard.worker.functions.html_reader_processors.okjike_m import (
     OKJikeMProcessor,
 )
@@ -34,9 +37,6 @@ from omnibox_wizard.worker.functions.html_reader_processors.red_note import (
     RedNoteProcessor,
 )
 from omnibox_wizard.worker.functions.html_reader_processors.x import XProcessor
-from omnibox_wizard.worker.functions.html_reader_processors.green_notice import (
-    GreenNoticeProcessor,
-)
 
 json_dumps = partial(jsonlib.dumps, separators=(",", ":"), ensure_ascii=False)
 tracer = trace.get_tracer("HTMLReaderV2")
@@ -268,13 +268,12 @@ class HTMLReaderV2(BaseFunction):
     async def convert(
         self, domain: str, html: str, trace_info: TraceInfo
     ) -> GeneratedContent:
-        span = trace.get_current_span()
         html_doc = Document(html)
 
         selected_html: str = ""
         raw_title: str = html_doc.title()
         if domain in self.CONTENT_SELECTOR:
-            with tracer.start_as_current_span("content_selector"):
+            with tracer.start_as_current_span("content_selector") as span:
                 selected_html: str = self.content_selector(
                     domain, BeautifulSoup(html, "html.parser")
                 ).prettify()
@@ -284,37 +283,62 @@ class HTMLReaderV2(BaseFunction):
                 markdown: str = html2text(
                     htmlmin.minify(cleaned_html, remove_empty_space=True), bodywidth=0
                 ).strip()
-        else:
-            html_summary: str = self.fix_lazy_images(html_doc.summary().strip())
-            markdown: str = html2text(
-                htmlmin.minify(html_summary, remove_empty_space=True), bodywidth=0
-            ).strip()
 
-            log_body: dict = {
-                "len(html)": len(html),
-                "len(html_summary)": len(html_summary),
-                "compress_rate": f"{len(html_summary) * 100 / len(html): .2f}%",
-                "len(markdown)": len(markdown),
-            }
-            trace_info.info(log_body)
-            span.set_attributes(log_body)
+                span.set_attributes(
+                    {
+                        "len(html)": len(html),
+                        "len(html_summary)": len(selected_html),
+                        "len(cleaned_html)": len(cleaned_html),
+                        "len(markdown)": len(markdown),
+                    }
+                )
+        else:
+            with tracer.start_as_current_span("reader_summary") as span:
+                html_summary: str = self.fix_lazy_images(html_doc.summary().strip())
+                markdown: str = html2text(
+                    htmlmin.minify(html_summary, remove_empty_space=True), bodywidth=0
+                ).strip()
+
+                span.set_attributes(
+                    {
+                        "len(html)": len(html),
+                        "len(html_summary)": len(html_summary),
+                        "compress_rate": f"{len(html_summary) * 100 / len(html): .2f}%",
+                        "len(markdown)": len(markdown),
+                    }
+                )
 
         if not markdown:
-            with tracer.start_as_current_span("llm_extract_content"):
-                cleaned_html: str = clean_attributes(
+            with tracer.start_as_current_span("llm_extract_content") as span:
+                tools_cleaned_html: str = clean_attributes(
                     tounicode(Document(html)._html(True), method="html")
                 )
                 cleaned_html: str = self.clean_html(
-                    cleaned_html,
+                    tools_cleaned_html,
                     clean_svg=True,
                     clean_base64=True,
                     remove_atts=True,
                     compress=True,
                     remove_empty_tag=True,
                 )
-                markdown = await self.html_content_extractor.ainvoke(
-                    {"html": cleaned_html}, trace_info
+                span.set_attributes(
+                    {
+                        "len(html)": len(html),
+                        "len(tools_cleaned_html)": len(tools_cleaned_html),
+                        "len(cleaned_html)": len(cleaned_html),
+                    }
                 )
+
+                if len(cleaned_html) < 128 * 1024:
+                    markdown = await self.html_content_extractor.ainvoke(
+                        {"html": cleaned_html}, trace_info
+                    )
+                    span.set_attributes({"len(markdown)": len(markdown)})
+
+        if not markdown:
+            with tracer.start_as_current_span("fallback_html2text") as span:
+                markdown = html2text(html)
+                span.set_attributes({"len(markdown)": len(markdown)})
 
         images, title = await asyncio.gather(
             self.get_images(html=selected_html or html, markdown=markdown),

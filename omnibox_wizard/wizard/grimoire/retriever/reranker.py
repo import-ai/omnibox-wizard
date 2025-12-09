@@ -14,32 +14,18 @@ from omnibox_wizard.wizard.grimoire.retriever.base import SearchFunction, BaseRe
 tracer = trace.get_tracer(__name__)
 
 
-class BilledUnits(BaseModel):
-    input_tokens: int
-    output_tokens: int
-    search_units: int
-    classifications: int
-
-
-class Tokens(BaseModel):
-    input_tokens: int
-    output_tokens: int
-
-
-class Meta(BaseModel):
-    billed_units: BilledUnits
-    tokens: Tokens
-
-
-class ResultItem(BaseModel):
+class ScoreItem(BaseModel):
     index: int
-    relevance_score: float
+    object: str
+    score: float
 
 
 class RerankResponse(BaseModel):
     id: str
-    results: list[ResultItem]
-    meta: Meta
+    object: str
+    created: int
+    model: str
+    data: list[ScoreItem]
 
 
 class Reranker:
@@ -72,16 +58,14 @@ class Reranker:
             base_url=self.config.base_url, timeout=300
         ) as client:
             response = await client.post(
-                "/rerank",
+                "/score",
                 json={
                     "model": self.config.model,
-                    "query": query,
-                    "documents": [
+                    "text_1": query,
+                    "text_2": [
                         retrieval.to_prompt(exclude_id=True)
                         for retrieval in unique_retrievals
                     ],
-                    "top_n": k or len(unique_retrievals),
-                    "return_documents": False,
                 },
                 headers={"Authorization": f"Bearer {self.config.api_key}"},
             )
@@ -90,9 +74,9 @@ class Reranker:
                 response.json()
             )
         reranked_results: list[BaseRetrieval] = []
-        for item in rerank_response.results:
+        for item in sorted(rerank_response.data, key=lambda x: x.score, reverse=True):
             retrieval: BaseRetrieval = unique_retrievals[item.index]
-            retrieval.score.rerank = item.relevance_score
+            retrieval.score.rerank = item.score
             reranked_results.append(retrieval)
         filtered_results: list[BaseRetrieval] = reranked_results
         if threshold is not None:

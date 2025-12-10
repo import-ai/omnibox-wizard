@@ -55,7 +55,7 @@ class CallbackUtil:
                 await self._send_regular_callback(payload)
         except Exception as e:
             async with self.backend_client() as client:
-                await client.post(
+                resp = await client.post(
                     "/internal/api/v1/wizard/callback",
                     json={
                         "id": payload["id"],
@@ -68,6 +68,7 @@ class CallbackUtil:
                         },
                     },
                 )
+                resp.raise_for_status()
 
     @tracer.start_as_current_span("CallbackUtil._send_regular_callback")
     async def _send_regular_callback(self, payload: dict):

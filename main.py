@@ -36,13 +36,18 @@ async def run_worker(
         config.kafka.topic,
         bootstrap_servers=config.kafka.broker,
         group_id=config.kafka.group,
-        enable_auto_commit=True,
+        auto_offset_reset="earliest",
+        enable_auto_commit=False,
     )
     await consumer.start()
     worker = Worker(config, id, health_tracker, rate_limiter)
-    async for msg in consumer:
-        message = Message.model_validate_json(msg.value)
-        await worker.process_message(message)
+    try:
+        async for msg in consumer:
+            message = Message.model_validate_json(msg.value)
+            await worker.process_message(message)
+            await consumer.commit()
+    finally:
+        await consumer.stop()
 
 
 async def main():

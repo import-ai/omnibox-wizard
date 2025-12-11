@@ -71,8 +71,8 @@ async def run_worker_loop(
     while True:
         try:
             await run_worker(config, id, health_tracker, rate_limiter)
-        except Exception as e:
-            logger.exception(f"Worker {id} encountered an error: {e}")
+        except Exception:
+            logger.exception(f"Worker {id} encountered an error")
         await asyncio.sleep(5)
 
 

@@ -3,6 +3,7 @@ import tomllib
 from argparse import ArgumentParser, Namespace
 
 from aiokafka import AIOKafkaConsumer
+from aiokafka.errors import CommitFailedError, IllegalStateError
 
 from common import project_root
 from common.config_loader import Loader
@@ -32,6 +33,7 @@ async def run_worker(
     health_tracker: HealthTracker,
     rate_limiter: RateLimiter,
 ):
+    logger = get_logger(f"worker-{id}")
     consumer = AIOKafkaConsumer(
         config.kafka.topic,
         bootstrap_servers=config.kafka.broker,
@@ -43,15 +45,35 @@ async def run_worker(
     worker = Worker(config, id, health_tracker, rate_limiter)
     try:
         while True:
-            result = await consumer.getmany(timeout_ms=1000)
+            result = await consumer.getmany(timeout_ms=1000, max_records=100)
             for tp, messages in result.items():
+                for msg in messages:
+                    message = Message.model_validate_json(msg.value)
+                    await worker.process_message(message)
                 if messages:
-                    for msg in messages:
-                        message = Message.model_validate_json(msg.value)
-                        await worker.process_message(message)
-                    await consumer.commit({tp: messages[-1].offset + 1})
+                    try:
+                        await consumer.commit({tp: messages[-1].offset + 1})
+                    except CommitFailedError as e:
+                        logger.warning(f"Commit failed: {e}")
+                    except IllegalStateError as e:
+                        logger.warning(f"Commit failed: {e}")
     finally:
         await consumer.stop()
+
+
+async def run_worker_loop(
+    config: WorkerConfig,
+    id: int,
+    health_tracker: HealthTracker,
+    rate_limiter: RateLimiter,
+):
+    logger = get_logger(f"worker-{id}")
+    while True:
+        try:
+            await run_worker(config, id, health_tracker, rate_limiter)
+        except Exception:
+            logger.exception(f"Worker {id} encountered an error")
+        await asyncio.sleep(5)
 
 
 async def main():
@@ -67,7 +89,8 @@ async def main():
     health_tracker = HealthTracker()
     rate_limiter = RateLimiter(config.rate)
     tasks = [
-        run_worker(config, i, health_tracker, rate_limiter) for i in range(args.workers)
+        run_worker_loop(config, i, health_tracker, rate_limiter)
+        for i in range(args.workers)
     ]
 
     # Add health server if enabled

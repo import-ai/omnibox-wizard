@@ -383,7 +383,9 @@ class MeiliVectorDB:
             await asyncio.gather(
                 *[
                     client.wait_for_task(
-                        task.task_uid, timeout_in_ms=self.config.wait_timeout
+                        task.task_uid,
+                        timeout_in_ms=self.config.wait_timeout,
+                        interval_in_ms=500,
                     )
                     for task in tasks
                 ]

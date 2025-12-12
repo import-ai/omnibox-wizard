@@ -94,7 +94,6 @@ class Worker:
             HTTPXClientInstrumentor.instrument_client(client)
             yield client
 
-    @tracer.start_as_current_span("worker._start_task")
     async def _start_task(self, task_id: str) -> Task | None:
         async with self._backend_client() as client:
             try:
@@ -124,7 +123,6 @@ class Worker:
             },
         )
 
-    @tracer.start_as_current_span("worker.process_message")
     async def process_message(self, msg: Message):
         if msg.function not in self.supported_functions:
             return

@@ -417,6 +417,7 @@ class Agent(BaseSearchableAgent):
         )
 
         self.custom_tool_call: bool | None = config.grimoire.custom_tool_call
+        self.custom_tool_call = True
 
     @classmethod
     def has_function(cls, tools: list[dict] | None, function_name: str) -> bool:

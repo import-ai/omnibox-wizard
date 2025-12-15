@@ -638,6 +638,7 @@ class Agent(BaseSearchableAgent):
         :return: An async iterable of ChatResponse objects.
         """
         with tracer.start_as_current_span("agent.astream") as span:
+            agent_request.tools = self.retriever_mapping.values() + self.resource_handlers.values()
             span.set_attributes(
                 {
                     "conversation_id": agent_request.conversation_id,

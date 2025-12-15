@@ -14,11 +14,16 @@ from omnibox_wizard.wizard.grimoire.entity.api import (
     MessageDto,
 )
 from omnibox_wizard.wizard.grimoire.entity.chunk import ResourceChunkRetrieval
+from omnibox_wizard.wizard.grimoire.entity.resource import ResourceToolResult
 from omnibox_wizard.wizard.grimoire.entity.retrieval import (
     BaseRetrieval,
     retrievals2prompt,
 )
-from omnibox_wizard.wizard.grimoire.entity.tools import ToolExecutorConfig
+from omnibox_wizard.wizard.grimoire.entity.tools import (
+    RESOURCE_TOOLS,
+    SEARCH_TOOLS,
+    ToolExecutorConfig,
+)
 from omnibox_wizard.wizard.grimoire.retriever.searxng import SearXNGRetrieval
 
 tracer = trace.get_tracer(__name__)
@@ -47,6 +52,21 @@ def retrieval_wrapper(tool_call_id: str, retrievals: list[BaseRetrieval]) -> Mes
             "attrs": {
                 "citations": [retrieval.to_citation() for retrieval in retrievals]
             },
+        }
+    )
+
+
+def resource_tool_wrapper(tool_call_id: str, result: ResourceToolResult) -> MessageDto:
+    """Wrap resource tool result as MessageDto."""
+    content: str = result.to_tool_content()
+    return MessageDto.model_validate(
+        {
+            "message": {
+                "role": "tool",
+                "tool_call_id": tool_call_id,
+                "content": content,
+            },
+            "attrs": None,  # Resource tools don't have citations
         }
     )
 
@@ -107,7 +127,11 @@ class ToolExecutor:
                         logger.error({"message": "Unknown function"})
                         raise ValueError(f"Unknown function: {function_name}")
 
-                    if function_name.endswith("search"):
+                    if (
+                        function_name in SEARCH_TOOLS
+                        or function_name.endswith("search")
+                    ):
+                        # Search tool: result is list[BaseRetrieval], needs citation processing
                         current_cite_cnt: int = get_citation_cnt(message_dtos)
                         assert isinstance(result, list), (
                             f"Expected list of retrievals, got {type(result)}"
@@ -120,8 +144,16 @@ class ToolExecutor:
                         message_dto: MessageDto = retrieval_wrapper(
                             tool_call_id=tool_call_id, retrievals=result
                         )
+                    elif function_name in RESOURCE_TOOLS:
+                        # Resource tool: result is ResourceToolResult, format as JSON
+                        assert isinstance(result, ResourceToolResult), (
+                            f"Expected ResourceToolResult, got {type(result)}"
+                        )
+                        message_dto: MessageDto = resource_tool_wrapper(
+                            tool_call_id=tool_call_id, result=result
+                        )
                     else:
-                        raise ValueError(f"Unknown function: {function_name}")
+                        raise ValueError(f"Unknown function type: {function_name}")
 
                     yield ChatDeltaResponse.model_validate(
                         message_dto.model_dump(exclude_none=True)

@@ -6,7 +6,25 @@ from opentelemetry import trace
 from pydantic import BaseModel, Field
 
 tracer = trace.get_tracer("grimoire.entity.tools")
-ToolName = Literal["private_search", "web_search"]
+ToolName = Literal[
+    "private_search",
+    "web_search",
+    "get_resources",
+    "get_children",
+    "get_parent",
+    "filter_by_time",
+    "filter_by_tag",
+]
+
+# Tool categories
+SEARCH_TOOLS: tuple[str, ...] = ("private_search", "web_search", "search")
+RESOURCE_TOOLS: tuple[str, ...] = (
+    "get_resources",
+    "get_children",
+    "get_parent",
+    "filter_by_time",
+    "filter_by_tag",
+)
 AsyncCallable = Callable[..., Awaitable]
 
 
@@ -109,7 +127,122 @@ class WebSearchTool(BaseTool):
     name: Literal["web_search"] = "web_search"
 
 
-_Tool = Union[PrivateSearchTool, WebSearchTool]
+# Resource tools - call backend API to get structured data
+# These tools use short IDs (e.g., r1, f1) that are mapped to real IDs via visible_resources
+
+
+class BaseResourceTool(BaseTool):
+    """Base class for resource tools with ID mapping support.
+
+    Accepts visible_resources and automatically generates short ID mappings.
+    Short ID format: 'r{n}' for resources, 'f{n}' for folders.
+    """
+
+    namespace_id: str
+    user_id: str
+    visible_resources: list[Resource] | None = Field(
+        default=None,
+        exclude=True,
+        description="List of visible resources. Used to generate short ID mappings.",
+    )
+
+    @property
+    def id_mapping(self) -> dict[str, str]:
+        """Generate short ID to real ID mapping from visible_resources."""
+        if not self.visible_resources:
+            return {}
+
+        mapping: dict[str, str] = {}
+        resource_counter = 0
+        folder_counter = 0
+
+        for resource in self.visible_resources:
+            if resource.type == PrivateSearchResourceType.FOLDER:
+                folder_counter += 1
+                short_id = f"f{folder_counter}"
+            else:
+                resource_counter += 1
+                short_id = f"r{resource_counter}"
+            mapping[short_id] = resource.id
+
+        return mapping
+
+    def resolve_id(self, short_id: str) -> str:
+        """Resolve a short ID to real ID. Returns original if not found."""
+        return self.id_mapping.get(short_id, short_id)
+
+    def resolve_ids(self, short_ids: list[str]) -> list[str]:
+        """Resolve a list of short IDs to real IDs."""
+        mapping = self.id_mapping  # Cache to avoid regenerating
+        return [mapping.get(sid, sid) for sid in short_ids]
+
+    def get_resources_with_short_ids(self) -> list[dict]:
+        """Get visible resources with their short IDs for prompt display."""
+        if not self.visible_resources:
+            return []
+
+        result = []
+        resource_counter = 0
+        folder_counter = 0
+
+        for resource in self.visible_resources:
+            if resource.type == PrivateSearchResourceType.FOLDER:
+                folder_counter += 1
+                short_id = f"f{folder_counter}"
+            else:
+                resource_counter += 1
+                short_id = f"r{resource_counter}"
+            result.append({
+                "short_id": short_id,
+                "id": resource.id,
+                "name": resource.name,
+                "type": resource.type.value,
+            })
+
+        return result
+
+
+class GetResourcesTool(BaseResourceTool):
+    """Tool to get full content of one or more resources."""
+
+    name: Literal["get_resources"] = "get_resources"
+
+
+class GetChildrenTool(BaseResourceTool):
+    """Tool to get children directory tree of a parent folder."""
+
+    name: Literal["get_children"] = "get_children"
+
+
+class GetParentTool(BaseResourceTool):
+    """Tool to get parent folder of a resource."""
+
+    name: Literal["get_parent"] = "get_parent"
+
+
+class FilterByTimeTool(BaseResourceTool):
+    """Tool to filter resources by creation time."""
+
+    name: Literal["filter_by_time"] = "filter_by_time"
+    parent_id: str | None = Field(default=None)
+
+
+class FilterByTagTool(BaseResourceTool):
+    """Tool to filter resources by tag."""
+
+    name: Literal["filter_by_tag"] = "filter_by_tag"
+    parent_id: str | None = Field(default=None)
+
+
+_Tool = Union[
+    PrivateSearchTool,
+    WebSearchTool,
+    GetResourcesTool,
+    GetChildrenTool,
+    GetParentTool,
+    FilterByTimeTool,
+    FilterByTagTool,
+]
 ALL_TOOLS: tuple[str] = cast(tuple[str], get_args(ToolName))
 
 

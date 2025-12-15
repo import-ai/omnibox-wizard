@@ -63,9 +63,18 @@ class SearXNGConfig(BaseModel):
     engines: str | None = Field(default=None)
 
 
+class ResourceAPIConfig(BaseModel):
+    """Configuration for Resource API client."""
+
+    base_url: str = Field(default="http://localhost:8080")  # Placeholder, replace later
+    api_key: str | None = Field(default=None)
+    timeout: int = Field(default=30)
+
+
 class ToolsConfig(BaseModel):
     searxng: SearXNGConfig
     reranker: RerankerConfig = Field(default_factory=RerankerConfig)
+    resource_api: ResourceAPIConfig = Field(default_factory=ResourceAPIConfig)
 
 
 class Config(BaseModel):

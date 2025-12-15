@@ -38,6 +38,8 @@ from omnibox_wizard.wizard.grimoire.entity.tools import (
     Resource,
     ALL_TOOLS,
     PrivateSearchResourceType,
+    BaseResourceTool,
+    RESOURCE_TOOLS,
 )
 from omnibox_wizard.wizard.grimoire.retriever.base import BaseRetriever
 from omnibox_wizard.wizard.grimoire.retriever.meili_vector_db import (
@@ -49,6 +51,15 @@ from omnibox_wizard.wizard.grimoire.retriever.reranker import (
     Reranker,
 )
 from omnibox_wizard.wizard.grimoire.retriever.searxng import SearXNG
+from omnibox_wizard.wizard.grimoire.client.resource_api import ResourceAPIClient
+from omnibox_wizard.wizard.grimoire.retriever.resource import (
+    BaseResourceHandler,
+    GetResourcesHandler,
+    GetChildrenHandler,
+    GetParentHandler,
+    FilterByTimeHandler,
+    FilterByTagHandler,
+)
 
 DEFAULT_TOOL_NAME: str = "private_search"
 json_dumps = partial(jsonlib.dumps, ensure_ascii=False, separators=(",", ":"))
@@ -190,16 +201,86 @@ class UserQueryPreprocessor:
         ]
 
     @classmethod
+    def parse_visible_resources(
+        cls, options: ChatRequestOptions, original_tools: list | None = None
+    ) -> list[str]:
+        """Parse visible_resources from resource tools and format for LLM context.
+
+        This provides the LLM with a list of available resources and their short IDs,
+        so it knows what folders/documents exist and can use the appropriate tools.
+
+        Args:
+            options: The chat request options (may have serialized tools without visible_resources)
+            original_tools: Original tools list with visible_resources populated (optional)
+        """
+        # Use original_tools if provided (contains visible_resources), otherwise fall back to options.tools
+        tools_list = original_tools if original_tools is not None else (options.tools or [])
+        tools = ToolDict(tools_list)
+
+        # Find a resource tool that has visible_resources
+        resource_tool: BaseResourceTool | None = None
+        for tool_name in RESOURCE_TOOLS:
+            if tool := tools.get(tool_name):
+                if isinstance(tool, BaseResourceTool) and tool.visible_resources:
+                    resource_tool = tool
+                    break
+
+        if not resource_tool:
+            return []
+
+        # Get resources with short IDs
+        resources_with_ids = resource_tool.get_resources_with_short_ids()
+        if not resources_with_ids:
+            return []
+
+        # Separate folders and documents for clarity
+        folders = [r for r in resources_with_ids if r["type"] == "folder"]
+        documents = [r for r in resources_with_ids if r["type"] == "resource"]
+
+        # Format for LLM with clear guidance
+        lines = [
+            "<available_resources>",
+            "User's available folders and documents (use short_id when calling tools):",
+            "",
+        ]
+
+        if folders:
+            lines.append("Folders:")
+            for f in folders:
+                lines.append(f"  - {f['short_id']}: {f['name']}")
+
+        if documents:
+            lines.append("")
+            lines.append("Documents:")
+            for d in documents:
+                lines.append(f"  - {d['short_id']}: {d['name']}")
+
+        lines.extend([
+            "",
+            "Tool Usage Guide:",
+            "- To see folder contents: get_children(folder_short_id) e.g., get_children('f1')",
+            "- To read document content: get_resources([doc_short_ids]) e.g., get_resources(['r1', 'r2'])",
+            "- For time-based queries ('recent', 'this week'): use filter_by_time",
+            "- For tag-based queries: use filter_by_tag",
+            "- private_search is for keyword search across all documents",
+            "</available_resources>",
+        ])
+
+        return ["\n".join(lines)]
+
+    @classmethod
     def parse_user_query(
         cls,
         query: str,
         attrs: MessageAttrs,
+        original_tools: list | None = None,
     ) -> str:
         return remove_continuous_break_lines(
             "\n\n".join(
                 [
                     "\n".join(["<query>", query, "</query>"]),
                     *cls.parse_selected_resources(attrs),
+                    *cls.parse_visible_resources(attrs, original_tools=original_tools),
                     *cls.parse_selected_tools(attrs),
                 ]
             )
@@ -217,11 +298,14 @@ class UserQueryPreprocessor:
         return openai_message
 
     @classmethod
-    def parse_context(cls, attrs: MessageAttrs) -> str:
+    def parse_context(
+        cls, attrs: MessageAttrs, original_tools: list | None = None
+    ) -> str:
         return remove_continuous_break_lines(
             "\n\n".join(
                 [
                     *cls.parse_selected_resources(attrs),
+                    *cls.parse_visible_resources(attrs, original_tools=original_tools),
                     *cls.parse_selected_tools(attrs),
                 ]
             )
@@ -229,7 +313,7 @@ class UserQueryPreprocessor:
 
     @classmethod
     def message_dtos_to_openai_messages(
-        cls, dtos: list[MessageDto]
+        cls, dtos: list[MessageDto], original_tools: list | None = None
     ) -> list[dict[str, str]]:
         messages: list[dict[str, str]] = []
 
@@ -237,7 +321,12 @@ class UserQueryPreprocessor:
             messages.append(dto.message)
             if dto.message["role"] == "user" and dto.attrs:
                 messages.append(
-                    {"role": "system", "content": cls.parse_context(dto.attrs)}
+                    {
+                        "role": "system",
+                        "content": cls.parse_context(
+                            dto.attrs, original_tools=original_tools
+                        ),
+                    }
                 )
 
         return messages
@@ -245,6 +334,7 @@ class UserQueryPreprocessor:
 
 class BaseSearchableAgent(BaseStreamable, ABC):
     def __init__(self, config: Config):
+        # Search tools (existing)
         self.knowledge_database_retriever = MeiliVectorRetriever(config=config.vector)
         self.web_search_retriever = SearXNG(
             base_url=config.tools.searxng.base_url, engines=config.tools.searxng.engines
@@ -257,12 +347,20 @@ class BaseSearchableAgent(BaseStreamable, ABC):
             for each in [self.knowledge_database_retriever, self.web_search_retriever]
         }
 
+        # Resource tools (new)
+        self.resource_api_client = ResourceAPIClient(config.tools.resource_api)
+        self.resource_handlers: dict[str, BaseResourceHandler] = {
+            "get_resources": GetResourcesHandler(self.resource_api_client),
+            "get_children": GetChildrenHandler(self.resource_api_client),
+            "get_parent": GetParentHandler(self.resource_api_client),
+            "filter_by_time": FilterByTimeHandler(self.resource_api_client),
+            "filter_by_tag": FilterByTagHandler(self.resource_api_client),
+        }
+
+        # Combine all tool schemas
         self.all_tools: list[dict] = [
             retriever.get_schema() for retriever in self.retriever_mapping.values()
-        ]
-        assert all(t in self.retriever_mapping for t in ALL_TOOLS), (
-            "All tools must be registered in retriever mapping."
-        )
+        ] + [handler.get_schema() for handler in self.resource_handlers.values()]
 
     def get_tool_executor(
         self,
@@ -270,25 +368,38 @@ class BaseSearchableAgent(BaseStreamable, ABC):
         trace_info: TraceInfo,
         wrap_reranker: bool = True,
     ) -> ToolExecutor:
-        tool_executor_config_list: list[ToolExecutorConfig] = [
-            self.retriever_mapping[tool.name].get_tool_executor_config(
-                tool, trace_info=trace_info.get_child(tool.name)
-            )
-            for tool in options.tools or []
-        ]
+        search_tool_config_list: list[ToolExecutorConfig] = []
+        resource_tool_config_list: list[ToolExecutorConfig] = []
 
-        if options.merge_search:
-            tool_executor_config_list = [
-                get_tool_executor_config(tool_executor_config_list, self.reranker)
+        for tool in options.tools or []:
+            if tool.name in self.retriever_mapping:
+                # Search tools
+                config = self.retriever_mapping[tool.name].get_tool_executor_config(
+                    tool, trace_info=trace_info.get_child(tool.name)
+                )
+                search_tool_config_list.append(config)
+            elif tool.name in self.resource_handlers:
+                # Resource tools
+                config = self.resource_handlers[tool.name].get_tool_executor_config(
+                    tool, trace_info=trace_info.get_child(tool.name)
+                )
+                resource_tool_config_list.append(config)
+
+        # Apply reranker only to search tools
+        if options.merge_search and search_tool_config_list:
+            search_tool_config_list = [
+                get_tool_executor_config(search_tool_config_list, self.reranker)
             ]
         elif wrap_reranker:
-            for tool_executor_config in tool_executor_config_list:
-                tool_executor_config["func"] = self.reranker.wrap(
-                    func=tool_executor_config["func"],
+            for tool_config in search_tool_config_list:
+                tool_config["func"] = self.reranker.wrap(
+                    func=tool_config["func"],
                     trace_info=trace_info.get_child("reranker"),
                 )
 
-        tool_executor_config: dict = {c["name"]: c for c in tool_executor_config_list}
+        # Combine all tool configs
+        all_tool_config_list = search_tool_config_list + resource_tool_config_list
+        tool_executor_config: dict = {c["name"]: c for c in all_tool_config_list}
         tool_executor = ToolExecutor(tool_executor_config)
         return tool_executor
 
@@ -602,7 +713,7 @@ class Agent(BaseSearchableAgent):
             while messages[-1].message["role"] != "assistant":
                 async for chunk in self.chat(
                     messages=UserQueryPreprocessor.message_dtos_to_openai_messages(
-                        messages
+                        messages, original_tools=agent_request.tools
                     ),
                     enable_thinking=agent_request.enable_thinking,
                     tools=tool_executor.tools,

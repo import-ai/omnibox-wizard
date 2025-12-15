@@ -638,7 +638,6 @@ class Agent(BaseSearchableAgent):
         :return: An async iterable of ChatResponse objects.
         """
         with tracer.start_as_current_span("agent.astream") as span:
-            agent_request.tools = self.retriever_mapping.values() + self.resource_handlers.values()
             span.set_attributes(
                 {
                     "conversation_id": agent_request.conversation_id,
@@ -647,6 +646,8 @@ class Agent(BaseSearchableAgent):
                             exclude_none=True, exclude={"conversation_id"}
                         )
                     ),
+                    "all_tools": f"{self.all_tools}",
+                    "custom_tool_call": f"{self.custom_tool_call}"
                 }
             )
             trace_info.info({"request": agent_request.model_dump(exclude_none=True)})
@@ -662,12 +663,6 @@ class Agent(BaseSearchableAgent):
                             "search", get_merged_description(all_tools)
                         )
                     ]
-                span.set_attributes(
-                    {
-                        "all_tools": f"{self.all_tools}",
-                        "custom_tool_call": f"{self.custom_tool_call}"
-                    }
-                )
                 assert all_tools, "all_tools must not be empty"
 
                 if self.custom_tool_call:

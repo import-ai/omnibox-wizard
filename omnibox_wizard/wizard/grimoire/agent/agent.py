@@ -661,7 +661,12 @@ class Agent(BaseSearchableAgent):
                             "search", get_merged_description(all_tools)
                         )
                     ]
-
+                span.set_attributes(
+                    {
+                        "all_tools": f"{self.all_tools}",
+                        "custom_tool_call": f"{self.custom_tool_call}"
+                    }
+                )
                 assert all_tools, "all_tools must not be empty"
 
                 if self.custom_tool_call:

@@ -6,7 +6,6 @@ from omnibox_wizard.wizard.grimoire.client.resource_api import ResourceAPIClient
 from omnibox_wizard.wizard.grimoire.entity.resource import ResourceToolResult
 from omnibox_wizard.wizard.grimoire.entity.tools import (
     BaseResourceTool,
-    BaseTool,
     ToolExecutorConfig,
 )
 
@@ -16,15 +15,15 @@ ResourceFunction = Callable[..., Awaitable[ResourceToolResult]]
 class BaseResourceHandler(ABC):
     """Base class for resource tool handlers."""
 
-    def get_tool_executor_config(self, tool: BaseTool, **kwargs) -> ToolExecutorConfig:
+    def get_tool_executor_config(self, tool: BaseResourceTool, **kwargs) -> ToolExecutorConfig:
         return ToolExecutorConfig(
-            name=tool.name,
+            name=self.name,  # Use handler's name, not tool's
             func=self.get_function(tool, **kwargs),
             schema=self.get_schema(),
         )
 
     @abstractmethod
-    def get_function(self, tool: BaseTool, **kwargs) -> ResourceFunction:
+    def get_function(self, tool: BaseResourceTool, **kwargs) -> ResourceFunction:
         raise NotImplementedError
 
     @classmethod
@@ -162,12 +161,9 @@ class FilterByTimeHandler(BaseResourceHandler):
         self.client = client
 
     def get_function(self, tool: BaseResourceTool, **kwargs) -> ResourceFunction:
-        # Bind user_id, namespace_id, parent_id from tool
         return partial(
             self.client.filter_by_time,
-            user_id=tool.user_id,
             namespace_id=tool.namespace_id,
-            parent_id=getattr(tool, "parent_id", None),
         )
 
     @classmethod
@@ -206,12 +202,9 @@ class FilterByTagHandler(BaseResourceHandler):
         self.client = client
 
     def get_function(self, tool: BaseResourceTool, **kwargs) -> ResourceFunction:
-        # Bind user_id, namespace_id, parent_id from tool
         return partial(
             self.client.filter_by_tag,
-            user_id=tool.user_id,
             namespace_id=tool.namespace_id,
-            parent_id=getattr(tool, "parent_id", None),
         )
 
     @classmethod

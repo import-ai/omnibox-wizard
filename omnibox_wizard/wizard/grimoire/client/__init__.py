@@ -1,6 +1,5 @@
 from omnibox_wizard.wizard.grimoire.client.resource_api import (
-    ResourceAPIClient,
-    ResourceAPIConfig,
+    ResourceAPIClient
 )
 
 __all__ = ["ResourceAPIClient", "ResourceAPIConfig"]

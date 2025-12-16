@@ -139,7 +139,6 @@ class BaseResourceTool(BaseTool):
     """
 
     namespace_id: str
-    user_id: str
     visible_resources: list[Resource] | None = Field(
         default=None,
         exclude=True,

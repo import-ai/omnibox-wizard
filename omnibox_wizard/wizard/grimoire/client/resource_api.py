@@ -90,18 +90,14 @@ class ResourceAPIClient:
         self,
         start_time: float,
         end_time: float,
-        user_id: str,
         namespace_id: str,
-        parent_id: str | None = None,
     ) -> ResourceToolResult:
         """Filter resources by creation time.
 
         Args:
             start_time: Start time as Unix timestamp (seconds).
             end_time: End time as Unix timestamp (seconds).
-            user_id: User ID for filtering.
             namespace_id: Namespace ID for filtering.
-            parent_id: Optional parent folder ID to limit search scope.
 
         Returns:
             ResourceToolResult containing filtered resources.
@@ -110,12 +106,8 @@ class ResourceAPIClient:
             payload = {
                 "start_time": start_time,
                 "end_time": end_time,
-                "user_id": user_id,
                 "namespace_id": namespace_id,
             }
-            if parent_id:
-                payload["parent_id"] = parent_id
-
             data = await self._request(
                 "POST", "/api/resources/filter/time", json=payload
             )
@@ -130,17 +122,13 @@ class ResourceAPIClient:
     async def filter_by_tag(
         self,
         tag: str,
-        user_id: str,
         namespace_id: str,
-        parent_id: str | None = None,
     ) -> ResourceToolResult:
         """Filter resources by tag.
 
         Args:
             tag: Tag to filter by.
-            user_id: User ID for filtering.
             namespace_id: Namespace ID for filtering.
-            parent_id: Optional parent folder ID to limit search scope.
 
         Returns:
             ResourceToolResult containing filtered resources.
@@ -148,12 +136,8 @@ class ResourceAPIClient:
         try:
             payload = {
                 "tag": tag,
-                "user_id": user_id,
                 "namespace_id": namespace_id,
             }
-            if parent_id:
-                payload["parent_id"] = parent_id
-
             data = await self._request(
                 "POST", "/api/resources/filter/tag", json=payload
             )

@@ -99,13 +99,17 @@ class GetChildrenHandler(BaseResourceHandler):
                 "description": (
                     "Get children directory tree of a resource. "
                     "Use this FIRST when user asks about folder contents, to summarize a folder, or to export folder data. "
-                    "Returns a flat list of children resources. Use 'parent_id' field to construct tree structure. "
+                    "Returns a flat list of children resources. "
                     "After getting the list, use get_resources to read specific document contents."
                 ),
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "parent_id": {
+                        "namespace_id": {
+                            "type": "string",
+                            "description": "The namespace ID from available_resources",
+                        },
+                        "resource_id": {
                             "type": "string",
                             "description": "The folder's short ID (e.g., 'f1', 'f2') from available_resources",
                         },
@@ -117,7 +121,7 @@ class GetChildrenHandler(BaseResourceHandler):
                             "default": 3,
                         },
                     },
-                    "required": ["parent_id"],
+                    "required": ["namespace_id", "resource_id"],
                 },
             },
         }

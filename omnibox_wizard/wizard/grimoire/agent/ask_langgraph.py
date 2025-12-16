@@ -126,7 +126,7 @@ def format_visible_resources(agent_request: AgentRequest) -> str | None:
     lines.extend([
         "",
         "Tool Usage Guide:",
-        "- To see folder contents: get_children(folder_short_id) e.g., get_children('f1')",
+        "- To see folder contents: get_children(folder_short_id) e.g., get_children(namespace_id, resource_id)",
         "- To read document content: get_resources([doc_short_ids]) e.g., get_resources(['r1', 'r2'])",
         "- For time-based queries ('recent', 'this week'): use filter_by_time",
         "- For tag-based queries: use filter_by_tag",

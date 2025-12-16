@@ -46,7 +46,7 @@ class GetResourcesHandler(BaseResourceHandler):
         async def _get_resources(resource_ids: list[str]) -> ResourceToolResult:
             # Resolve short IDs to real IDs
             real_ids = tool.resolve_ids(resource_ids)
-            return await self.client.get_resources(real_ids)
+            return await self.client.get_resources(tool.namespace_id, real_ids)
 
         return _get_resources
 
@@ -83,10 +83,10 @@ class GetChildrenHandler(BaseResourceHandler):
         self.client = client
 
     def get_function(self, tool: BaseResourceTool, **kwargs) -> ResourceFunction:
-        async def _get_children(parent_id: str) -> ResourceToolResult:
+        async def _get_children(parent_id: str, depth: int = 3) -> ResourceToolResult:
             # Resolve short ID to real ID
             real_id = tool.resolve_id(parent_id)
-            return await self.client.get_children(real_id)
+            return await self.client.get_children(tool.namespace_id, real_id, depth)
 
         return _get_children
 
@@ -97,9 +97,9 @@ class GetChildrenHandler(BaseResourceHandler):
             "function": {
                 "name": "get_children",
                 "description": (
-                    "List all contents (files and subfolders) inside a folder. "
+                    "Get children directory tree of a resource. "
                     "Use this FIRST when user asks about folder contents, to summarize a folder, or to export folder data. "
-                    "Returns the folder's directory tree (up to 3 levels). "
+                    "Returns a flat list of children resources. Use 'parent_id' field to construct tree structure. "
                     "After getting the list, use get_resources to read specific document contents."
                 ),
                 "parameters": {
@@ -108,7 +108,14 @@ class GetChildrenHandler(BaseResourceHandler):
                         "parent_id": {
                             "type": "string",
                             "description": "The folder's short ID (e.g., 'f1', 'f2') from available_resources",
-                        }
+                        },
+                        "depth": {
+                            "type": "integer",
+                            "description": "Depth of the tree (1, 2, or 3, default: 3)",
+                            "minimum": 1,
+                            "maximum": 3,
+                            "default": 3,
+                        },
                     },
                     "required": ["parent_id"],
                 },
@@ -126,7 +133,7 @@ class GetParentHandler(BaseResourceHandler):
         async def _get_parent(resource_id: str) -> ResourceToolResult:
             # Resolve short ID to real ID
             real_id = tool.resolve_id(resource_id)
-            return await self.client.get_parent(real_id)
+            return await self.client.get_parent(tool.namespace_id, real_id)
 
         return _get_parent
 

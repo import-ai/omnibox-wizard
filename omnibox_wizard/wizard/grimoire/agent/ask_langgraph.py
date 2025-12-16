@@ -37,7 +37,11 @@ from omnibox_wizard.wizard.grimoire.entity.api import (
     ChatRequestOptions,
     ChatBaseResponse,
 )
-from omnibox_wizard.wizard.grimoire.entity.tools import ToolExecutorConfig, BaseResourceTool
+from omnibox_wizard.wizard.grimoire.entity.tools import (
+    ToolExecutorConfig,
+    BaseResourceTool,
+    PrivateSearchResourceType,
+)
 from omnibox_wizard.wizard.grimoire.retriever.base import BaseRetriever
 from omnibox_wizard.wizard.grimoire.retriever.meili_vector_db import MeiliVectorRetriever
 from omnibox_wizard.wizard.grimoire.retriever.reranker import (
@@ -59,6 +63,78 @@ from omnibox_wizard.wizard.grimoire.agent.agent import UserQueryPreprocessor
 
 json_dumps = partial(jsonlib.dumps, ensure_ascii=False, separators=(",", ":"))
 tracer = trace.get_tracer(__name__)
+
+
+def format_visible_resources(agent_request: AgentRequest) -> str | None:
+    """Format visible_resources from private_search for LLM context.
+
+    Returns formatted string or None if no visible_resources.
+    """
+    # Find private_search tool
+    private_search = None
+    for tool in agent_request.tools or []:
+        if tool.name == "private_search":
+            private_search = tool
+            break
+
+    if not private_search or not private_search.visible_resources:
+        return None
+
+    # Generate short ID mapping (same logic as BaseResourceTool)
+    resources_with_ids = []
+    resource_counter = 0
+    folder_counter = 0
+
+    for resource in private_search.visible_resources:
+        if resource.type == PrivateSearchResourceType.FOLDER:
+            folder_counter += 1
+            short_id = f"f{folder_counter}"
+        else:
+            resource_counter += 1
+            short_id = f"r{resource_counter}"
+        resources_with_ids.append({
+            "short_id": short_id,
+            "name": resource.name,
+            "type": resource.type.value,
+        })
+
+    if not resources_with_ids:
+        return None
+
+    # Separate folders and documents
+    folders = [r for r in resources_with_ids if r["type"] == "folder"]
+    documents = [r for r in resources_with_ids if r["type"] == "resource"]
+
+    # Format for LLM
+    lines = [
+        "<available_resources>",
+        "User's available folders and documents (use short_id when calling tools):",
+        "",
+    ]
+
+    if folders:
+        lines.append("Folders:")
+        for f in folders:
+            lines.append(f"  - {f['short_id']}: {f['name']}")
+
+    if documents:
+        lines.append("")
+        lines.append("Documents:")
+        for d in documents:
+            lines.append(f"  - {d['short_id']}: {d['name']}")
+
+    lines.extend([
+        "",
+        "Tool Usage Guide:",
+        "- To see folder contents: get_children(folder_short_id) e.g., get_children('f1')",
+        "- To read document content: get_resources([doc_short_ids]) e.g., get_resources(['r1', 'r2'])",
+        "- For time-based queries ('recent', 'this week'): use filter_by_time",
+        "- For tag-based queries: use filter_by_tag",
+        "- private_search is for keyword search across all documents",
+        "</available_resources>",
+    ])
+
+    return "\n".join(lines)
 
 
 # ============== State ==============
@@ -106,6 +182,13 @@ async def call_llm(state: AgentState, config: RunnableConfig) -> dict:
         openai_messages = UserQueryPreprocessor.message_dtos_to_openai_messages(
             messages, original_tools=agent_request.tools
         )
+
+        # Add visible_resources context (since it's in private_search, not resource tools)
+        if visible_resources_context := format_visible_resources(agent_request):
+            openai_messages.append({
+                "role": "system",
+                "content": visible_resources_context,
+            })
 
         # Get OpenAI client
         openai = agent.openai.get_config("large", default=agent.openai.default)

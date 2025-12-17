@@ -18,10 +18,16 @@ class ResourceAPIClient:
     def __init__(self, config: BackendConfig):
         self.config = config
 
+    @tracer.start_as_current_span("ResourceAPIClient._request")
     async def _request(self, method: str, path: str, **kwargs) -> dict:
         """Make HTTP request to backend API."""
         headers = {}
         propagate.inject(headers)
+        span = trace.get_current_span()
+        span.set_attributes({
+            "base_url":f"{self.config.base_url}"
+            }
+        )
         async with httpx.AsyncClient(
             base_url=self.config.base_url, timeout=DEFAULT_TIMEOUT
         ) as client:
@@ -73,6 +79,11 @@ class ResourceAPIClient:
             Use 'parent_id' field to construct tree structure.
         """
         try:
+            span = trace.get_current_span()
+            span.set_attributes({
+                "base_url":f"{self.config.base_url}"
+                }
+            )
             data = await self._request(
                 "GET",
                 f"/internal/api/v1/namespaces/{namespace_id}/resources/{resource_id}/children",

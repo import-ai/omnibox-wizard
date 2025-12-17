@@ -83,9 +83,9 @@ class GetChildrenHandler(BaseResourceHandler):
         self.client = client
 
     def get_function(self, tool: BaseResourceTool, **kwargs) -> ResourceFunction:
-        async def _get_children(parent_id: str, depth: int = 3) -> ResourceToolResult:
+        async def _get_children(resource_id: str, depth: int = 3) -> ResourceToolResult:
             # Resolve short ID to real ID
-            real_id = tool.resolve_id(parent_id)
+            real_id = tool.resolve_id(resource_id)
             return await self.client.get_children(tool.namespace_id, real_id, depth)
 
         return _get_children
@@ -105,10 +105,6 @@ class GetChildrenHandler(BaseResourceHandler):
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "namespace_id": {
-                            "type": "string",
-                            "description": "The namespace ID from available_resources",
-                        },
                         "resource_id": {
                             "type": "string",
                             "description": "The folder's short ID (e.g., 'f1', 'f2') from available_resources",
@@ -121,7 +117,7 @@ class GetChildrenHandler(BaseResourceHandler):
                             "default": 3,
                         },
                     },
-                    "required": ["namespace_id", "resource_id"],
+                    "required": ["resource_id"],
                 },
             },
         }

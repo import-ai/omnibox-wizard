@@ -89,6 +89,11 @@ class ResourceAPIClient:
                 f"/internal/api/v1/namespaces/{namespace_id}/resources/{resource_id}/children",
                 params={"depth": depth},
             )
+            span.set_attributes({
+                "data_len": len(data),
+                "data_names": f"{[ResourceInfo(**item).name for item in data]}"
+                }
+            )
             return ResourceToolResult(
                 success=True,
                 data=[ResourceInfo(**item) for item in data],

@@ -4,7 +4,7 @@ from openai import NOT_GIVEN, NotGiven
 from pydantic import BaseModel, Field
 
 from wizard_common.config import OpenAIConfig
-
+from omnibox_wizard.worker.config import BackendConfig
 
 class VectorConfig(BaseModel):
     embedding: OpenAIConfig
@@ -62,19 +62,10 @@ class SearXNGConfig(BaseModel):
     base_url: str
     engines: str | None = Field(default=None)
 
-
-class ResourceAPIConfig(BaseModel):
-    """Configuration for Resource API client."""
-
-    base_url: str = Field(default="http://localhost:8080")  # Placeholder, replace later
-    api_key: str | None = Field(default=None)
-    timeout: int = Field(default=30)
-
-
 class ToolsConfig(BaseModel):
     searxng: SearXNGConfig
     reranker: RerankerConfig = Field(default_factory=RerankerConfig)
-    resource_api: ResourceAPIConfig = Field(default_factory=ResourceAPIConfig)
+    resource_api: BackendConfig = Field(default_factory=BackendConfig)
 
 
 class Config(BaseModel):

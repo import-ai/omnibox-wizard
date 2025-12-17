@@ -113,32 +113,32 @@ class ResourceAPIClient:
     @tracer.start_as_current_span("ResourceAPIClient.filter_by_time")
     async def filter_by_time(
         self,
-        start_time: float,
-        end_time: float,
+        created_at_after: str,
+        created_at_before: str,
         namespace_id: str,
     ) -> ResourceToolResult:
         """Filter resources by creation time.
 
         Args:
-            start_time: Start time as Unix timestamp (seconds).
-            end_time: End time as Unix timestamp (seconds).
+            created_at_after: Start time in ISO 8601 format (e.g., 2025-12-16T10:35:12.788Z).
+            created_at_before: End time in ISO 8601 format (e.g., 2025-12-16T10:35:12.788Z).
             namespace_id: Namespace ID for filtering.
 
         Returns:
             ResourceToolResult containing filtered resources.
         """
         try:
-            payload = {
-                "start_time": start_time,
-                "end_time": end_time,
-                "namespace_id": namespace_id,
-            }
             data = await self._request(
-                "POST", "/api/resources/filter/time", json=payload
+                "GET",
+                f"/internal/api/v1/namespaces/{namespace_id}/resources",
+                params={
+                    "createdAtAfter": created_at_after,
+                    "createdAtBefore": created_at_before,
+                },
             )
             return ResourceToolResult(
                 success=True,
-                data=[ResourceInfo(**item) for item in data.get("resources", [])],
+                data=[ResourceInfo(**item) for item in data],
             )
         except Exception as e:
             return ResourceToolResult(success=False, error=str(e))
@@ -146,7 +146,7 @@ class ResourceAPIClient:
     @tracer.start_as_current_span("ResourceAPIClient.filter_by_tag")
     async def filter_by_tag(
         self,
-        tag: str,
+        tags: list[str],
         namespace_id: str,
     ) -> ResourceToolResult:
         """Filter resources by tag.
@@ -159,16 +159,15 @@ class ResourceAPIClient:
             ResourceToolResult containing filtered resources.
         """
         try:
-            payload = {
-                "tag": tag,
-                "namespace_id": namespace_id,
-            }
+            tag_param = ",".join(tags)
             data = await self._request(
-                "POST", "/api/resources/filter/tag", json=payload
+                "GET",
+                f"/internal/api/v1/namespaces/{namespace_id}/resources",
+                params={"tag": tag_param}
             )
             return ResourceToolResult(
                 success=True,
-                data=[ResourceInfo(**item) for item in data.get("resources", [])],
+                data=[ResourceInfo(**item) for item in data],
             )
         except Exception as e:
             return ResourceToolResult(success=False, error=str(e))

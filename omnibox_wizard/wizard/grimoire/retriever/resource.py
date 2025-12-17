@@ -191,16 +191,16 @@ class FilterByTimeHandler(BaseResourceHandler):
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "start_time": {
-                            "type": "number",
-                            "description": "Start time as Unix timestamp in seconds",
+                        "created_at_after": {
+                            "type": "string",
+                            "description": "Start time in ISO 8601 format (e.g., 2025-12-16T10:35:12.788Z)",
                         },
-                        "end_time": {
-                            "type": "number",
-                            "description": "End time as Unix timestamp in seconds",
+                        "created_at_before": {
+                            "type": "string",
+                            "description": "End time in ISO 8601 format (e.g., 2025-12-16T10:35:12.788Z)",
                         },
                     },
-                    "required": ["start_time", "end_time"],
+                    "required": ["created_at_after", "created_at_before"],
                 },
             },
         }
@@ -225,19 +225,20 @@ class FilterByTagHandler(BaseResourceHandler):
             "function": {
                 "name": "filter_by_tag",
                 "description": (
-                    "Find documents with a specific tag/label. "
-                    "Use this when user asks about documents in a category or with a specific label. "
+                    "Find documents with specific tags/labels. "
+                    "Use this when user asks about documents in a category or with specific labels. "
                     "Note: Only use if user explicitly mentions a tag, not for folder-based queries."
                 ),
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "tag": {
-                            "type": "string",
-                            "description": "The exact tag name to search for",
+                        "tags": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "List of tag names to search for (e.g., ['tag1', 'tag2'])",
                         }
                     },
-                    "required": ["tag"],
+                    "required": ["tags"],
                 },
             },
         }

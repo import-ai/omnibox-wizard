@@ -4,7 +4,11 @@ from openai import NOT_GIVEN, NotGiven
 from pydantic import BaseModel, Field
 
 from wizard_common.config import OpenAIConfig
-from worker.config import BackendConfig
+
+
+class BackendConfig(BaseModel):
+    base_url: str
+
 
 class VectorConfig(BaseModel):
     embedding: OpenAIConfig

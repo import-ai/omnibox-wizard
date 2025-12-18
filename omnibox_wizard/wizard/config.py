@@ -4,7 +4,7 @@ from openai import NOT_GIVEN, NotGiven
 from pydantic import BaseModel, Field
 
 from wizard_common.config import OpenAIConfig
-from omnibox_wizard.worker.config import BackendConfig
+from worker.config import BackendConfig
 
 class VectorConfig(BaseModel):
     embedding: OpenAIConfig

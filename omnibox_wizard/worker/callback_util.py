@@ -36,7 +36,7 @@ class CallbackUtil:
         payload = task.model_dump(
             exclude_none=True,
             mode="json",
-            include={"id", "exception", "output"},
+            include={"id", "exception", "output", "status"},
         )
 
         try:

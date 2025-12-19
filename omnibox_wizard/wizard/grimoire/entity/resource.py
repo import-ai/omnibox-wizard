@@ -12,7 +12,7 @@ class ResourcePathItem(BaseModel):
     id: str
     parent_id: str | None = None
     name: str
-    resource_type: Literal["folder", "doc", "file"]
+    resource_type: Literal["folder", "doc", "file", "link"]
     created_at: str | None = None
     updated_at: str | None = None
     attrs: dict | None = None
@@ -24,7 +24,7 @@ class ResourceInfo(BaseModel):
 
     id: str
     name: str
-    resource_type: Literal["folder", "doc", "file"]
+    resource_type: Literal["folder", "doc", "file", "link"]
     namespace_id: str | None = Field(default=None)
     parent_id: str | None = Field(default=None)
     content: str | None = Field(default=None)

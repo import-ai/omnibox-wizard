@@ -176,19 +176,17 @@ class GetChildrenHandler(BaseResourceHandler):
                 # Add returned children to visible_resources and assign short IDs
                 self.assign_short_ids_to_resources(tool, result.data)
 
-                # Fetch content for ALL resources (not just doc type)
-                resource_ids = [r.id for r in result.data]
-                if resource_ids:
-                    content_result = await self.client.get_resources(
-                        tool.namespace_id, resource_ids
+                # Generate hint for LLM: list readable documents with their short IDs
+                readable_docs = [
+                    r for r in result.data
+                    if r.resource_type == "doc" and r.short_id
+                ]
+                if readable_docs:
+                    doc_ids = [r.short_id for r in readable_docs]
+                    result.hint = (
+                        f"To read document contents, call get_resources with short IDs: {doc_ids}. "
+                        f"Only 'doc' type can be read. 'file' and 'link' types cannot be read directly."
                     )
-                    if content_result.success and content_result.data:
-                        # Build content map: id -> content
-                        content_map = {r.id: r.content for r in content_result.data}
-                        # Merge content into children data
-                        for child in result.data:
-                            if child.id in content_map:
-                                child.content = content_map[child.id]
 
             return result
 
@@ -201,9 +199,10 @@ class GetChildrenHandler(BaseResourceHandler):
             "function": {
                 "name": "get_children",
                 "description": (
-                    "Get children directory tree of a resource with full content. "
-                    "Use this when user asks about folder contents, to summarize a folder, or to export folder data. "
-                    "Returns a flat list of children resources including their content."
+                    "Get children directory tree of a resource. "
+                    "Use this FIRST when user asks about folder contents, to summarize a folder, or to export folder data. "
+                    "Returns a flat list of children resources. "
+                    "After getting the list, use get_resources to read specific document contents."
                 ),
                 "parameters": {
                     "type": "object",
@@ -290,19 +289,17 @@ class FilterByTimeHandler(BaseResourceHandler):
                 # Add returned resources to visible_resources and assign short IDs
                 self.assign_short_ids_to_resources(tool, result.data)
 
-                # Fetch content for ALL resources
-                resource_ids = [r.id for r in result.data]
-                if resource_ids:
-                    content_result = await self.client.get_resources(
-                        tool.namespace_id, resource_ids
+                # Generate hint for LLM: list readable documents with their short IDs
+                readable_docs = [
+                    r for r in result.data
+                    if r.resource_type == "doc" and r.short_id
+                ]
+                if readable_docs:
+                    doc_ids = [r.short_id for r in readable_docs]
+                    result.hint = (
+                        f"To read document contents, call get_resources with short IDs: {doc_ids}. "
+                        f"Only 'doc' type can be read."
                     )
-                    if content_result.success and content_result.data:
-                        # Build content map: id -> content
-                        content_map = {r.id: r.content for r in content_result.data}
-                        # Merge content into result data
-                        for resource in result.data:
-                            if resource.id in content_map:
-                                resource.content = content_map[resource.id]
 
             return result
 
@@ -317,7 +314,7 @@ class FilterByTimeHandler(BaseResourceHandler):
                 "description": (
                     "Find documents created or modified within a specific time range. "
                     "Use this when user asks about 'recent', 'today', 'this week', 'last month' documents. "
-                    "Returns a list of matching documents with their metadata and content."
+                    "Returns a list of matching documents with their metadata."
                 ),
                 "parameters": {
                     "type": "object",
@@ -354,19 +351,17 @@ class FilterByTagHandler(BaseResourceHandler):
                 # Add returned resources to visible_resources and assign short IDs
                 self.assign_short_ids_to_resources(tool, result.data)
 
-                # Fetch content for ALL resources
-                resource_ids = [r.id for r in result.data]
-                if resource_ids:
-                    content_result = await self.client.get_resources(
-                        tool.namespace_id, resource_ids
+                # Generate hint for LLM: list readable documents with their short IDs
+                readable_docs = [
+                    r for r in result.data
+                    if r.resource_type == "doc" and r.short_id
+                ]
+                if readable_docs:
+                    doc_ids = [r.short_id for r in readable_docs]
+                    result.hint = (
+                        f"To read document contents, call get_resources with short IDs: {doc_ids}. "
+                        f"Only 'doc' type can be read."
                     )
-                    if content_result.success and content_result.data:
-                        # Build content map: id -> content
-                        content_map = {r.id: r.content for r in content_result.data}
-                        # Merge content into result data
-                        for resource in result.data:
-                            if resource.id in content_map:
-                                resource.content = content_map[resource.id]
 
             return result
 
@@ -381,7 +376,6 @@ class FilterByTagHandler(BaseResourceHandler):
                 "description": (
                     "Find documents with specific tags/labels. "
                     "Use this when user asks about documents in a category or with specific labels. "
-                    "Returns a list of matching documents with their metadata and content. "
                     "Note: Only use if user explicitly mentions a tag, not for folder-based queries."
                 ),
                 "parameters": {

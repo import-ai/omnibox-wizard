@@ -11,3 +11,5 @@ For each function call, return a json object with function name and arguments wi
 <tool_call>
 {"name": <function-name>, "arguments": <args-json-object>}
 </tool_call>
+
+**IMPORTANT: When you need to call a tool, you MUST actually output the <tool_call> tags. DO NOT just say "I will call..." without including the actual <tool_call> tags. If you mention that you will call a tool, you MUST include the <tool_call> in your response immediately.**

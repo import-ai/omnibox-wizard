@@ -222,19 +222,49 @@ class UserQueryPreprocessor:
         tools_list = original_tools if original_tools is not None else (options.tools or [])
         tools = ToolDict(tools_list)
 
-        # Find a resource tool that has visible_resources
+        # Find a tool that has visible_resources
+        # First check resource tools, then check private_search (which also has visible_resources)
         resource_tool: BaseResourceTool | None = None
+
+        # Check resource tools first
         for tool_name in RESOURCE_TOOLS:
             if tool := tools.get(tool_name):
                 if isinstance(tool, BaseResourceTool) and tool.visible_resources:
                     resource_tool = tool
                     break
 
+        # If not found, check private_search (visible_resources is defined there)
+        if not resource_tool:
+            if tool := tools.get("private_search"):
+                if hasattr(tool, "visible_resources") and tool.visible_resources:
+                    resource_tool = tool
+
         if not resource_tool:
             return []
 
         # Get resources with short IDs
-        resources_with_ids = resource_tool.get_resources_with_short_ids()
+        # PrivateSearchTool doesn't have get_resources_with_short_ids(), so handle it manually
+        if hasattr(resource_tool, "get_resources_with_short_ids"):
+            resources_with_ids = resource_tool.get_resources_with_short_ids()
+        else:
+            # Manually generate short IDs for PrivateSearchTool
+            resources_with_ids = []
+            resource_counter = 0
+            folder_counter = 0
+            for resource in resource_tool.visible_resources:
+                if resource.type == PrivateSearchResourceType.FOLDER:
+                    folder_counter += 1
+                    short_id = f"f{folder_counter}"
+                else:
+                    resource_counter += 1
+                    short_id = f"r{resource_counter}"
+                resources_with_ids.append({
+                    "short_id": short_id,
+                    "id": resource.id,
+                    "name": resource.name,
+                    "type": resource.type.value,
+                })
+
         if not resources_with_ids:
             return []
 

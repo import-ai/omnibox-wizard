@@ -384,8 +384,8 @@ class AskLangGraph(BaseStreamable):
         self.system_prompt_template = self.template_parser.get_template("ask.j2")
 
         # Custom tool call mode
-        self.custom_tool_call: bool | None = config.grimoire.custom_tool_call
-
+        # self.custom_tool_call: bool | None = config.grimoire.custom_tool_call
+        self.custom_tool_call = False
         # Build graph
         self.graph = build_graph()
 

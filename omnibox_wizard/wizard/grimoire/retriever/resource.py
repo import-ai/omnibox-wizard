@@ -1,11 +1,12 @@
 from abc import ABC, abstractmethod
-from functools import partial
 from typing import Awaitable, Callable
 
 from omnibox_wizard.wizard.grimoire.client.resource_api import ResourceAPIClient
-from omnibox_wizard.wizard.grimoire.entity.resource import ResourceToolResult
+from omnibox_wizard.wizard.grimoire.entity.resource import ResourceInfo, ResourceToolResult
 from omnibox_wizard.wizard.grimoire.entity.tools import (
     BaseResourceTool,
+    PrivateSearchResourceType,
+    Resource,
     ToolExecutorConfig,
 )
 
@@ -35,6 +36,83 @@ class BaseResourceHandler(ABC):
     def name(self) -> str:
         return self.get_schema()["function"]["name"]
 
+    def assign_short_ids_to_resources(
+        self, tool: BaseResourceTool, resources: list[ResourceInfo] | ResourceInfo
+    ) -> None:
+        """Add resources to visible_resources and assign short IDs.
+
+        This method:
+        1. Adds new resources to tool.visible_resources
+        2. Assigns short_id to each ResourceInfo for LLM display
+        """
+        # Handle single resource case
+        if isinstance(resources, ResourceInfo):
+            resources = [resources]
+
+        if tool.visible_resources is None:
+            tool.visible_resources = []
+
+        # Build existing ID set for quick lookup
+        existing_ids = {r.id for r in tool.visible_resources}
+
+        # Count existing short IDs to continue numbering
+        resource_counter = sum(
+            1 for r in tool.visible_resources
+            if r.type == PrivateSearchResourceType.RESOURCE
+        )
+        folder_counter = sum(
+            1 for r in tool.visible_resources
+            if r.type == PrivateSearchResourceType.FOLDER
+        )
+
+        for resource in resources:
+            # If already exists, just find and assign the short_id
+            if resource.id in existing_ids:
+                resource.short_id = self._find_short_id(tool, resource.id)
+                continue
+
+            # Determine resource type and assign short_id
+            if resource.resource_type == "folder":
+                folder_counter += 1
+                short_id = f"f{folder_counter}"
+                res_type = PrivateSearchResourceType.FOLDER
+            else:
+                resource_counter += 1
+                short_id = f"r{resource_counter}"
+                res_type = PrivateSearchResourceType.RESOURCE
+
+            # Assign short_id to the ResourceInfo for LLM display
+            resource.short_id = short_id
+
+            # Add to visible_resources for future resolution
+            tool.visible_resources.append(Resource(
+                id=resource.id,
+                name=resource.name,
+                type=res_type,
+            ))
+            existing_ids.add(resource.id)
+
+    def _find_short_id(self, tool: BaseResourceTool, resource_id: str) -> str | None:
+        """Find the short_id for an existing resource."""
+        if not tool.visible_resources:
+            return None
+
+        resource_counter = 0
+        folder_counter = 0
+
+        for resource in tool.visible_resources:
+            if resource.type == PrivateSearchResourceType.FOLDER:
+                folder_counter += 1
+                short_id = f"f{folder_counter}"
+            else:
+                resource_counter += 1
+                short_id = f"r{resource_counter}"
+
+            if resource.id == resource_id:
+                return short_id
+
+        return None
+
 
 class GetResourcesHandler(BaseResourceHandler):
     """Handler for get_resources tool."""
@@ -46,7 +124,13 @@ class GetResourcesHandler(BaseResourceHandler):
         async def _get_resources(resource_ids: list[str]) -> ResourceToolResult:
             # Resolve short IDs to real IDs
             real_ids = tool.resolve_ids(resource_ids)
-            return await self.client.get_resources(tool.namespace_id, real_ids)
+            result = await self.client.get_resources(tool.namespace_id, real_ids)
+
+            if result.success and result.data:
+                # Assign short IDs to returned resources for consistency
+                self.assign_short_ids_to_resources(tool, result.data)
+
+            return result
 
         return _get_resources
 
@@ -86,7 +170,13 @@ class GetChildrenHandler(BaseResourceHandler):
         async def _get_children(resource_id: str, depth: int = 3) -> ResourceToolResult:
             # Resolve short ID to real ID
             real_id = tool.resolve_id(resource_id)
-            return await self.client.get_children(tool.namespace_id, real_id, depth)
+            result = await self.client.get_children(tool.namespace_id, real_id, depth)
+
+            if result.success and result.data:
+                # Add returned children to visible_resources and assign short IDs
+                self.assign_short_ids_to_resources(tool, result.data)
+
+            return result
 
         return _get_children
 
@@ -133,7 +223,13 @@ class GetParentHandler(BaseResourceHandler):
         async def _get_parent(resource_id: str) -> ResourceToolResult:
             # Resolve short ID to real ID
             real_id = tool.resolve_id(resource_id)
-            return await self.client.get_parent(tool.namespace_id, real_id)
+            result = await self.client.get_parent(tool.namespace_id, real_id)
+
+            if result.success and result.data:
+                # Add returned parent to visible_resources and assign short IDs
+                self.assign_short_ids_to_resources(tool, result.data)
+
+            return result
 
         return _get_parent
 
@@ -168,10 +264,22 @@ class FilterByTimeHandler(BaseResourceHandler):
         self.client = client
 
     def get_function(self, tool: BaseResourceTool, **kwargs) -> ResourceFunction:
-        return partial(
-            self.client.filter_by_time,
-            namespace_id=tool.namespace_id,
-        )
+        async def _filter_by_time(
+            created_at_after: str, created_at_before: str
+        ) -> ResourceToolResult:
+            result = await self.client.filter_by_time(
+                created_at_after=created_at_after,
+                created_at_before=created_at_before,
+                namespace_id=tool.namespace_id,
+            )
+
+            if result.success and result.data:
+                # Add returned resources to visible_resources and assign short IDs
+                self.assign_short_ids_to_resources(tool, result.data)
+
+            return result
+
+        return _filter_by_time
 
     @classmethod
     def get_schema(cls) -> dict:
@@ -209,10 +317,19 @@ class FilterByTagHandler(BaseResourceHandler):
         self.client = client
 
     def get_function(self, tool: BaseResourceTool, **kwargs) -> ResourceFunction:
-        return partial(
-            self.client.filter_by_tag,
-            namespace_id=tool.namespace_id,
-        )
+        async def _filter_by_tag(tags: list[str]) -> ResourceToolResult:
+            result = await self.client.filter_by_tag(
+                tags=tags,
+                namespace_id=tool.namespace_id,
+            )
+
+            if result.success and result.data:
+                # Add returned resources to visible_resources and assign short IDs
+                self.assign_short_ids_to_resources(tool, result.data)
+
+            return result
+
+        return _filter_by_tag
 
     @classmethod
     def get_schema(cls) -> dict:

@@ -12,4 +12,44 @@ For each function call, return a json object with function name and arguments wi
 {"name": <function-name>, "arguments": <args-json-object>}
 </tool_call>
 
-**IMPORTANT: When you need to call a tool, you MUST actually output the <tool_call> tags. DO NOT just say "I will call..." without including the actual <tool_call> tags. If you mention that you will call a tool, you MUST include the <tool_call> in your response immediately.**
+## CRITICAL Tool Calling Rules
+
+1. **ALWAYS include <tool_call> tags when you need information**: If you say "I will call...", "I need to get...", "Let me check...", or similar phrases, you MUST include the actual `<tool_call>` tags in the SAME response. NEVER end your response with an intention to call a tool without actually calling it.
+
+2. **Multi-step tasks require multiple tool calls**: Complex tasks (like summarizing a folder) often need multiple rounds:
+   - First call: Get folder structure (get_children)
+   - After receiving results: Read document contents (get_resources)
+   - Continue until you have all needed information
+
+3. **NEVER stop halfway**: If tool results show you need more information to complete the task, immediately call the next tool. Do not wait for user confirmation.
+
+## Example: Correct Multi-Step Tool Usage
+
+**User**: Summarize the contents of folder f1
+
+**Assistant (Turn 1)**: I'll help you summarize folder f1. Let me first check its contents.
+<tool_call>
+{"name": "get_children", "arguments": {"resource_id": "f1"}}
+</tool_call>
+
+**[Tool returns: folder contains documents r1, r2, r3]**
+
+**Assistant (Turn 2)**: The folder contains 3 documents. Now let me read their contents to provide a summary.
+<tool_call>
+{"name": "get_resources", "arguments": {"resource_ids": ["r1", "r2", "r3"]}}
+</tool_call>
+
+**[Tool returns: document contents]**
+
+**Assistant (Turn 3)**: Based on the documents, here is the summary: [actual summary with citations]
+
+## Common Mistakes to AVOID
+
+❌ WRONG - Ending with intention but no action:
+"I found 3 documents. Let me read them to provide a summary." (NO <tool_call> tags)
+
+✅ CORRECT - Always include the tool call:
+"I found 3 documents. Let me read them to provide a summary.
+<tool_call>
+{"name": "get_resources", "arguments": {"resource_ids": ["r1", "r2", "r3"]}}
+</tool_call>"

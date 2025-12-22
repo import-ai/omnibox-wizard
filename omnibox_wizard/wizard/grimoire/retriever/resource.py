@@ -175,18 +175,10 @@ class GetChildrenHandler(BaseResourceHandler):
             if result.success and result.data:
                 # Add returned children to visible_resources and assign short IDs
                 self.assign_short_ids_to_resources(tool, result.data)
-
-                # Generate hint for LLM: list readable documents with their short IDs
-                readable_docs = [
-                    r for r in result.data
-                    if r.resource_type == "doc" and r.short_id
-                ]
-                if readable_docs:
-                    doc_ids = [r.short_id for r in readable_docs]
-                    result.hint = (
-                        f"To read document contents, call get_resources with short IDs: {doc_ids}. "
-                        f"Only 'doc' type can be read. 'file' and 'link' types cannot be read directly."
-                    )
+                doc_ids = [r.short_id for r in result.data]
+                result.hint = (
+                    f"To read document contents, call get_resources with short IDs: {doc_ids}. "
+                )
 
             return result
 

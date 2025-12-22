@@ -141,9 +141,9 @@ class GetResourcesHandler(BaseResourceHandler):
             "function": {
                 "name": "get_resources",
                 "description": (
-                    "Read the full content of specific documents by their short IDs. "
-                    "Use this AFTER you know which documents you need - typically after using get_children to list folder contents. "
-                    "Example workflow: get_children(f1) -> see document list -> get_resources(['r1', 'r2']) to read content."
+                    "Read the full content of resources by their short IDs. "
+                    "ALL resource types (doc, file, link) can be read - the system has already extracted/transcribed their content. "
+                    "Use this AFTER get_children to read the actual contents."
                 ),
                 "parameters": {
                     "type": "object",
@@ -151,7 +151,7 @@ class GetResourcesHandler(BaseResourceHandler):
                         "resource_ids": {
                             "type": "array",
                             "items": {"type": "string"},
-                            "description": "List of document short IDs (e.g., ['r1', 'r2']) to read",
+                            "description": "List of resource short IDs (e.g., ['r1', 'r2']) to read",
                         }
                     },
                     "required": ["resource_ids"],

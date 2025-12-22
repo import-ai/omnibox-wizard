@@ -52,6 +52,20 @@ class ResourceToolResult(BaseModel):
 
     def to_tool_content(self) -> str:
         """Convert to tool call response content."""
-        return json.dumps(
-            self.model_dump(exclude_none=True), ensure_ascii=False, indent=2
-        )
+        # Exclude attrs field to reduce noise for LLM
+        exclude_fields = {"attrs"}
+
+        def exclude_attrs(data):
+            """Recursively exclude attrs from nested structures."""
+            if isinstance(data, dict):
+                return {
+                    k: exclude_attrs(v) for k, v in data.items()
+                    if k not in exclude_fields
+                }
+            elif isinstance(data, list):
+                return [exclude_attrs(item) for item in data]
+            return data
+
+        dump = self.model_dump(exclude_none=True)
+        dump = exclude_attrs(dump)
+        return json.dumps(dump, ensure_ascii=False, indent=2)

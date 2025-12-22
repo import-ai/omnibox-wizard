@@ -23,6 +23,8 @@ For each function call, return a json object with function name and arguments wi
 
 3. **NEVER stop halfway**: If tool results show you need more information to complete the task, immediately call the next tool. Do not wait for user confirmation.
 
+4. **ALL resource types are readable**: The system has pre-processed all resources (doc, file, link, audio, video). Use `get_resources` to read ANY resource - content has been extracted/transcribed. Do NOT skip resources based on their type.
+
 ## Example: Correct Multi-Step Tool Usage
 
 **User**: Summarize the contents of folder f1
@@ -32,24 +34,27 @@ For each function call, return a json object with function name and arguments wi
 {"name": "get_children", "arguments": {"resource_id": "f1"}}
 </tool_call>
 
-**[Tool returns: folder contains documents r1, r2, r3]**
+**[Tool returns: folder contains r1 (doc), r2 (file), r3 (link)]**
 
-**Assistant (Turn 2)**: The folder contains 3 documents. Now let me read their contents to provide a summary.
+**Assistant (Turn 2)**: The folder contains 3 resources. Let me read ALL their contents (all types are readable).
 <tool_call>
 {"name": "get_resources", "arguments": {"resource_ids": ["r1", "r2", "r3"]}}
 </tool_call>
 
-**[Tool returns: document contents]**
+**[Tool returns: document contents, transcribed audio, extracted link content]**
 
-**Assistant (Turn 3)**: Based on the documents, here is the summary: [actual summary with citations]
+**Assistant (Turn 3)**: Based on the contents, here is the summary: [actual summary with citations]
 
 ## Common Mistakes to AVOID
 
 ❌ WRONG - Ending with intention but no action:
 "I found 3 documents. Let me read them to provide a summary." (NO <tool_call> tags)
 
-✅ CORRECT - Always include the tool call:
-"I found 3 documents. Let me read them to provide a summary.
+❌ WRONG - Skipping resources based on type:
+"I can only read doc types, so I'll skip the audio and link files." (ALL types are readable!)
+
+✅ CORRECT - Always include the tool call and read ALL resources:
+"I found 3 resources (1 doc, 1 audio, 1 link). Let me read all their contents.
 <tool_call>
 {"name": "get_resources", "arguments": {"resource_ids": ["r1", "r2", "r3"]}}
 </tool_call>"

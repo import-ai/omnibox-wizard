@@ -45,6 +45,10 @@ class ResourceToolResult(BaseModel):
     success: bool = True
     data: list[ResourceInfo] | ResourceInfo | None = None
     error: str | None = None
+    hint: str | None = Field(
+        default=None,
+        description="Hint for LLM on what to do next with the result"
+    )
 
     def to_tool_content(self) -> str:
         """Convert to tool call response content."""

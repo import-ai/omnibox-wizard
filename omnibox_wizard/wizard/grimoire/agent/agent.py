@@ -185,6 +185,11 @@ class UserQueryPreprocessor:
     @classmethod
     def parse_selected_tools(cls, attrs: MessageAttrs) -> list[str]:
         tools = [tool.name for tool in attrs.tools or []]
+
+        # 如果 private_search 存在，resource tools 是隐式启用的
+        if "private_search" in tools:
+            tools = tools + [t for t in RESOURCE_TOOLS if t not in tools]
+
         return [
             "\n".join(
                 [
@@ -317,9 +322,16 @@ class UserQueryPreprocessor:
     ) -> list[dict[str, str]]:
         messages: list[dict[str, str]] = []
 
-        for dto in dtos:
+        # 找到最后一个 user message 的索引
+        last_user_idx = -1
+        for i, dto in enumerate(dtos):
+            if dto.message["role"] == "user":
+                last_user_idx = i
+
+        for i, dto in enumerate(dtos):
             messages.append(dto.message)
-            if dto.message["role"] == "user" and dto.attrs:
+            # 只对最后一个 user message 添加 context
+            if i == last_user_idx and dto.message["role"] == "user" and dto.attrs:
                 messages.append(
                     {
                         "role": "system",

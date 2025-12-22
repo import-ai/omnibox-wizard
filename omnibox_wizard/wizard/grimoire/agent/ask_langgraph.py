@@ -183,13 +183,6 @@ async def call_llm(state: AgentState, config: RunnableConfig) -> dict:
             messages, original_tools=agent_request.tools
         )
 
-        # Add visible_resources context (since it's in private_search, not resource tools)
-        if visible_resources_context := format_visible_resources(agent_request):
-            openai_messages.append({
-                "role": "system",
-                "content": visible_resources_context,
-            })
-
         # Get OpenAI client
         openai = agent.openai.get_config("large", default=agent.openai.default)
         kwargs: dict = {}

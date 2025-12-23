@@ -28,7 +28,7 @@ class ResourceInfo(BaseModel):
     namespace_id: str | None = Field(default=None)
     parent_id: str | None = Field(default=None)
     content: str | None = Field(default=None)
-    tags: list[str] | None = Field(default=None)
+    tags: list[dict] | None = Field(default=None)
     attrs: dict | None = Field(default=None)
     global_permission: str | None = Field(default=None)
     path: list[ResourcePathItem] | None = Field(

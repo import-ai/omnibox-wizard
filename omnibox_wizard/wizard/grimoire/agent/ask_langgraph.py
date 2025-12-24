@@ -64,79 +64,6 @@ from omnibox_wizard.wizard.grimoire.agent.agent import UserQueryPreprocessor
 json_dumps = partial(jsonlib.dumps, ensure_ascii=False, separators=(",", ":"))
 tracer = trace.get_tracer(__name__)
 
-
-def format_visible_resources(agent_request: AgentRequest) -> str | None:
-    """Format visible_resources from private_search for LLM context.
-
-    Returns formatted string or None if no visible_resources.
-    """
-    # Find private_search tool
-    private_search = None
-    for tool in agent_request.tools or []:
-        if tool.name == "private_search":
-            private_search = tool
-            break
-
-    if not private_search or not private_search.visible_resources:
-        return None
-
-    # Generate short ID mapping (same logic as BaseResourceTool)
-    resources_with_ids = []
-    resource_counter = 0
-    folder_counter = 0
-
-    for resource in private_search.visible_resources:
-        if resource.type == PrivateSearchResourceType.FOLDER:
-            folder_counter += 1
-            short_id = f"f{folder_counter}"
-        else:
-            resource_counter += 1
-            short_id = f"r{resource_counter}"
-        resources_with_ids.append({
-            "short_id": short_id,
-            "name": resource.name,
-            "type": resource.type.value,
-        })
-
-    if not resources_with_ids:
-        return None
-
-    # Separate folders and documents
-    folders = [r for r in resources_with_ids if r["type"] == "folder"]
-    documents = [r for r in resources_with_ids if r["type"] == "resource"]
-
-    # Format for LLM
-    lines = [
-        "<available_resources>",
-        "User's available folders and documents (use short_id when calling tools):",
-        "",
-    ]
-
-    if folders:
-        lines.append("Folders:")
-        for f in folders:
-            lines.append(f"  - {f['short_id']}: {f['name']}")
-
-    if documents:
-        lines.append("")
-        lines.append("Documents:")
-        for d in documents:
-            lines.append(f"  - {d['short_id']}: {d['name']}")
-
-    lines.extend([
-        "",
-        "Tool Usage Guide:",
-        "- To see folder contents: get_children(folder_short_id) e.g., get_children(namespace_id, resource_id)",
-        "- To read document content: get_resources([doc_short_ids]) e.g., get_resources(['r1', 'r2'])",
-        "- For time-based queries ('recent', 'this week'): use filter_by_time",
-        "- For tag-based queries: use filter_by_tag",
-        "- private_search is for keyword search across all documents",
-        "</available_resources>",
-    ])
-
-    return "\n".join(lines)
-
-
 # ============== State ==============
 class AgentState(TypedDict):
     """Minimal state - just the conversation messages."""
@@ -384,8 +311,7 @@ class AskLangGraph(BaseStreamable):
         self.system_prompt_template = self.template_parser.get_template("ask.j2")
 
         # Custom tool call mode
-        # self.custom_tool_call: bool | None = config.grimoire.custom_tool_call
-        self.custom_tool_call = False
+        self.custom_tool_call: bool | None = config.grimoire.custom_tool_call
         # Build graph
         self.graph = build_graph()
 
@@ -460,18 +386,33 @@ class AskLangGraph(BaseStreamable):
 
         # Add system message if needed
         if not messages:
-            prompt = self.template_parser.render_template(
-                self.system_prompt_template,
-                lang=agent_request.lang or "简体中文",
-                tools="\n".join(json_dumps(t) for t in all_tools),
-                part_1_enabled=True,
-                part_2_enabled=True,
-            )
-            system_msg = {"role": "system", "content": prompt}
-            await emit_complete_message(
-                {"configurable": {"queue": queue}}, system_msg
-            )
-            messages.append(MessageDto.model_validate({"message": system_msg}))
+            if self.custom_tool_call:
+                prompt: str = self.template_parser.render_template(
+                    self.system_prompt_template,
+                    lang=agent_request.lang or "简体中文",
+                    tools="\n".join(json_dumps(tool) for tool in all_tools)
+                    if self.custom_tool_call
+                    else None,
+                    part_1_enabled=True,
+                    part_2_enabled=True,
+                )
+                system_msg = {"role": "system", "content": prompt}
+                await emit_complete_message(
+                    {"configurable": {"queue": queue}}, system_msg
+                )
+                messages.append(MessageDto.model_validate({"message": system_msg}))
+            else:
+                for i in range(2):
+                    prompt: str = self.template_parser.render_template(
+                        self.system_prompt_template,
+                        lang=agent_request.lang or "简体中文",
+                        **{f"part_{i + 1}_enabled": True},
+                    )
+                    system_msg: dict = {"role": "system", "content": prompt}
+                    await emit_complete_message(
+                        {"configurable": {"queue": queue}}, system_msg
+                    )
+                    messages.append(MessageDto.model_validate({"message": system_msg}))
 
         # Add user message if needed
         if messages[-1].message["role"] != "user":

@@ -117,7 +117,7 @@ class ResourceAPIClient:
         try:
             data = await self._request(
                 "GET",
-                f"/internal/api/v1/namespaces/{namespace_id}/resources/{resource_id}/parent",
+                f"/internal/api/v1/namespaces/{namespace_id}/resources/{resource_id}/",
             )
             return ResourceToolResult(
                 success=True,

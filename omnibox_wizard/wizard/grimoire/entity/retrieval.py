@@ -42,6 +42,7 @@ class Citation(PromptCite):
     title: str | None = None
     snippet: str | None = None
     link: str
+    namespace_id: str | None = None
     updated_at: str | None = None
     source: str | None = None
 

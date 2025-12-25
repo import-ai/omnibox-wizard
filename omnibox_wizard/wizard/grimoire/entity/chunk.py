@@ -74,6 +74,9 @@ class ResourceChunkRetrieval(BaseRetrieval):
     type: PrivateSearchResourceType | None = Field(
         default=None, description="The type of the resource"
     )
+    namespace_id: str | None = Field(
+        default=None, description="The namespace ID for this retrieval"
+    )
     chunk: Chunk
     source: Literal["private"] = "private"
 
@@ -105,6 +108,7 @@ class ResourceChunkRetrieval(BaseRetrieval):
             title=self.chunk.title,
             snippet=self.chunk.text,
             link=self.chunk.resource_id,
+            namespace_id=self.namespace_id,
             updated_at=timestamp_to_datetime(self.chunk.updated_at),
             source=self.source,
         )

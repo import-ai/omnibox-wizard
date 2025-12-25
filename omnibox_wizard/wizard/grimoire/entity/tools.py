@@ -142,64 +142,8 @@ class BaseResourceTool(BaseTool):
     visible_resources: list[Resource] | None = Field(
         default=None,
         exclude=True,
-        description="List of visible resources. Used to generate short ID mappings.",
+        description="List of visible resources.",
     )
-
-    @property
-    def id_mapping(self) -> dict[str, str]:
-        """Generate short ID to real ID mapping from visible_resources."""
-        if not self.visible_resources:
-            return {}
-
-        mapping: dict[str, str] = {}
-        resource_counter = 0
-        folder_counter = 0
-
-        for resource in self.visible_resources:
-            if resource.type == PrivateSearchResourceType.FOLDER:
-                folder_counter += 1
-                short_id = f"f{folder_counter}"
-            else:
-                resource_counter += 1
-                short_id = f"r{resource_counter}"
-            mapping[short_id] = resource.id
-
-        return mapping
-
-    def resolve_id(self, short_id: str) -> str:
-        """Resolve a short ID to real ID. Returns original if not found."""
-        return self.id_mapping.get(short_id, short_id)
-
-    def resolve_ids(self, short_ids: list[str]) -> list[str]:
-        """Resolve a list of short IDs to real IDs."""
-        mapping = self.id_mapping  # Cache to avoid regenerating
-        return [mapping.get(sid, sid) for sid in short_ids]
-
-    def get_resources_with_short_ids(self) -> list[dict]:
-        """Get visible resources with their short IDs for prompt display."""
-        if not self.visible_resources:
-            return []
-
-        result = []
-        resource_counter = 0
-        folder_counter = 0
-
-        for resource in self.visible_resources:
-            if resource.type == PrivateSearchResourceType.FOLDER:
-                folder_counter += 1
-                short_id = f"f{folder_counter}"
-            else:
-                resource_counter += 1
-                short_id = f"r{resource_counter}"
-            result.append({
-                "short_id": short_id,
-                "id": resource.id,
-                "name": resource.name,
-                "type": resource.type.value,
-            })
-
-        return result
-
 
 class GetResourcesTool(BaseResourceTool):
     """Tool to get full content of one or more resources."""

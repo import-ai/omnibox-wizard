@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import json
-from typing import Literal
+from typing import Literal, TYPE_CHECKING
 
 from pydantic import BaseModel, Field
+
+if TYPE_CHECKING:
+    from omnibox_wizard.wizard.grimoire.entity.retrieval import Citation
 
 
 class ResourcePathItem(BaseModel):
@@ -36,8 +39,21 @@ class ResourceInfo(BaseModel):
     )
     created_at: str | None = Field(default=None)
     updated_at: str | None = Field(default=None)
-    
+
     # short_id: str | None = Field(default=None, description="Short ID for LLM reference")
+
+    def to_citation(self) -> "Citation":
+        """Convert ResourceInfo to Citation for reference tracking."""
+        from omnibox_wizard.wizard.grimoire.entity.retrieval import Citation
+
+        return Citation(
+            title=self.name,
+            snippet=self.content,
+            link=self.id,
+            namespace_id=self.namespace_id,
+            updated_at=self.updated_at,
+            source="private",
+        )
 
 
 class ResourceToolResult(BaseModel):
@@ -50,6 +66,14 @@ class ResourceToolResult(BaseModel):
         default=None,
         description="Hint for LLM on what to do next with the result"
     )
+
+    def to_citations(self) -> list["Citation"]:
+        """Convert all ResourceInfo in data to Citations."""
+        if not self.data:
+            return []
+        if isinstance(self.data, list):
+            return [r.to_citation() for r in self.data]
+        return [self.data.to_citation()]
 
     def to_tool_content(self) -> str:
         """Convert to tool call response content."""

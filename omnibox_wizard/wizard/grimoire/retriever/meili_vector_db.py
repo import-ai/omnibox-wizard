@@ -462,6 +462,7 @@ class MeiliVectorRetriever(BaseRetriever):
                 type=self.get_type(
                     chunk.resource_id, private_search_tool.visible_resources or []
                 ),
+                namespace_id=private_search_tool.namespace_id,
                 score=Score(recall=score, rerank=0),
             )
             for chunk, score in recall_result_list

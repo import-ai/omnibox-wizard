@@ -218,82 +218,41 @@ class UserQueryPreprocessor:
             options: The chat request options (may have serialized tools without visible_resources)
             original_tools: Original tools list with visible_resources populated (optional)
         """
-        # Use original_tools if provided (contains visible_resources), otherwise fall back to options.tools
         tools_list = original_tools if original_tools is not None else (options.tools or [])
         tools = ToolDict(tools_list)
 
-        # Find a tool that has visible_resources
-        # First check resource tools, then check private_search (which also has visible_resources)
-        resource_tool: BaseResourceTool | None = None
-
-        # Check resource tools first
-        for tool_name in RESOURCE_TOOLS:
-            if tool := tools.get(tool_name):
-                if isinstance(tool, BaseResourceTool) and tool.visible_resources:
-                    resource_tool = tool
-                    break
-
-        # If not found, check private_search (visible_resources is defined there)
-        if not resource_tool:
-            if tool := tools.get("private_search"):
-                if hasattr(tool, "visible_resources") and tool.visible_resources:
-                    resource_tool = tool
-
-        if not resource_tool:
-            return []
-        # Get resources with short IDs
-        # PrivateSearchTool doesn't have get_resources_with_short_ids(), so handle it manually
-        if hasattr(resource_tool, "get_resources_with_short_ids"):
-            resources_with_ids = resource_tool.get_resources_with_short_ids()
+        if tool := tools.get("private_search",None):
+            visible_resources = tool.visible_resources
         else:
-            # Manually generate short IDs for PrivateSearchTool
-            resources_with_ids = []
-            resource_counter = 0
-            folder_counter = 0
-            for resource in resource_tool.visible_resources:
-                if resource.type == PrivateSearchResourceType.FOLDER:
-                    folder_counter += 1
-                    short_id = f"f{folder_counter}"
-                else:
-                    resource_counter += 1
-                    short_id = f"r{resource_counter}"
-                resources_with_ids.append({
-                    "short_id": short_id,
-                    "id": resource.id,
-                    "name": resource.name,
-                    "type": resource.type.value,
-                })
-
-        if not resources_with_ids:
             return []
-
+        
         # Separate folders and documents for clarity
-        folders = [r for r in resources_with_ids if r["type"] == "folder"]
-        documents = [r for r in resources_with_ids if r["type"] == "resource"]
+        folders = [r for r in visible_resources if r["type"] == "folder"]
+        documents = [r for r in visible_resources if r["type"] == "resource"]
 
         # Format for LLM with clear guidance
         lines = [
             "<available_resources>",
-            "User's available folders and documents (use short_id when calling tools):",
+            "User's available folders and documents:",
             "",
         ]
 
         if folders:
             lines.append("Folders:")
             for f in folders:
-                lines.append(f"  - {f['short_id']}: {f['name']}")
+                lines.append(f"  - {f['id']}: {f['name']}")
 
         if documents:
             lines.append("")
             lines.append("Documents:")
             for d in documents:
-                lines.append(f"  - {d['short_id']}: {d['name']}")
+                lines.append(f"  - {d['id']}: {d['name']}")
 
         lines.extend([
             "",
             "Tool Usage Guide:",
-            "- To see folder contents: get_children(folder_short_id) e.g., get_children('f1')",
-            "- To read document content: get_resources([doc_short_ids]) e.g., get_resources(['r1', 'r2'])",
+            "- To see folder contents: get_children(resource_id) e.g., get_children('f1')",
+            "- To read document content: get_resources([resource_ids]) e.g., get_resources(['r1', 'r2'])",
             "- For time-based queries ('recent', 'this week'): use filter_by_time",
             "- For tag-based queries: use filter_by_tag",
             "- private_search is for keyword search across all documents",
@@ -307,14 +266,14 @@ class UserQueryPreprocessor:
         cls,
         query: str,
         attrs: MessageAttrs,
-        # original_tools: list | None = None,
+        original_tools: list | None = None,
     ) -> str:
         return remove_continuous_break_lines(
             "\n\n".join(
                 [
                     "\n".join(["<query>", query, "</query>"]),
                     *cls.parse_selected_resources(attrs),
-                    # *cls.parse_visible_resources(attrs, original_tools=original_tools),
+                    *cls.parse_visible_resources(attrs, original_tools=original_tools),
                     *cls.parse_selected_tools(attrs),
                 ]
             )
@@ -334,13 +293,13 @@ class UserQueryPreprocessor:
     @classmethod
     def parse_context(
         cls, attrs: MessageAttrs,
-        #original_tools: list | None = None
+        original_tools: list | None = None
     ) -> str:
         return remove_continuous_break_lines(
             "\n\n".join(
                 [
                     *cls.parse_selected_resources(attrs),
-                    # *cls.parse_visible_resources(attrs, original_tools=original_tools),
+                    *cls.parse_visible_resources(attrs, original_tools=original_tools),
                     *cls.parse_selected_tools(attrs),
                 ]
             )
@@ -366,7 +325,7 @@ class UserQueryPreprocessor:
                     {
                         "role": "system",
                         "content": cls.parse_context(
-                            dto.attrs #, original_tools=original_tools
+                            dto.attrs, original_tools=original_tools
                         ),
                     }
                 )

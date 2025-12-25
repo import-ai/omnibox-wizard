@@ -227,8 +227,8 @@ class UserQueryPreprocessor:
             return []
         
         # Separate folders and documents for clarity
-        folders = [r for r in visible_resources if r["type"] == "folder"]
-        documents = [r for r in visible_resources if r["type"] == "resource"]
+        folders = [r for r in visible_resources if r.type == "folder"]
+        documents = [r for r in visible_resources if r.type == "resource"]
 
         # Format for LLM with clear guidance
         lines = [

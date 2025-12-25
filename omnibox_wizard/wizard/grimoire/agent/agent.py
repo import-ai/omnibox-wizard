@@ -186,7 +186,7 @@ class UserQueryPreprocessor:
     def parse_selected_tools(cls, attrs: MessageAttrs) -> list[str]:
         tools = [tool.name for tool in attrs.tools or []]
 
-        # 如果 private_search 存在，resource tools 是隐式启用的
+        # if private_search is selected，resource tools are automatically available
         if "private_search" in tools:
             tools = tools + [t for t in RESOURCE_TOOLS if t not in tools]
 
@@ -241,7 +241,6 @@ class UserQueryPreprocessor:
 
         if not resource_tool:
             return []
-
         # Get resources with short IDs
         # PrivateSearchTool doesn't have get_resources_with_short_ids(), so handle it manually
         if hasattr(resource_tool, "get_resources_with_short_ids"):
@@ -308,14 +307,14 @@ class UserQueryPreprocessor:
         cls,
         query: str,
         attrs: MessageAttrs,
-        original_tools: list | None = None,
+        # original_tools: list | None = None,
     ) -> str:
         return remove_continuous_break_lines(
             "\n\n".join(
                 [
                     "\n".join(["<query>", query, "</query>"]),
                     *cls.parse_selected_resources(attrs),
-                    *cls.parse_visible_resources(attrs, original_tools=original_tools),
+                    # *cls.parse_visible_resources(attrs, original_tools=original_tools),
                     *cls.parse_selected_tools(attrs),
                 ]
             )
@@ -334,13 +333,14 @@ class UserQueryPreprocessor:
 
     @classmethod
     def parse_context(
-        cls, attrs: MessageAttrs, original_tools: list | None = None
+        cls, attrs: MessageAttrs,
+        #original_tools: list | None = None
     ) -> str:
         return remove_continuous_break_lines(
             "\n\n".join(
                 [
                     *cls.parse_selected_resources(attrs),
-                    *cls.parse_visible_resources(attrs, original_tools=original_tools),
+                    # *cls.parse_visible_resources(attrs, original_tools=original_tools),
                     *cls.parse_selected_tools(attrs),
                 ]
             )
@@ -366,7 +366,7 @@ class UserQueryPreprocessor:
                     {
                         "role": "system",
                         "content": cls.parse_context(
-                            dto.attrs, original_tools=original_tools
+                            dto.attrs #, original_tools=original_tools
                         ),
                     }
                 )

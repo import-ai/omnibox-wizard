@@ -36,7 +36,8 @@ class ResourceInfo(BaseModel):
     )
     created_at: str | None = Field(default=None)
     updated_at: str | None = Field(default=None)
-    short_id: str | None = Field(default=None, description="Short ID for LLM reference")
+    
+    # short_id: str | None = Field(default=None, description="Short ID for LLM reference")
 
 
 class ResourceToolResult(BaseModel):

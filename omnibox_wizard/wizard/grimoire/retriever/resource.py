@@ -123,12 +123,12 @@ class GetResourcesHandler(BaseResourceHandler):
     def get_function(self, tool: BaseResourceTool, **kwargs) -> ResourceFunction:
         async def _get_resources(resource_ids: list[str]) -> ResourceToolResult:
             # Resolve short IDs to real IDs
-            real_ids = tool.resolve_ids(resource_ids)
-            result = await self.client.get_resources(tool.namespace_id, real_ids)
+            # real_ids = tool.resolve_ids(resource_ids)
+            result = await self.client.get_resources(tool.namespace_id, resource_ids)
 
-            if result.success and result.data:
-                # Assign short IDs to returned resources for consistency
-                self.assign_short_ids_to_resources(tool, result.data)
+            # if result.success and result.data:
+            #     # Assign short IDs to returned resources for consistency
+            #     self.assign_short_ids_to_resources(tool, result.data)
 
             return result
 
@@ -141,7 +141,7 @@ class GetResourcesHandler(BaseResourceHandler):
             "function": {
                 "name": "get_resources",
                 "description": (
-                    "Read the full content of resources by their short IDs. "
+                    "Read the full content of resources by their resource IDs. "
                     "ALL resource types (doc, file, link) can be read - the system has already extracted/transcribed their content. "
                     "Use this AFTER get_children to read the actual contents."
                 ),
@@ -151,7 +151,7 @@ class GetResourcesHandler(BaseResourceHandler):
                         "resource_ids": {
                             "type": "array",
                             "items": {"type": "string"},
-                            "description": "List of resource short IDs (e.g., ['r1', 'r2']) to read",
+                            "description": "List of resource IDs (e.g., ['r1', 'r2']) to read",
                         }
                     },
                     "required": ["resource_ids"],
@@ -169,16 +169,16 @@ class GetChildrenHandler(BaseResourceHandler):
     def get_function(self, tool: BaseResourceTool, **kwargs) -> ResourceFunction:
         async def _get_children(resource_id: str, depth: int = 3) -> ResourceToolResult:
             # Resolve short ID to real ID
-            real_id = tool.resolve_id(resource_id)
-            result = await self.client.get_children(tool.namespace_id, real_id, depth)
+            # real_id = tool.resolve_id(resource_id)
+            result = await self.client.get_children(tool.namespace_id, resource_id, depth)
 
-            if result.success and result.data:
-                # Add returned children to visible_resources and assign short IDs
-                self.assign_short_ids_to_resources(tool, result.data)
-                doc_ids = [r.short_id for r in result.data]
-                result.hint = (
-                    f"To read document contents, call get_resources with short IDs: {doc_ids}. "
-                )
+            # if result.success and result.data:
+            #     # Add returned children to visible_resources and assign short IDs
+            #     self.assign_short_ids_to_resources(tool, result.data)
+            #     doc_ids = [r.short_id for r in result.data]
+            #     result.hint = (
+            #         f"To read document contents, call get_resources with short IDs: {doc_ids}. "
+            #     )
 
             return result
 
@@ -226,12 +226,12 @@ class GetParentHandler(BaseResourceHandler):
     def get_function(self, tool: BaseResourceTool, **kwargs) -> ResourceFunction:
         async def _get_parent(resource_id: str) -> ResourceToolResult:
             # Resolve short ID to real ID
-            real_id = tool.resolve_id(resource_id)
-            result = await self.client.get_parent(tool.namespace_id, real_id)
+            # real_id = tool.resolve_id(resource_id)
+            result = await self.client.get_parent(tool.namespace_id, resource_id)
 
-            if result.success and result.data:
-                # Add returned parent to visible_resources and assign short IDs
-                self.assign_short_ids_to_resources(tool, result.data)
+            # if result.success and result.data:
+            #     # Add returned parent to visible_resources and assign short IDs
+            #     self.assign_short_ids_to_resources(tool, result.data)
 
             return result
 
@@ -277,13 +277,13 @@ class FilterByTimeHandler(BaseResourceHandler):
                 namespace_id=tool.namespace_id,
             )
 
-            if result.success and result.data:
-                # Add returned resources to visible_resources and assign short IDs
-                self.assign_short_ids_to_resources(tool, result.data)
-                doc_ids = [r.short_id for r in result.data]
-                result.hint = (
-                    f"To read document contents, call get_resources with short IDs: {doc_ids}. "
-                )
+            # if result.success and result.data:
+            #     # Add returned resources to visible_resources and assign short IDs
+            #     self.assign_short_ids_to_resources(tool, result.data)
+            #     doc_ids = [r.short_id for r in result.data]
+            #     result.hint = (
+            #         f"To read document contents, call get_resources with short IDs: {doc_ids}. "
+            #     )
 
             return result
 
@@ -331,13 +331,13 @@ class FilterByTagHandler(BaseResourceHandler):
                 namespace_id=tool.namespace_id,
             )
 
-            if result.success and result.data:
-                # Add returned resources to visible_resources and assign short IDs
-                self.assign_short_ids_to_resources(tool, result.data)
-                doc_ids = [r.short_id for r in result.data]
-                result.hint = (
-                    f"To read document contents, call get_resources with short IDs: {doc_ids}. "
-                )
+            # if result.success and result.data:
+            #     # Add returned resources to visible_resources and assign short IDs
+            #     self.assign_short_ids_to_resources(tool, result.data)
+            #     doc_ids = [r.short_id for r in result.data]
+            #     result.hint = (
+            #         f"To read document contents, call get_resources with short IDs: {doc_ids}. "
+            #     )
 
             return result
 

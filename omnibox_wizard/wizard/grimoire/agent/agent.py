@@ -240,13 +240,13 @@ class UserQueryPreprocessor:
         if folders:
             lines.append("Folders:")
             for f in folders:
-                lines.append(f"  - {f['id']}: {f['name']}")
+                lines.append(f"  - {f.id}: {f.name}")
 
         if documents:
             lines.append("")
             lines.append("Documents:")
             for d in documents:
-                lines.append(f"  - {d['id']}: {d['name']}")
+                lines.append(f"  - {d.id}: {d.name}")
 
         lines.extend([
             "",

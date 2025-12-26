@@ -60,11 +60,22 @@ def resource_tool_wrapper(
     tool_call_id: str, result: ResourceToolResult, current_cite_cnt: int = 0
 ) -> MessageDto:
     """Wrap resource tool result as MessageDto with citations."""
-    content: str = result.to_tool_content()
     citations = result.to_citations()
     # Assign citation IDs
     for i, citation in enumerate(citations):
         citation.id = current_cite_cnt + i + 1
+
+    # Build content with cite_id injected for each resource
+    content_dict = jsonlib.loads(result.to_tool_content())
+    if content_dict.get("data"):
+        data = content_dict["data"]
+        if isinstance(data, list):
+            for i, item in enumerate(data):
+                item["cite_id"] = current_cite_cnt + i + 1
+        elif isinstance(data, dict):
+            data["cite_id"] = current_cite_cnt + 1
+    content = jsonlib.dumps(content_dict, ensure_ascii=False, indent=2)
+
     return MessageDto.model_validate(
         {
             "message": {

@@ -5,7 +5,7 @@ from html2text import html2text
 from opentelemetry import trace
 
 from omnibox_wizard.worker.entity import GeneratedContent, Image
-from omnibox_wizard.worker.functions.html_reader_processors.base import (
+from omnibox_wizard.worker.functions.html_reader.processors.base import (
     HTMLReaderBaseProcessor,
 )
 

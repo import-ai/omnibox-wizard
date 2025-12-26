@@ -18,7 +18,7 @@ from omnibox_wizard.worker.config import WorkerConfig
 from omnibox_wizard.worker.entity import Message, Task
 from omnibox_wizard.worker.functions.base_function import BaseFunction
 from omnibox_wizard.worker.functions.file_reader import FileReader
-from omnibox_wizard.worker.functions.html_reader import HTMLReaderV2
+from omnibox_wizard.worker.functions.html_reader.html_reader import HTMLReaderV2
 from omnibox_wizard.worker.functions.index import (
     DeleteConversation,
     DeleteIndex,

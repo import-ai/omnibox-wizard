@@ -5,7 +5,7 @@ from functools import partial
 from urllib.parse import urlparse, urljoin
 
 import htmlmin
-from bs4 import BeautifulSoup, Tag, Comment
+from bs4 import BeautifulSoup, Comment
 from html2text import html2text
 from lxml.etree import tounicode
 from opentelemetry import trace
@@ -14,82 +14,43 @@ from readability.cleaners import clean_attributes
 
 from common.trace_info import TraceInfo
 from omnibox_wizard.worker.agent.html_content_extractor import HTMLContentExtractor
-from omnibox_wizard.worker.agent.html_title_extractor import HTMLTitleExtractor
+from omnibox_wizard.worker.agent.html_title_extractor import (
+    HTMLTitleExtractor,
+    HTMLTitleExtractOutput,
+)
 from omnibox_wizard.worker.config import WorkerConfig
 from omnibox_wizard.worker.entity import Task, Image, GeneratedContent
 from omnibox_wizard.worker.functions.base_function import BaseFunction
-from omnibox_wizard.worker.functions.html_reader_processors.base import (
+from omnibox_wizard.worker.functions.html_reader.processors.base import (
     HTMLReaderBaseProcessor,
 )
-from omnibox_wizard.worker.functions.html_reader_processors.green_note import (
+from omnibox_wizard.worker.functions.html_reader.processors.green_note import (
     GreenNoteProcessor,
 )
-from omnibox_wizard.worker.functions.html_reader_processors.green_notice import (
+from omnibox_wizard.worker.functions.html_reader.processors.green_notice import (
     GreenNoticeProcessor,
 )
-from omnibox_wizard.worker.functions.html_reader_processors.okjike_m import (
+from omnibox_wizard.worker.functions.html_reader.processors.okjike_m import (
     OKJikeMProcessor,
 )
-from omnibox_wizard.worker.functions.html_reader_processors.okjike_web import (
+from omnibox_wizard.worker.functions.html_reader.processors.okjike_web import (
     OKJikeWebProcessor,
 )
-from omnibox_wizard.worker.functions.html_reader_processors.red_note import (
+from omnibox_wizard.worker.functions.html_reader.processors.red_note import (
     RedNoteProcessor,
 )
-from omnibox_wizard.worker.functions.html_reader_processors.x import XProcessor
+from omnibox_wizard.worker.functions.html_reader.processors.x import XProcessor
+from omnibox_wizard.worker.functions.html_reader.selectors.base import BaseSelector
+from omnibox_wizard.worker.functions.html_reader.selectors.common import CommonSelector
+from omnibox_wizard.worker.functions.html_reader.selectors.zhihu_a import (
+    ZhihuAnswerSelector,
+)
 
 json_dumps = partial(jsonlib.dumps, separators=(",", ":"), ensure_ascii=False)
 tracer = trace.get_tracer("HTMLReaderV2")
 
 
-class HTMLReaderV2(BaseFunction):
-    SPACE_PATTERN: re.Pattern = re.compile(r"\s{2,}")
-    CONTENT_SELECTOR = {
-        "github.com": {"name": "article", "class_": "markdown-body"},
-        "medium.com": {"name": "article"},
-        "mp.weixin.qq.com": {"name": "div", "class_": "rich_media_content"},
-        "news.qq.com": {"name": "div", "class_": "content-article"},
-        "zhuanlan.zhihu.com": {"name": "article"},
-        "www.zhihu.com": {"class_": "RichText", "select_all": True},
-        "www.163.com": {"name": "div", "class_": "post_body"},
-        "x.com": {"name": "div", "attrs": {"data-testid": "tweetText"}},
-        "www.reddit.com": {"name": "shreddit-post-text-body"},
-    }
-
-    def __init__(self, config: WorkerConfig):
-        self.html_title_extractor = HTMLTitleExtractor(
-            config.grimoire.openai.get_config("mini")
-        )
-        self.html_content_extractor = HTMLContentExtractor(
-            config.grimoire.openai.get_config("mini")
-        )
-        self.processors: list[HTMLReaderBaseProcessor] = [
-            GreenNoteProcessor(config=config),
-            GreenNoticeProcessor(config=config),
-            RedNoteProcessor(config=config),
-            OKJikeWebProcessor(config=config),
-            OKJikeMProcessor(config=config),
-            XProcessor(config=config),
-        ]
-
-    @classmethod
-    def content_selector(cls, domain: str, soup: BeautifulSoup) -> Tag:
-        if selector := cls.CONTENT_SELECTOR.get(domain, None):
-            if selector.get("select_all", False):
-                items = soup.find_all(**selector)
-                standalone_soup = BeautifulSoup("", "html.parser")
-                div = standalone_soup.new_tag("div")
-                for item in items:
-                    div.append(item)
-                return div
-            if content := soup.find(**selector):
-                if domain == "mp.weixin.qq.com":  # Special handling for WeChat articles
-                    for img in content.find_all("img"):
-                        if src := img.get("data-src"):
-                            img["src"] = src
-                return content
-        return soup
-
+class Preprocessor:
     @classmethod
     def clean_html(
         cls,
@@ -172,58 +133,6 @@ class HTMLReaderV2(BaseFunction):
                 img["src"] = urljoin(url, str(src))
         return str(soup)
 
-    @tracer.start_as_current_span("run")
-    async def run(self, task: Task, trace_info: TraceInfo) -> dict:
-        input_dict = task.input
-        html = input_dict["html"]
-        url = input_dict["url"]
-
-        html = self.convert_img_src(url, html)
-
-        # Special case
-        for processor in self.processors:
-            if processor.hit(html, url):
-                result = await processor.convert(html, url)
-                return result.model_dump(exclude_none=True)
-
-        domain: str = urlparse(url).netloc
-        trace_info = trace_info.bind(domain=domain)
-
-        result: GeneratedContent = await self.convert(
-            domain=domain, html=html, trace_info=trace_info
-        )
-        result_dict: dict = result.model_dump(exclude_none=True)
-        trace_info.info({k: v for k, v in result_dict.items() if k != "markdown"})
-        return result_dict
-
-    @tracer.start_as_current_span("get_images")
-    async def get_images(self, html: str, markdown: str) -> list[Image]:
-        extracted_images = self.extract_images(html)
-        fetch_src_list: list[tuple[str, str]] = []
-
-        for src, alt in extracted_images:
-            if src in markdown:
-                fetch_src_list.append((src, alt))
-
-        return await HTMLReaderBaseProcessor.get_images(fetch_src_list)
-
-    @tracer.start_as_current_span("get_title")
-    async def get_title(
-        self, markdown: str, raw_title: str, trace_info: TraceInfo
-    ) -> str:
-        span = trace.get_current_span()
-        try:
-            snippet: str = "\n".join(list(filter(bool, markdown.splitlines()))[:3])
-            title: str = (
-                await self.html_title_extractor.ainvoke(
-                    {"title": raw_title, "snippet": snippet}, trace_info
-                )
-            ).title
-            return title
-        except Exception as e:
-            span.record_exception(e)
-            return raw_title
-
     @classmethod
     def fix_lazy_images(cls, html: str) -> str:
         soup = BeautifulSoup(html, "html.parser")
@@ -272,19 +181,133 @@ class HTMLReaderV2(BaseFunction):
 
         return str(soup)
 
+
+class HTMLReaderV2(BaseFunction):
+    SPACE_PATTERN: re.Pattern = re.compile(r"\s{2,}")
+    CONTENT_SELECTOR = {
+        "github.com": {"name": "article", "class_": "markdown-body"},
+        "medium.com": {"name": "article"},
+        "mp.weixin.qq.com": {"name": "div", "class_": "rich_media_content"},
+        "news.qq.com": {"name": "div", "class_": "content-article"},
+        "zhuanlan.zhihu.com": {"name": "article"},
+        "www.zhihu.com": {"class_": "RichText", "select_all": True},
+        "www.163.com": {"name": "div", "class_": "post_body"},
+        "x.com": {"name": "div", "attrs": {"data-testid": "tweetText"}},
+        "www.reddit.com": {"name": "shreddit-post-text-body"},
+    }
+
+    def __init__(self, config: WorkerConfig):
+        self.html_title_extractor = HTMLTitleExtractor(
+            config.grimoire.openai.get_config("mini")
+        )
+        self.html_content_extractor = HTMLContentExtractor(
+            config.grimoire.openai.get_config("mini")
+        )
+        self.processors: list[HTMLReaderBaseProcessor] = [
+            GreenNoteProcessor(config=config),
+            GreenNoticeProcessor(config=config),
+            RedNoteProcessor(config=config),
+            OKJikeWebProcessor(config=config),
+            OKJikeMProcessor(config=config),
+            XProcessor(config=config),
+        ]
+        self.selectors: list[BaseSelector] = [
+            CommonSelector(
+                "github.com", {"name": "article", "class_": "markdown-body"}
+            ),
+            CommonSelector("medium.com", {"name": "article"}),
+            CommonSelector(
+                "mp.weixin.qq.com", {"name": "div", "class_": "rich_media_content"}
+            ),
+            CommonSelector("news.qq.com", {"name": "div", "class_": "content-article"}),
+            ZhihuAnswerSelector(),
+            CommonSelector("www.zhihu.com", {"class_": "RichText"}, True),
+            CommonSelector("zhuanlan.zhihu.com", {"name": "article"}),
+            CommonSelector("www.163.com", {"name": "div", "class_": "post_body"}),
+            CommonSelector(
+                "x.com", {"name": "div", "attrs": {"data-testid": "tweetText"}}
+            ),
+            CommonSelector("www.reddit.com", {"name": "shreddit-post-text-body"}),
+        ]
+
+    def get_processor(self, html: str, url: str) -> HTMLReaderBaseProcessor | None:
+        for processor in self.processors:
+            if processor.hit(html, url):
+                return processor
+        return None
+
+    def get_selector(self, url: str, soup: BeautifulSoup) -> BaseSelector | None:
+        for selector in self.selectors:
+            if selector.hit(url, soup):
+                return selector
+        return None
+
+    @tracer.start_as_current_span("run")
+    async def run(self, task: Task, trace_info: TraceInfo) -> dict:
+        input_dict = task.input
+        html = input_dict["html"]
+        url = input_dict["url"]
+
+        html = Preprocessor.fix_lazy_images(html)
+        html = Preprocessor.convert_img_src(url, html)
+
+        # Special case
+        if processor := self.get_processor(html, url):
+            with tracer.start_as_current_span("html_processor"):
+                result = await processor.convert(html, url)
+                return result.model_dump(exclude_none=True)
+
+        domain: str = urlparse(url).netloc
+        trace_info = trace_info.bind(domain=domain)
+
+        result: GeneratedContent = await self.convert(
+            url=url, html=html, trace_info=trace_info
+        )
+        result_dict: dict = result.model_dump(exclude_none=True)
+        trace_info.info({k: v for k, v in result_dict.items() if k != "markdown"})
+        return result_dict
+
+    @tracer.start_as_current_span("get_images")
+    async def get_images(self, html: str, markdown: str) -> list[Image]:
+        extracted_images = Preprocessor.extract_images(html)
+        fetch_src_list: list[tuple[str, str]] = []
+
+        for src, alt in extracted_images:
+            if src in markdown:
+                fetch_src_list.append((src, alt))
+
+        return await HTMLReaderBaseProcessor.get_images(fetch_src_list)
+
+    @tracer.start_as_current_span("get_title")
+    async def get_title(
+        self, markdown: str, raw_title: str, trace_info: TraceInfo
+    ) -> str:
+        span = trace.get_current_span()
+        try:
+            snippet: str = markdown.strip()[:512]
+            title_extract_output: HTMLTitleExtractOutput = (
+                await self.html_title_extractor.ainvoke(
+                    {"title": raw_title, "snippet": snippet}, trace_info
+                )
+            )
+            return title_extract_output.title
+        except Exception as e:
+            span.record_exception(e)
+            return raw_title
+
     @tracer.start_as_current_span("convert")
     async def convert(
-        self, domain: str, html: str, trace_info: TraceInfo
+        self, url: str, html: str, trace_info: TraceInfo
     ) -> GeneratedContent:
         html_doc = Document(html)
 
         selected_html: str = ""
         raw_title: str = html_doc.title()
-        if domain in self.CONTENT_SELECTOR:
+
+        soup = BeautifulSoup(html, "html.parser")
+        if selector := self.get_selector(url, soup):
             with tracer.start_as_current_span("content_selector") as span:
-                selected_html: str = self.content_selector(
-                    domain, BeautifulSoup(html, "html.parser")
-                ).prettify()
+                selected_html: str = selector.select(url, soup).prettify()
                 cleaned_html: str = clean_attributes(
                     tounicode(Document(selected_html)._html(True), method="html")
                 )
@@ -302,7 +325,7 @@ class HTMLReaderV2(BaseFunction):
                 )
         else:
             with tracer.start_as_current_span("reader_summary") as span:
-                html_summary: str = self.fix_lazy_images(html_doc.summary().strip())
+                html_summary: str = html_doc.summary().strip()
                 markdown: str = html2text(
                     htmlmin.minify(html_summary, remove_empty_space=True), bodywidth=0
                 ).strip()
@@ -321,7 +344,7 @@ class HTMLReaderV2(BaseFunction):
                 tools_cleaned_html: str = clean_attributes(
                     tounicode(Document(html)._html(True), method="html")
                 )
-                cleaned_html: str = self.clean_html(
+                cleaned_html: str = Preprocessor.clean_html(
                     tools_cleaned_html,
                     clean_svg=True,
                     clean_base64=True,

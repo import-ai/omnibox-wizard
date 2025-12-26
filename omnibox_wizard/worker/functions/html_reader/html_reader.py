@@ -45,6 +45,9 @@ from omnibox_wizard.worker.functions.html_reader.selectors.common import CommonS
 from omnibox_wizard.worker.functions.html_reader.selectors.zhihu_a import (
     ZhihuAnswerSelector,
 )
+from omnibox_wizard.worker.functions.html_reader.selectors.zhihu_q import (
+    ZhihuQuestionSelector,
+)
 
 json_dumps = partial(jsonlib.dumps, separators=(",", ":"), ensure_ascii=False)
 tracer = trace.get_tracer("HTMLReaderV2")
@@ -228,6 +231,7 @@ class HTMLReaderV2(BaseFunction):
             ),
             CommonSelector("news.qq.com", {"name": "div", "class_": "content-article"}),
             ZhihuAnswerSelector(),
+            ZhihuQuestionSelector(),
             CommonSelector("www.zhihu.com", {"class_": "RichText"}, True),
             CommonSelector("zhuanlan.zhihu.com", {"name": "article"}),
             CommonSelector("www.163.com", {"name": "div", "class_": "post_body"}),

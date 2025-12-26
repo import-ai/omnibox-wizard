@@ -134,6 +134,13 @@ class Preprocessor:
         return str(soup)
 
     @classmethod
+    def remove_noscript(cls, html: str) -> str:
+        soup = BeautifulSoup(html, "html.parser")
+        for tag in soup.find_all("noscript"):
+            tag.decompose()
+        return str(soup)
+
+    @classmethod
     def fix_lazy_images(cls, html: str) -> str:
         soup = BeautifulSoup(html, "html.parser")
 
@@ -250,6 +257,7 @@ class HTMLReaderV2(BaseFunction):
 
         html = Preprocessor.fix_lazy_images(html)
         html = Preprocessor.convert_img_src(url, html)
+        html = Preprocessor.remove_noscript(html)
 
         # Special case
         if processor := self.get_processor(html, url):

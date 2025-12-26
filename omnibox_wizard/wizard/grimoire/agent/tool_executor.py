@@ -56,9 +56,15 @@ def retrieval_wrapper(tool_call_id: str, retrievals: list[BaseRetrieval]) -> Mes
     )
 
 
-def resource_tool_wrapper(tool_call_id: str, result: ResourceToolResult) -> MessageDto:
-    """Wrap resource tool result as MessageDto."""
+def resource_tool_wrapper(
+    tool_call_id: str, result: ResourceToolResult, current_cite_cnt: int = 0
+) -> MessageDto:
+    """Wrap resource tool result as MessageDto with citations."""
     content: str = result.to_tool_content()
+    citations = result.to_citations()
+    # Assign citation IDs
+    for i, citation in enumerate(citations):
+        citation.id = current_cite_cnt + i + 1
     return MessageDto.model_validate(
         {
             "message": {
@@ -66,7 +72,7 @@ def resource_tool_wrapper(tool_call_id: str, result: ResourceToolResult) -> Mess
                 "tool_call_id": tool_call_id,
                 "content": content,
             },
-            "attrs": None,  # Resource tools don't have citations
+            "attrs": {"citations": citations} if citations else None,
         }
     )
 
@@ -145,12 +151,15 @@ class ToolExecutor:
                             tool_call_id=tool_call_id, retrievals=result
                         )
                     elif function_name in RESOURCE_TOOLS:
-                        # Resource tool: result is ResourceToolResult, format as JSON
+                        # Resource tool: result is ResourceToolResult, format as JSON with citations
                         assert isinstance(result, ResourceToolResult), (
                             f"Expected ResourceToolResult, got {type(result)}"
                         )
+                        current_cite_cnt: int = get_citation_cnt(message_dtos)
                         message_dto: MessageDto = resource_tool_wrapper(
-                            tool_call_id=tool_call_id, result=result
+                            tool_call_id=tool_call_id,
+                            result=result,
+                            current_cite_cnt=current_cite_cnt,
                         )
                     else:
                         raise ValueError(f"Unknown function type: {function_name}")

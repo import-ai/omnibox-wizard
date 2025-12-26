@@ -58,7 +58,7 @@ class ResourceAPIClient:
             )
             return ResourceToolResult(
                 success=True,
-                data=[ResourceInfo(**item) for item in data],
+                data=[ResourceInfo(**item, namespace_id=namespace_id) for item in data],
             )
         except Exception as e:
             return ResourceToolResult(success=False, error=str(e))
@@ -96,7 +96,7 @@ class ResourceAPIClient:
             )
             return ResourceToolResult(
                 success=True,
-                data=[ResourceInfo(**item) for item in data],
+                data=[ResourceInfo(**item, namespace_id=namespace_id) for item in data],
             )
         except Exception as e:
             return ResourceToolResult(success=False, error=str(e))
@@ -121,7 +121,7 @@ class ResourceAPIClient:
             )
             return ResourceToolResult(
                 success=True,
-                data=[ResourceInfo(**data)] if data else [],
+                data=[ResourceInfo(**data, namespace_id=namespace_id)] if data else [],
             )
         except Exception as e:
             return ResourceToolResult(success=False, error=str(e))
@@ -154,7 +154,7 @@ class ResourceAPIClient:
             )
             return ResourceToolResult(
                 success=True,
-                data=[ResourceInfo(**item) for item in data],
+                data=[ResourceInfo(**item, namespace_id=namespace_id) for item in data],
             )
         except Exception as e:
             return ResourceToolResult(success=False, error=str(e))
@@ -183,7 +183,7 @@ class ResourceAPIClient:
             )
             return ResourceToolResult(
                 success=True,
-                data=[ResourceInfo(**item) for item in data],
+                data=[ResourceInfo(**item, namespace_id=namespace_id) for item in data],
             )
         except Exception as e:
             return ResourceToolResult(success=False, error=str(e))

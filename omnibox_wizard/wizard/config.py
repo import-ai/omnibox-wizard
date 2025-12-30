@@ -6,6 +6,10 @@ from pydantic import BaseModel, Field
 from wizard_common.config import OpenAIConfig
 
 
+class BackendConfig(BaseModel):
+    base_url: str
+
+
 class VectorConfig(BaseModel):
     embedding: OpenAIConfig
     host: str
@@ -62,10 +66,10 @@ class SearXNGConfig(BaseModel):
     base_url: str
     engines: str | None = Field(default=None)
 
-
 class ToolsConfig(BaseModel):
     searxng: SearXNGConfig
     reranker: RerankerConfig = Field(default_factory=RerankerConfig)
+    resource_api: BackendConfig = Field(default_factory=BackendConfig)
 
 
 class Config(BaseModel):

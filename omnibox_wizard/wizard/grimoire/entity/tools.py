@@ -6,7 +6,25 @@ from opentelemetry import trace
 from pydantic import BaseModel, Field
 
 tracer = trace.get_tracer("grimoire.entity.tools")
-ToolName = Literal["private_search", "web_search"]
+ToolName = Literal[
+    "private_search",
+    "web_search",
+    "get_resources",
+    "get_children",
+    "get_parent",
+    "filter_by_time",
+    "filter_by_tag",
+]
+
+# Tool categories
+SEARCH_TOOLS: tuple[str, ...] = ("private_search", "web_search", "search")
+RESOURCE_TOOLS: tuple[str, ...] = (
+    "get_resources",
+    "get_children",
+    "get_parent",
+    "filter_by_time",
+    "filter_by_tag",
+)
 AsyncCallable = Callable[..., Awaitable]
 
 
@@ -109,7 +127,65 @@ class WebSearchTool(BaseTool):
     name: Literal["web_search"] = "web_search"
 
 
-_Tool = Union[PrivateSearchTool, WebSearchTool]
+# Resource tools - call backend API to get structured data
+# These tools use short IDs (e.g., r1, f1) that are mapped to real IDs via visible_resources
+
+
+class BaseResourceTool(BaseTool):
+    """Base class for resource tools with ID mapping support.
+
+    Accepts visible_resources and automatically generates short ID mappings.
+    Short ID format: 'r{n}' for resources, 'f{n}' for folders.
+    """
+
+    namespace_id: str
+    visible_resources: list[Resource] | None = Field(
+        default=None,
+        exclude=True,
+        description="List of visible resources.",
+    )
+
+class GetResourcesTool(BaseResourceTool):
+    """Tool to get full content of one or more resources."""
+
+    name: Literal["get_resources"] = "get_resources"
+
+
+class GetChildrenTool(BaseResourceTool):
+    """Tool to get children directory tree of a parent folder."""
+
+    name: Literal["get_children"] = "get_children"
+
+
+class GetParentTool(BaseResourceTool):
+    """Tool to get parent folder of a resource."""
+
+    name: Literal["get_parent"] = "get_parent"
+
+
+class FilterByTimeTool(BaseResourceTool):
+    """Tool to filter resources by creation time."""
+
+    name: Literal["filter_by_time"] = "filter_by_time"
+    parent_id: str | None = Field(default=None)
+
+
+class FilterByTagTool(BaseResourceTool):
+    """Tool to filter resources by tag."""
+
+    name: Literal["filter_by_tag"] = "filter_by_tag"
+    parent_id: str | None = Field(default=None)
+
+
+_Tool = Union[
+    PrivateSearchTool,
+    WebSearchTool,
+    GetResourcesTool,
+    GetChildrenTool,
+    GetParentTool,
+    FilterByTimeTool,
+    FilterByTagTool,
+]
 ALL_TOOLS: tuple[str] = cast(tuple[str], get_args(ToolName))
 
 

@@ -1,10 +1,6 @@
 from pydantic import BaseModel, Field
 
-from omnibox_wizard.wizard.config import GrimoireConfig, VectorConfig
-
-
-class BackendConfig(BaseModel):
-    base_url: str
+from omnibox_wizard.wizard.config import BackendConfig, GrimoireConfig, VectorConfig
 
 
 class SpliterConfig(BaseModel):

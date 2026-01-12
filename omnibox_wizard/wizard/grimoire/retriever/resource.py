@@ -396,10 +396,12 @@ class FilterByKeywordHandler(BaseResourceHandler):
             "function": {
                 "name": "filter_by_keyword",
                 "description": (
-                    "Search for documents by keywords in their name or content. "
-                    "Use this when user wants to find documents containing specific words or phrases. "
-                    "You can search by name, content, or both. When both are provided, documents matching "
-                    "either name OR content will be returned. "
+                    "Filter documents by EXACT keyword matching in name/title or content fields. "
+                    "Unlike private_search (semantic/fuzzy search), this performs substring matching. "
+                    "Use filter_by_keyword when: "
+                    "1) User asks for documents with specific words in their title/name (e.g., 'documents with meeting in the title') "
+                    "2) User asks for documents containing specific terms in content (e.g., 'files containing budget') "
+                    "Use private_search when: User asks for semantically related content (e.g., 'documents about project progress'). "
                     "At least one of name_keywords or content_keywords must be provided."
                 ),
                 "parameters": {
@@ -408,12 +410,18 @@ class FilterByKeywordHandler(BaseResourceHandler):
                         "name_keywords": {
                             "type": "array",
                             "items": {"type": "string"},
-                            "description": "Keywords to search in document names (e.g., ['meeting', 'notes'])",
+                            "description": (
+                                "Keywords for exact substring matching in document titles/names. "
+                                "Example: ['meeting', 'report'] finds documents with these words in their title."
+                            ),
                         },
                         "content_keywords": {
                             "type": "array",
                             "items": {"type": "string"},
-                            "description": "Keywords to search in document content (e.g., ['budget', 'Q1'])",
+                            "description": (
+                                "Keywords for exact substring matching in document content. "
+                                "Example: ['budget', 'Q1'] finds documents containing these terms."
+                            ),
                         },
                     },
                     "required": [],

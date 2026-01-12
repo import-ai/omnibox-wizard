@@ -187,3 +187,39 @@ class ResourceAPIClient:
             )
         except Exception as e:
             return ResourceToolResult(success=False, error=str(e))
+
+    @tracer.start_as_current_span("ResourceAPIClient.filter_by_keyword")
+    async def filter_by_keyword(
+        self,
+        namespace_id: str,
+        name_keywords: list[str] | None = None,
+        content_keywords: list[str] | None = None,
+    ) -> ResourceToolResult:
+        """Filter resources by keywords in name or content.
+
+        Args:
+            namespace_id: Namespace ID for filtering.
+            name_keywords: Keywords to search in resource names.
+            content_keywords: Keywords to search in resource content.
+
+        Returns:
+            ResourceToolResult containing filtered resources.
+        """
+        try:
+            params = {}
+            if name_keywords:
+                params["nameContains"] = ",".join(name_keywords)
+            if content_keywords:
+                params["contentContains"] = ",".join(content_keywords)
+
+            data = await self._request(
+                "GET",
+                f"/internal/api/v1/namespaces/{namespace_id}/resources",
+                params=params,
+            )
+            return ResourceToolResult(
+                success=True,
+                data=[ResourceInfo(**item, namespace_id=namespace_id) for item in data],
+            )
+        except Exception as e:
+            return ResourceToolResult(success=False, error=str(e))

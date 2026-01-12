@@ -14,6 +14,7 @@ ToolName = Literal[
     "get_parent",
     "filter_by_time",
     "filter_by_tag",
+    "filter_by_keyword",
 ]
 
 # Tool categories
@@ -24,6 +25,7 @@ RESOURCE_TOOLS: tuple[str, ...] = (
     "get_parent",
     "filter_by_time",
     "filter_by_tag",
+    "filter_by_keyword",
 )
 AsyncCallable = Callable[..., Awaitable]
 
@@ -177,6 +179,12 @@ class FilterByTagTool(BaseResourceTool):
     parent_id: str | None = Field(default=None)
 
 
+class FilterByKeywordTool(BaseResourceTool):
+    """Tool to filter resources by keyword in name or content."""
+
+    name: Literal["filter_by_keyword"] = "filter_by_keyword"
+
+
 _Tool = Union[
     PrivateSearchTool,
     WebSearchTool,
@@ -185,6 +193,7 @@ _Tool = Union[
     GetParentTool,
     FilterByTimeTool,
     FilterByTagTool,
+    FilterByKeywordTool,
 ]
 ALL_TOOLS: tuple[str] = cast(tuple[str], get_args(ToolName))
 

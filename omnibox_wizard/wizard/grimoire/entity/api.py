@@ -11,6 +11,7 @@ from omnibox_wizard.wizard.grimoire.entity.tools import (
     GetParentTool,
     FilterByTimeTool,
     FilterByTagTool,
+    FilterByKeywordTool,
 )
 
 
@@ -27,6 +28,7 @@ class ChatRequestOptions(BaseModel):
         | GetParentTool
         | FilterByTimeTool
         | FilterByTagTool
+        | FilterByKeywordTool
     ] | None = Field(default=None)
     enable_thinking: bool | None = Field(default=None)
     merge_search: bool | None = Field(

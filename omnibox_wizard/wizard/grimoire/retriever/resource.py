@@ -367,3 +367,56 @@ class FilterByTagHandler(BaseResourceHandler):
                 },
             },
         }
+
+
+class FilterByKeywordHandler(BaseResourceHandler):
+    """Handler for filter_by_keyword tool."""
+
+    def __init__(self, client: ResourceAPIClient):
+        self.client = client
+
+    def get_function(self, tool: BaseResourceTool, **kwargs) -> ResourceFunction:
+        async def _filter_by_keyword(
+            name_keywords: list[str] | None = None,
+            content_keywords: list[str] | None = None,
+        ) -> ResourceToolResult:
+            result = await self.client.filter_by_keyword(
+                namespace_id=tool.namespace_id,
+                name_keywords=name_keywords,
+                content_keywords=content_keywords,
+            )
+            return result
+
+        return _filter_by_keyword
+
+    @classmethod
+    def get_schema(cls) -> dict:
+        return {
+            "type": "function",
+            "function": {
+                "name": "filter_by_keyword",
+                "description": (
+                    "Search for documents by keywords in their name or content. "
+                    "Use this when user wants to find documents containing specific words or phrases. "
+                    "You can search by name, content, or both. When both are provided, documents matching "
+                    "either name OR content will be returned. "
+                    "At least one of name_keywords or content_keywords must be provided."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "name_keywords": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Keywords to search in document names (e.g., ['meeting', 'notes'])",
+                        },
+                        "content_keywords": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Keywords to search in document content (e.g., ['budget', 'Q1'])",
+                        },
+                    },
+                    "required": [],
+                },
+            },
+        }

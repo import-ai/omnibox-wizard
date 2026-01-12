@@ -58,6 +58,7 @@ from omnibox_wizard.wizard.grimoire.retriever.resource import (
     GetParentHandler,
     FilterByTimeHandler,
     FilterByTagHandler,
+    FilterByKeywordHandler,
 )
 from omnibox_wizard.wizard.grimoire.agent.agent import UserQueryPreprocessor
 
@@ -294,6 +295,7 @@ class AskLangGraph(BaseStreamable):
             "get_parent": GetParentHandler(self.resource_api_client),
             "filter_by_time": FilterByTimeHandler(self.resource_api_client),
             "filter_by_tag": FilterByTagHandler(self.resource_api_client),
+            "filter_by_keyword": FilterByKeywordHandler(self.resource_api_client),
         }
 
         # All tool schemas

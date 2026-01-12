@@ -59,6 +59,7 @@ from omnibox_wizard.wizard.grimoire.retriever.resource import (
     GetParentHandler,
     FilterByTimeHandler,
     FilterByTagHandler,
+    FilterByKeywordHandler,
 )
 
 DEFAULT_TOOL_NAME: str = "private_search"
@@ -356,6 +357,7 @@ class BaseSearchableAgent(BaseStreamable, ABC):
             "get_parent": GetParentHandler(self.resource_api_client),
             "filter_by_time": FilterByTimeHandler(self.resource_api_client),
             "filter_by_tag": FilterByTagHandler(self.resource_api_client),
+            "filter_by_keyword": FilterByKeywordHandler(self.resource_api_client),
         }
 
         # Combine all tool schemas
@@ -418,7 +420,6 @@ class Agent(BaseSearchableAgent):
         )
 
         self.custom_tool_call: bool | None = config.grimoire.custom_tool_call
-        self.custom_tool_call = True
 
     @classmethod
     def has_function(cls, tools: list[dict] | None, function_name: str) -> bool:

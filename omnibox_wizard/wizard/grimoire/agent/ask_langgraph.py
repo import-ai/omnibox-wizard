@@ -27,7 +27,7 @@ from common.trace_info import TraceInfo
 from omnibox_wizard.wizard.config import Config
 from omnibox_wizard.wizard.grimoire.agent.stream_parser import StreamParser
 from omnibox_wizard.wizard.grimoire.agent.tool_executor import ToolExecutor
-from omnibox_wizard.wizard.grimoire.base_streamable import BaseStreamable, ChatResponse
+from omnibox_wizard.wizard.grimoire.base_streamable import ChatResponse
 from omnibox_wizard.wizard.grimoire.entity.api import (
     ChatDeltaResponse,
     AgentRequest,
@@ -40,27 +40,13 @@ from omnibox_wizard.wizard.grimoire.entity.api import (
 from omnibox_wizard.wizard.grimoire.entity.tools import (
     ToolExecutorConfig,
     BaseResourceTool,
-    PrivateSearchResourceType,
 )
 from omnibox_wizard.wizard.grimoire.retriever.base import BaseRetriever
-from omnibox_wizard.wizard.grimoire.retriever.meili_vector_db import MeiliVectorRetriever
 from omnibox_wizard.wizard.grimoire.retriever.reranker import (
     get_tool_executor_config,
     get_merged_description,
-    Reranker,
 )
-from omnibox_wizard.wizard.grimoire.retriever.searxng import SearXNG
-from omnibox_wizard.wizard.grimoire.client.resource_api import ResourceAPIClient
-from omnibox_wizard.wizard.grimoire.retriever.resource import (
-    BaseResourceHandler,
-    GetResourcesHandler,
-    GetChildrenHandler,
-    GetParentHandler,
-    FilterByTimeHandler,
-    FilterByTagHandler,
-    FilterByKeywordHandler,
-)
-from omnibox_wizard.wizard.grimoire.agent.agent import UserQueryPreprocessor
+from omnibox_wizard.wizard.grimoire.agent.agent import UserQueryPreprocessor, BaseSearchableAgent
 
 json_dumps = partial(jsonlib.dumps, ensure_ascii=False, separators=(",", ":"))
 tracer = trace.get_tracer(__name__)
@@ -92,6 +78,41 @@ async def emit_complete_message(
         {"message": message} | ({"attrs": attrs} if attrs else {})
     ))
     await emit(config, ChatEOSResponse())
+
+
+def _accumulate_tool_call(assistant_message: dict, tc: ChoiceDeltaToolCall) -> None:
+    """Accumulate native tool call deltas into assistant message."""
+    while tc.index >= len(assistant_message.get("tool_calls", [])):
+        assistant_message.setdefault("tool_calls", []).append({})
+
+    if tc.id:
+        assistant_message["tool_calls"][tc.index]["id"] = tc.id
+    if tc.type:
+        assistant_message["tool_calls"][tc.index]["type"] = tc.type
+    if tc.function:
+        fn = assistant_message["tool_calls"][tc.index].setdefault("function", {})
+        if tc.function.name:
+            fn["name"] = fn.get("name", "") + tc.function.name
+        if tc.function.arguments:
+            fn["arguments"] = fn.get("arguments", "") + tc.function.arguments
+
+
+def _parse_custom_tool_calls(tool_calls_buffer: str) -> list[dict]:
+    """Parse custom tool calls from buffer."""
+    tool_calls = []
+    for line in tool_calls_buffer.splitlines():
+        if json_str := line.strip():
+            try:
+                tc_json = jsonlib.loads(json_str)
+                tc_json["arguments"] = json_dumps(tc_json["arguments"])
+                tool_calls.append({
+                    "id": str(uuid4()).replace("-", ""),
+                    "type": "function",
+                    "function": tc_json,
+                })
+            except jsonlib.JSONDecodeError:
+                continue
+    return tool_calls
 
 
 # ============== Nodes ==============
@@ -157,20 +178,7 @@ async def call_llm(state: AgentState, config: RunnableConfig) -> dict:
 
             # Handle native tool_calls
             if delta.tool_calls:
-                tc: ChoiceDeltaToolCall = delta.tool_calls[0]
-                while tc.index >= len(assistant_message.get("tool_calls", [])):
-                    assistant_message.setdefault("tool_calls", []).append({})
-
-                if tc.id:
-                    assistant_message["tool_calls"][tc.index]["id"] = tc.id
-                if tc.type:
-                    assistant_message["tool_calls"][tc.index]["type"] = tc.type
-                if tc.function:
-                    fn = assistant_message["tool_calls"][tc.index].setdefault("function", {})
-                    if tc.function.name:
-                        fn["name"] = fn.get("name", "") + tc.function.name
-                    if tc.function.arguments:
-                        fn["arguments"] = fn.get("arguments", "") + tc.function.arguments
+                _accumulate_tool_call(assistant_message, delta.tool_calls[0])
 
             # Handle content
             for key in ["content", "reasoning_content"]:
@@ -197,18 +205,8 @@ async def call_llm(state: AgentState, config: RunnableConfig) -> dict:
 
         # Parse tool calls from buffer (custom mode)
         if tool_calls_buffer:
-            for line in tool_calls_buffer.splitlines():
-                if json_str := line.strip():
-                    try:
-                        tc_json = jsonlib.loads(json_str)
-                        tc_json["arguments"] = json_dumps(tc_json["arguments"])
-                        assistant_message.setdefault("tool_calls", []).append({
-                            "id": str(uuid4()).replace("-", ""),
-                            "type": "function",
-                            "function": tc_json,
-                        })
-                    except jsonlib.JSONDecodeError:
-                        continue
+            for tc in _parse_custom_tool_calls(tool_calls_buffer):
+                assistant_message.setdefault("tool_calls", []).append(tc)
 
         # Emit tool_calls if present
         if tool_calls := assistant_message.get("tool_calls"):
@@ -271,50 +269,19 @@ def build_graph() -> StateGraph:
 
 
 # ============== Agent Class ==============
-class AskLangGraph(BaseStreamable):
+class AskLangGraph(BaseSearchableAgent):
     """Ask Agent implemented with LangGraph."""
 
     def __init__(self, config: Config):
-        # Search tools
-        self.knowledge_database_retriever = MeiliVectorRetriever(config=config.vector)
-        self.web_search_retriever = SearXNG(
-            base_url=config.tools.searxng.base_url,
-            engines=config.tools.searxng.engines,
-        )
-        self.reranker = Reranker(config.tools.reranker)
+        super().__init__(config)
 
-        self.retriever_mapping: dict[str, BaseRetriever] = {
-            r.name: r for r in [self.knowledge_database_retriever, self.web_search_retriever]
-        }
-
-        # Resource tools
-        self.resource_api_client = ResourceAPIClient(config.tools.resource_api)
-        self.resource_handlers: dict[str, BaseResourceHandler] = {
-            "get_resources": GetResourcesHandler(self.resource_api_client),
-            "get_children": GetChildrenHandler(self.resource_api_client),
-            "get_parent": GetParentHandler(self.resource_api_client),
-            "filter_by_time": FilterByTimeHandler(self.resource_api_client),
-            "filter_by_tag": FilterByTagHandler(self.resource_api_client),
-            "filter_by_keyword": FilterByKeywordHandler(self.resource_api_client),
-        }
-
-        # All tool schemas
-        self.all_tools: list[dict] = [
-            r.get_schema() for r in self.retriever_mapping.values()
-        ] + [h.get_schema() for h in self.resource_handlers.values()]
-
-        # OpenAI client
+        # LangGraph-specific attributes
         self.openai = config.grimoire.openai
-
-        # Template parser
         self.template_parser = TemplateParser(
             base_dir=project_root.path("omnibox_wizard/resources/prompt_templates")
         )
         self.system_prompt_template = self.template_parser.get_template("ask.j2")
-
-        # Custom tool call mode
         self.custom_tool_call: bool | None = config.grimoire.custom_tool_call
-        # Build graph
         self.graph = build_graph()
 
     def get_tool_executor(
@@ -392,9 +359,7 @@ class AskLangGraph(BaseStreamable):
                 prompt: str = self.template_parser.render_template(
                     self.system_prompt_template,
                     lang=agent_request.lang or "简体中文",
-                    tools="\n".join(json_dumps(tool) for tool in all_tools)
-                    if self.custom_tool_call
-                    else None,
+                    tools="\n".join(json_dumps(tool) for tool in all_tools),
                     part_1_enabled=True,
                     part_2_enabled=True,
                 )

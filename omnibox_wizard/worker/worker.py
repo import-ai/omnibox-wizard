@@ -18,7 +18,7 @@ from omnibox_wizard.worker.config import WorkerConfig
 from omnibox_wizard.worker.entity import Message, Task
 from omnibox_wizard.worker.functions.base_function import BaseFunction
 from omnibox_wizard.worker.functions.file_reader import FileReader
-from omnibox_wizard.worker.functions.html_reader import HTMLReaderV2
+from omnibox_wizard.worker.functions.html_reader.html_reader import HTMLReaderV2
 from omnibox_wizard.worker.functions.index import (
     DeleteConversation,
     DeleteIndex,
@@ -180,6 +180,7 @@ class Worker:
                 task, self.worker_router, trace_info
             )
             task.output = output
+            task.status = "finished"
             span.set_status(Status(StatusCode.OK))
             span.set_attribute("task.output_size", len(str(output)) if output else 0)
 
@@ -204,6 +205,7 @@ class Worker:
                 "timeout_source": timeout_source,
                 "type": "TimeoutError",
             }
+            task.status = "timeout"
             logging_func = trace_info.bind(error=error_msg).warning
             span.set_status(Status(StatusCode.ERROR, error_msg))
             span.set_attribute("error.message", error_msg)
@@ -213,6 +215,7 @@ class Worker:
             # Handle cancellation
             error_msg = "Task cancelled by user"
             task.exception = {"error": error_msg, "type": "CancelledError"}
+            task.status = "canceled"
             logging_func = trace_info.bind(error=error_msg).info
             span.set_status(Status(StatusCode.ERROR, error_msg))
             span.set_attribute("error.message", error_msg)
@@ -224,6 +227,7 @@ class Worker:
                 "error": CommonException.parse_exception(e),
                 "traceback": traceback.format_exc(),
             }
+            task.status = "error"
             logging_func = trace_info.bind(
                 error=CommonException.parse_exception(e)
             ).exception

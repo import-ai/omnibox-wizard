@@ -283,9 +283,11 @@ class MeiliVectorDB:
         client = await self.get_or_init_client()
 
         hits = []
+        search_tasks = []
+
         if self.has_old_index:
             old_index = client.index(self.index_uid)
-            result = await old_index.search(
+            task = old_index.search(
                 query,
                 filter=filter_,
                 limit=limit,
@@ -293,10 +295,10 @@ class MeiliVectorDB:
                 **search_kwargs,
                 show_ranking_score=True,
             )
-            hits.extend(result.hits)
+            search_tasks.append(task)
 
         index = client.index(self.get_shard(namespace_id))
-        result = await index.search(
+        task = index.search(
             query,
             filter=filter_,
             limit=limit,
@@ -304,7 +306,11 @@ class MeiliVectorDB:
             **search_kwargs,
             show_ranking_score=True,
         )
-        hits.extend(result.hits)
+        search_tasks.append(task)
+
+        results = await asyncio.gather(*search_tasks)
+        for result in results:
+            hits.extend(result.hits)
 
         hits.sort(key=lambda x: x.get("_rankingScore", 0), reverse=True)
         return hits[:limit]

@@ -30,6 +30,7 @@ class Task(Base):
     started_at: datetime | None = None
     ended_at: datetime | None = None
     canceled_at: datetime | None = None
+    status: str | None = None
 
 
 class Image(BaseModel):

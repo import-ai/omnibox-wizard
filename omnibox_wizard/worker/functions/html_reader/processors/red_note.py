@@ -4,7 +4,7 @@ from bs4 import BeautifulSoup, Tag, Comment, NavigableString
 from opentelemetry import trace
 
 from omnibox_wizard.worker.entity import GeneratedContent
-from omnibox_wizard.worker.functions.html_reader_processors.base import (
+from omnibox_wizard.worker.functions.html_reader.processors.base import (
     HTMLReaderBaseProcessor,
 )
 

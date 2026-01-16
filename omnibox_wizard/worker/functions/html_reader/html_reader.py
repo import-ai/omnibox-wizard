@@ -54,6 +54,8 @@ tracer = trace.get_tracer("HTMLReaderV2")
 
 
 class Preprocessor:
+    SPACE_PATTERN: re.Pattern = re.compile(r"\s{2,}")
+
     @classmethod
     def clean_html(
         cls,
@@ -193,7 +195,6 @@ class Preprocessor:
 
 
 class HTMLReaderV2(BaseFunction):
-    SPACE_PATTERN: re.Pattern = re.compile(r"\s{2,}")
     CONTENT_SELECTOR = {
         "github.com": {"name": "article", "class_": "markdown-body"},
         "medium.com": {"name": "article"},
@@ -307,6 +308,77 @@ class HTMLReaderV2(BaseFunction):
             span.record_exception(e)
             return raw_title
 
+    @tracer.start_as_current_span("content_selector")
+    def parse_with_selector(
+        self, selector: BaseSelector, url: str, html: str, soup: BeautifulSoup
+    ) -> str:
+        span = trace.get_current_span()
+        selected_html: str = selector.select(url, soup).prettify()
+        cleaned_html: str = clean_attributes(
+            tounicode(Document(selected_html)._html(True), method="html")
+        )
+        markdown: str = html2text(
+            htmlmin.minify(cleaned_html, remove_empty_space=True), bodywidth=0
+        ).strip()
+
+        span.set_attributes(
+            {
+                "len(html)": len(html),
+                "len(html_summary)": len(selected_html),
+                "len(cleaned_html)": len(cleaned_html),
+                "len(markdown)": len(markdown),
+            }
+        )
+        return markdown
+
+    @tracer.start_as_current_span("reader_summary")
+    def parse_with_reader(self, html_doc: Document, html: str) -> str:
+        span = trace.get_current_span()
+        html_summary: str = html_doc.summary().strip()
+        markdown: str = html2text(
+            htmlmin.minify(html_summary, remove_empty_space=True), bodywidth=0
+        ).strip()
+
+        span.set_attributes(
+            {
+                "len(html)": len(html),
+                "len(html_summary)": len(html_summary),
+                "compress_rate": f"{len(html_summary) * 100 / len(html): .2f}%",
+                "len(markdown)": len(markdown),
+            }
+        )
+        return markdown
+
+    @tracer.start_as_current_span("llm_extract_content")
+    async def parse_with_llm(self, html: str, trace_info: TraceInfo) -> str:
+        span = trace.get_current_span()
+        tools_cleaned_html: str = clean_attributes(
+            tounicode(Document(html)._html(True), method="html")
+        )
+        cleaned_html: str = Preprocessor.clean_html(
+            tools_cleaned_html,
+            clean_svg=True,
+            clean_base64=True,
+            remove_atts=True,
+            compress=True,
+            remove_empty_tag=True,
+        )
+        span.set_attributes(
+            {
+                "len(html)": len(html),
+                "len(tools_cleaned_html)": len(tools_cleaned_html),
+                "len(cleaned_html)": len(cleaned_html),
+            }
+        )
+
+        if len(cleaned_html) < 128 * 1024:
+            markdown = await self.html_content_extractor.ainvoke(
+                {"html": cleaned_html}, trace_info
+            )
+            span.set_attributes({"len(markdown)": len(markdown)})
+            return markdown
+        return ""
+
     @tracer.start_as_current_span("convert")
     async def convert(
         self, url: str, html: str, trace_info: TraceInfo
@@ -316,72 +388,31 @@ class HTMLReaderV2(BaseFunction):
         selected_html: str = ""
         raw_title: str = html_doc.title()
 
+        markdown: str = ""
+
+        span = trace.get_current_span()
         soup = BeautifulSoup(html, "html.parser")
-        if selector := self.get_selector(url, soup):
-            with tracer.start_as_current_span("content_selector") as span:
-                selected_html: str = selector.select(url, soup).prettify()
-                cleaned_html: str = clean_attributes(
-                    tounicode(Document(selected_html)._html(True), method="html")
-                )
-                markdown: str = html2text(
-                    htmlmin.minify(cleaned_html, remove_empty_space=True), bodywidth=0
-                ).strip()
-
-                span.set_attributes(
-                    {
-                        "len(html)": len(html),
-                        "len(html_summary)": len(selected_html),
-                        "len(cleaned_html)": len(cleaned_html),
-                        "len(markdown)": len(markdown),
-                    }
-                )
-        else:
-            with tracer.start_as_current_span("reader_summary") as span:
-                html_summary: str = html_doc.summary().strip()
-                markdown: str = html2text(
-                    htmlmin.minify(html_summary, remove_empty_space=True), bodywidth=0
-                ).strip()
-
-                span.set_attributes(
-                    {
-                        "len(html)": len(html),
-                        "len(html_summary)": len(html_summary),
-                        "compress_rate": f"{len(html_summary) * 100 / len(html): .2f}%",
-                        "len(markdown)": len(markdown),
-                    }
-                )
+        try:
+            if selector := self.get_selector(url, soup):
+                markdown = self.parse_with_selector(selector, url, html, soup)
+            else:
+                markdown = self.parse_with_reader(html_doc, html)
+        except Exception as e:
+            span.record_exception(e)
 
         if not markdown:
-            with tracer.start_as_current_span("llm_extract_content") as span:
-                tools_cleaned_html: str = clean_attributes(
-                    tounicode(Document(html)._html(True), method="html")
-                )
-                cleaned_html: str = Preprocessor.clean_html(
-                    tools_cleaned_html,
-                    clean_svg=True,
-                    clean_base64=True,
-                    remove_atts=True,
-                    compress=True,
-                    remove_empty_tag=True,
-                )
-                span.set_attributes(
-                    {
-                        "len(html)": len(html),
-                        "len(tools_cleaned_html)": len(tools_cleaned_html),
-                        "len(cleaned_html)": len(cleaned_html),
-                    }
-                )
+            try:
+                markdown = await self.parse_with_llm(html, trace_info)
+            except Exception as e:
+                span.record_exception(e)
 
-                if len(cleaned_html) < 128 * 1024:
-                    markdown = await self.html_content_extractor.ainvoke(
-                        {"html": cleaned_html}, trace_info
-                    )
+        if not markdown:
+            try:
+                with tracer.start_as_current_span("fallback_html2text") as span:
+                    markdown = html2text(html)
                     span.set_attributes({"len(markdown)": len(markdown)})
-
-        if not markdown:
-            with tracer.start_as_current_span("fallback_html2text") as span:
-                markdown = html2text(html)
-                span.set_attributes({"len(markdown)": len(markdown)})
+            except Exception as e:
+                span.record_exception(e)
 
         images, title = await asyncio.gather(
             self.get_images(html=selected_html or html, markdown=markdown),

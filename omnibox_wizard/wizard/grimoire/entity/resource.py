@@ -80,17 +80,21 @@ class ResourceToolResult(BaseModel):
         # Exclude attrs field to reduce noise for LLM
         exclude_fields = {"attrs"}
 
-        def exclude_attrs(data):
-            """Recursively exclude attrs from nested structures."""
+        def process_data(data):
+            """Recursively exclude attrs and rename id to resource_id."""
             if isinstance(data, dict):
-                return {
-                    k: exclude_attrs(v) for k, v in data.items()
-                    if k not in exclude_fields
-                }
+                result = {}
+                for k, v in data.items():
+                    if k in exclude_fields:
+                        continue
+                    # Rename 'id' → 'resource_id' to make purpose explicit
+                    new_key = "resource_id" if k == "id" else k
+                    result[new_key] = process_data(v)
+                return result
             elif isinstance(data, list):
-                return [exclude_attrs(item) for item in data]
+                return [process_data(item) for item in data]
             return data
 
         dump = self.model_dump(exclude_none=True)
-        dump = exclude_attrs(dump)
+        dump = process_data(dump)
         return json.dumps(dump, ensure_ascii=False, indent=2)

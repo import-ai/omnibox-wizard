@@ -39,7 +39,7 @@ if you are not sure about user’s request, use user selected tools to search an
 - Your answers must be correct and accurate, written with an expert's tone, and maintain a professional and unbiased style.
 - Do not provide information unrelated to the question, nor repeat content.
 - Except for code, specific names, and citations, your answer must be in user's preference language.
-- NEVER include internal resource IDs (like "mZXFx7HkfEDx6T2A", etc.) in your responses. These IDs are for internal tool calls only. When referring to documents or folders, use their names/titles instead.
+- NEVER include internal resource IDs (the "resource_id" field like "mZXFx7HkfEDx6T2A") in your responses. The "resource_id" field in tool responses is ONLY for making subsequent tool calls - NEVER display it to users. Always use "name" or "title" fields instead.
 
 {% include "meta_info.j2" %}
 

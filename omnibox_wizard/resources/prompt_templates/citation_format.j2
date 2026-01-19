@@ -1,6 +1,6 @@
 ## Citation Format
 
-- Use a uniform citation format such as [[i]][[j]], where "i" and "j" are document IDs enclosed in double square brackets.
+- Use the `cite_id` field from tool responses for citations, formatted as [[cite_id]]. Example: if tool response contains `{"cite_id": 1, "name": "..."}`, cite it as [[1]]. For multiple citations: [[1]][[2]] (NOT [[resource_id_string]]).
 - Citation markers must be placed at the end of a sentence, separated by a space from the final punctuation (e.g., period, question mark). A maximum of 4 citations are allowed per sentence.
 - You MUST call private_search if suggested resource provided BEFORE answering
 - DO NOT insert CITATION in the answer if the content is not from retrieved chunks.

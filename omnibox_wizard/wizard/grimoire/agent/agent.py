@@ -311,8 +311,7 @@ class UserQueryPreprocessor:
         cls, dtos: list[MessageDto], original_tools: list | None = None
     ) -> list[dict[str, str]]:
         messages: list[dict[str, str]] = []
-
-        # 找到最后一个 user message 的索引
+        # find the last user message index, only add context to the last user message
         last_user_idx = -1
         for i, dto in enumerate(dtos):
             if dto.message["role"] == "user":
@@ -320,7 +319,6 @@ class UserQueryPreprocessor:
 
         for i, dto in enumerate(dtos):
             messages.append(dto.message)
-            # 只对最后一个 user message 添加 context
             if i == last_user_idx and dto.message["role"] == "user" and dto.attrs:
                 messages.append(
                     {

@@ -34,31 +34,51 @@ async def run_worker(
     rate_limiter: RateLimiter,
 ):
     logger = get_logger(f"worker-{id}")
-    consumer = AIOKafkaConsumer(
-        config.kafka.topic,
-        bootstrap_servers=config.kafka.broker,
-        group_id=config.kafka.group,
-        auto_offset_reset="earliest",
-        enable_auto_commit=False,
-    )
-    await consumer.start()
+
+    # Create consumers for each priority level (3 is highest, 1 is lowest)
+    # Also include the original topic for backward compatibility (lowest priority)
+    topics = [
+        f"{config.kafka.topic}-3",
+        f"{config.kafka.topic}-2",
+        f"{config.kafka.topic}-1",
+        config.kafka.topic,  # Original topic for backward compatibility
+    ]
+    consumers = []
+    for topic in topics:
+        consumer = AIOKafkaConsumer(
+            topic,
+            bootstrap_servers=config.kafka.broker,
+            group_id=config.kafka.group,
+            auto_offset_reset="earliest",
+            enable_auto_commit=False,
+        )
+        await consumer.start()
+        consumers.append(consumer)
+
     worker = Worker(config, id, health_tracker, rate_limiter)
     try:
         while True:
-            result = await consumer.getmany(timeout_ms=1000, max_records=100)
-            for tp, messages in result.items():
-                for msg in messages:
-                    message = Message.model_validate_json(msg.value)
-                    await worker.process_message(message)
-                if messages:
-                    try:
-                        await consumer.commit({tp: messages[-1].offset + 1})
-                    except CommitFailedError as e:
-                        logger.warning(f"Commit failed: {e}")
-                    except IllegalStateError as e:
-                        logger.warning(f"Commit failed: {e}")
+            processed_any = False
+            for consumer in consumers:
+                result = await consumer.getmany(timeout_ms=0, max_records=1)
+                for tp, messages in result.items():
+                    for msg in messages:
+                        message = Message.model_validate_json(msg.value)
+                        await worker.process_message(message)
+                        processed_any = True
+                        try:
+                            await consumer.commit({tp: msg.offset + 1})
+                        except CommitFailedError as e:
+                            logger.warning(f"Commit failed: {e}")
+                        except IllegalStateError as e:
+                            logger.warning(f"Commit failed: {e}")
+                if processed_any:
+                    break
+            if not processed_any:
+                await asyncio.sleep(0.5)
     finally:
-        await consumer.stop()
+        for consumer in consumers:
+            await consumer.stop()
 
 
 async def run_worker_loop(

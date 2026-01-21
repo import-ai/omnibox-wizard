@@ -403,7 +403,7 @@ class AskLangGraph(BaseSearchableAgent):
         self, trace_info: TraceInfo, agent_request: AgentRequest
     ) -> AsyncIterable[ChatResponse]:
         """Stream responses from the Ask Agent."""
-        with tracer.start_as_current_span("astream") as span:
+        with tracer.start_as_current_span("agent.astream") as span:
             span.set_attributes({
                 "conversation_id": agent_request.conversation_id,
                 "custom_tool_call": str(self.custom_tool_call),

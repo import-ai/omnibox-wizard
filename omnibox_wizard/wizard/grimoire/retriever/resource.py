@@ -125,11 +125,6 @@ class GetResourcesHandler(BaseResourceHandler):
             # Resolve short IDs to real IDs
             # real_ids = tool.resolve_ids(resource_ids)
             result = await self.client.get_resources(tool.namespace_id, resource_ids)
-
-            # if result.success and result.data:
-            #     # Assign short IDs to returned resources for consistency
-            #     self.assign_short_ids_to_resources(tool, result.data)
-
             return result
 
         return _get_resources
@@ -141,9 +136,10 @@ class GetResourcesHandler(BaseResourceHandler):
             "function": {
                 "name": "get_resources",
                 "description": (
-                    "Read the full content of resources by their resource IDs. "
+                    "Read the FULL content of resources by their resource IDs. "
                     "ALL resource types (doc, file, link) can be read - the system has already extracted/transcribed their content. "
-                    "Use this AFTER get_children to read the actual contents."
+                    "Use this AFTER filter_by_time/filter_by_tag/filter_by_keyword/get_children when you need detailed content. "
+                    "Only request the resources you actually need - don't fetch all at once."
                 ),
                 "parameters": {
                     "type": "object",
@@ -171,15 +167,8 @@ class GetChildrenHandler(BaseResourceHandler):
             # Resolve short ID to real ID
             # real_id = tool.resolve_id(resource_id)
             result = await self.client.get_children(tool.namespace_id, resource_id, depth)
-
-            # if result.success and result.data:
-            #     # Add returned children to visible_resources and assign short IDs
-            #     self.assign_short_ids_to_resources(tool, result.data)
-            #     doc_ids = [r.short_id for r in result.data]
-            #     result.hint = (
-            #         f"To read document contents, call get_resources with short IDs: {doc_ids}. "
-            #     )
-
+            # Set metadata_only mode to reduce token usage
+            result.metadata_only = True
             return result
 
         return _get_children
@@ -192,9 +181,9 @@ class GetChildrenHandler(BaseResourceHandler):
                 "name": "get_children",
                 "description": (
                     "Get children directory tree of a resource. "
+                    "Returns METADATA ONLY - use get_resources to read specific document contents. "
                     "Use this FIRST when user asks about folder contents, to summarize a folder, or to export folder data. "
-                    "Returns a flat list of children resources. "
-                    "After getting the list, use get_resources to read specific document contents."
+                    "Returns a flat list of children resources."
                 ),
                 "parameters": {
                     "type": "object",
@@ -276,15 +265,8 @@ class FilterByTimeHandler(BaseResourceHandler):
                 created_at_before=created_at_before,
                 namespace_id=tool.namespace_id,
             )
-
-            # if result.success and result.data:
-            #     # Add returned resources to visible_resources and assign short IDs
-            #     self.assign_short_ids_to_resources(tool, result.data)
-            #     doc_ids = [r.short_id for r in result.data]
-            #     result.hint = (
-            #         f"To read document contents, call get_resources with short IDs: {doc_ids}. "
-            #     )
-
+            # Set metadata_only mode to reduce token usage
+            result.metadata_only = True
             return result
 
         return _filter_by_time
@@ -297,8 +279,8 @@ class FilterByTimeHandler(BaseResourceHandler):
                 "name": "filter_by_time",
                 "description": (
                     "Find documents created or modified within a specific time range. "
-                    "Use this when user asks about 'recent', 'today', 'this week', 'last month' documents. "
-                    "Returns a list of matching documents with their metadata."
+                    "Returns METADATA ONLY (title, summary, tags) - use get_resources to fetch full content. "
+                    "Use this when user asks about 'recent', 'today', 'this week', 'last month' documents."
                 ),
                 "parameters": {
                     "type": "object",
@@ -330,15 +312,8 @@ class FilterByTagHandler(BaseResourceHandler):
                 tags=tags,
                 namespace_id=tool.namespace_id,
             )
-
-            # if result.success and result.data:
-            #     # Add returned resources to visible_resources and assign short IDs
-            #     self.assign_short_ids_to_resources(tool, result.data)
-            #     doc_ids = [r.short_id for r in result.data]
-            #     result.hint = (
-            #         f"To read document contents, call get_resources with short IDs: {doc_ids}. "
-            #     )
-
+            # Set metadata_only mode to reduce token usage
+            result.metadata_only = True
             return result
 
         return _filter_by_tag
@@ -351,7 +326,7 @@ class FilterByTagHandler(BaseResourceHandler):
                 "name": "filter_by_tag",
                 "description": (
                     "Find documents with specific tags/labels. "
-                    "Use this when user asks about documents in a category or with specific labels. "
+                    "Returns METADATA ONLY (title, summary, tags) - use get_resources to fetch full content. "
                     "Note: Only use if user explicitly mentions a tag, not for folder-based queries."
                 ),
                 "parameters": {
@@ -385,6 +360,8 @@ class FilterByKeywordHandler(BaseResourceHandler):
                 name_keywords=name_keywords,
                 content_keywords=content_keywords,
             )
+            # Set metadata_only mode to reduce token usage
+            result.metadata_only = True
             return result
 
         return _filter_by_keyword
@@ -397,6 +374,7 @@ class FilterByKeywordHandler(BaseResourceHandler):
                 "name": "filter_by_keyword",
                 "description": (
                     "Filter documents by EXACT keyword matching in name/title or content fields. "
+                    "Returns METADATA ONLY (title, summary, tags) - use get_resources to fetch full content. "
                     "Unlike private_search (semantic/fuzzy search), this performs substring matching. "
                     "Use filter_by_keyword when: "
                     "1) User asks for documents with specific words in their title/name (e.g., 'documents with meeting in the title') "

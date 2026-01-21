@@ -14,7 +14,7 @@ from omnibox_wizard.wizard.grimoire.entity.api import (
     MessageDto,
 )
 from omnibox_wizard.wizard.grimoire.entity.chunk import ResourceChunkRetrieval
-from omnibox_wizard.wizard.grimoire.entity.resource import ResourceToolResult
+from omnibox_wizard.wizard.grimoire.entity.resource import ResourceInfo, ResourceToolResult
 from omnibox_wizard.wizard.grimoire.entity.retrieval import (
     BaseRetrieval,
     retrievals2prompt,
@@ -72,8 +72,26 @@ def resource_tool_wrapper(
         if isinstance(data, list):
             for i, item in enumerate(data):
                 item["cite_id"] = current_cite_cnt + i + 1
+                # Add summary field in metadata_only mode
+                if result.metadata_only and isinstance(item, dict) and "resource_type" in item:
+                    # Find the corresponding ResourceInfo to get summary
+                    if result.data and i < len(result.data):
+                        resource_info = result.data[i]
+                        if hasattr(resource_info, 'summary'):
+                            item["summary"] = resource_info.summary
         elif isinstance(data, dict):
             data["cite_id"] = current_cite_cnt + 1
+            # Add summary field in metadata_only mode
+            if result.metadata_only and "resource_type" in data:
+                if result.data:
+                    if isinstance(result.data, ResourceInfo):
+                        resource_info = result.data
+                    elif isinstance(result.data, list) and len(result.data) > 0:
+                        resource_info = result.data[0]
+                    else:
+                        resource_info = None
+                    if resource_info and hasattr(resource_info, 'summary'):
+                        data["summary"] = resource_info.summary
     content = jsonlib.dumps(content_dict, ensure_ascii=False, indent=2)
 
     return MessageDto.model_validate(

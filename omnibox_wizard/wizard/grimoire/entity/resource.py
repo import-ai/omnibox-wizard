@@ -42,6 +42,13 @@ class ResourceInfo(BaseModel):
 
     # short_id: str | None = Field(default=None, description="Short ID for LLM reference")
 
+    @property
+    def summary(self) -> str:
+        """Generate summary from content for metadata-only mode."""
+        if self.content and len(self.content) > 200:
+            return self.content[:200] + "..."
+        return self.content or ""
+
     def to_citation(self) -> "Citation":
         """Convert ResourceInfo to Citation for reference tracking."""
         from omnibox_wizard.wizard.grimoire.entity.retrieval import Citation
@@ -66,6 +73,10 @@ class ResourceToolResult(BaseModel):
         default=None,
         description="Hint for LLM on what to do next with the result"
     )
+    metadata_only: bool = Field(
+        default=False,
+        description="If True, exclude full content and only return metadata"
+    )
 
     def to_citations(self) -> list["Citation"]:
         """Convert all ResourceInfo in data to Citations."""
@@ -79,6 +90,10 @@ class ResourceToolResult(BaseModel):
         """Convert to tool call response content."""
         # Exclude attrs field to reduce noise for LLM
         exclude_fields = {"attrs"}
+
+        # If metadata_only mode, also exclude content field
+        if self.metadata_only:
+            exclude_fields.add("content")
 
         def process_data(data):
             """Recursively exclude attrs and rename id to resource_id."""

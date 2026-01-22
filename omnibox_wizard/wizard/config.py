@@ -70,7 +70,7 @@ class ToolsConfig(BaseModel):
     searxng: SearXNGConfig
     reranker: RerankerConfig = Field(default_factory=RerankerConfig)
     resource_api: BackendConfig = Field(default_factory=BackendConfig)
-
+    max_resource_limit: int = Field(default=200)
 
 class Config(BaseModel):
     vector: VectorConfig

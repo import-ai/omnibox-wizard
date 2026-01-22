@@ -347,8 +347,7 @@ class BaseSearchableAgent(BaseStreamable, ABC):
             for each in [self.knowledge_database_retriever, self.web_search_retriever]
         }
 
-        # Resource tools (new)
-        self.resource_api_client = ResourceAPIClient(config.tools.resource_api)
+        self.resource_api_client = ResourceAPIClient(config.tools.resource_api, max_resource_limit=config.tools.max_resource_limit)
         self.resource_handlers: dict[str, BaseResourceHandler] = {
             "get_resources": GetResourcesHandler(self.resource_api_client),
             "get_children": GetChildrenHandler(self.resource_api_client),

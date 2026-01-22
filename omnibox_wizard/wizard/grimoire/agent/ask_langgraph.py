@@ -283,7 +283,7 @@ class AskLangGraph(BaseSearchableAgent):
         self.system_prompt_template = self.template_parser.get_template("ask.j2")
         self.custom_tool_call: bool | None = config.grimoire.custom_tool_call
         self.graph = build_graph()
-
+ 
     def get_tool_executor(
         self,
         options: ChatRequestOptions,

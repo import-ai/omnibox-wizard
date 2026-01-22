@@ -77,6 +77,7 @@ class ResourceToolResult(BaseModel):
         default=False,
         description="If True, exclude full content and only return metadata"
     )
+    max_resource_limit: int = Field(default=50)
 
     def to_citations(self) -> list["Citation"]:
         """Convert all ResourceInfo in data to Citations."""
@@ -102,14 +103,40 @@ class ResourceToolResult(BaseModel):
                 for k, v in data.items():
                     if k in exclude_fields:
                         continue
+                    # Simplify tags: convert objects to string array
+                    if k == "tags" and isinstance(v, list):
+                        result[k] = [
+                            tag.get("name") if isinstance(tag, dict) else tag
+                            for tag in v
+                        ]
+                        continue
+
+                    # Strip timestamps from path items
+                    if k == "path" and isinstance(v, list):
+                        result[k] = [
+                            {pk: pv for pk, pv in path_item.items()
+                             if pk not in ("created_at", "updated_at")}
+                            for path_item in v
+                        ]
+                        result[k] = [process_data(item) for item in result[k]]
+                        continue
+
+                    # Simplify timestamp format: ISO 8601 → yyyy-mm-dd
+                    if k in ("created_at", "updated_at") and isinstance(v, str):
+                        result[k] = v.split("T")[0] if "T" in v else v
+                        continue
+
                     # Rename 'id' → 'resource_id' to make purpose explicit
                     new_key = "resource_id" if k == "id" else k
                     result[new_key] = process_data(v)
                 return result
             elif isinstance(data, list):
-                return [process_data(item) for item in data]
+                return [process_data(item) for item in data[:self.max_resource_limit]]
             return data
 
         dump = self.model_dump(exclude_none=True)
+
+        if self.data and isinstance(self.data, list) and len(self.data) > self.max_resource_limit:
+            dump["hint"] = f"**💡Hint To User:**\nFound {len(self.data)} results. Due to the model's context window limits, only the first {self.max_resource_limit} were processed. Please try a more specific query for better accuracy."
         dump = process_data(dump)
         return json.dumps(dump, ensure_ascii=False, indent=2)

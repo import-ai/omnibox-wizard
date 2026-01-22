@@ -15,8 +15,9 @@ DEFAULT_TIMEOUT = 30
 class ResourceAPIClient:
     """Client for calling backend Resource APIs."""
 
-    def __init__(self, config: BackendConfig):
+    def __init__(self, config: BackendConfig, max_resource_limit: int = 200):
         self.config = config
+        self.max_resource_limit = max_resource_limit
 
     @tracer.start_as_current_span("ResourceAPIClient._request")
     async def _request(self, method: str, path: str, **kwargs) -> dict:
@@ -183,7 +184,7 @@ class ResourceAPIClient:
             )
             return ResourceToolResult(
                 success=True,
-                data=[ResourceInfo(**{**item, "namespace_id": namespace_id}) for item in data],
+                data=[ResourceInfo(**{**item, "namespace_id": namespace_id}) for item in data[:self.max_resource_limit]],
             )
         except Exception as e:
             return ResourceToolResult(success=False, error=str(e))
@@ -219,7 +220,7 @@ class ResourceAPIClient:
             )
             return ResourceToolResult(
                 success=True,
-                data=[ResourceInfo(**{**item, "namespace_id": namespace_id}) for item in data],
+                data=[ResourceInfo(**{**item, "namespace_id": namespace_id}) for item in data[:self.max_resource_limit]],
             )
         except Exception as e:
             return ResourceToolResult(success=False, error=str(e))

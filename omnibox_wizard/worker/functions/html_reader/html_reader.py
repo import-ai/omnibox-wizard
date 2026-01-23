@@ -48,6 +48,9 @@ from omnibox_wizard.worker.functions.html_reader.selectors.zhihu_a import (
 from omnibox_wizard.worker.functions.html_reader.selectors.zhihu_q import (
     ZhihuQuestionSelector,
 )
+from omnibox_wizard.worker.functions.html_reader.selectors.lambda_selector import (
+    LambdaSelector,
+)
 
 json_dumps = partial(jsonlib.dumps, separators=(",", ":"), ensure_ascii=False)
 tracer = trace.get_tracer("HTMLReaderV2")
@@ -240,6 +243,11 @@ class HTMLReaderV2(BaseFunction):
                 "x.com", {"name": "div", "attrs": {"data-testid": "tweetText"}}
             ),
             CommonSelector("www.reddit.com", {"name": "shreddit-post-text-body"}),
+            LambdaSelector(
+                lambda parsed, soup: parsed.netloc == "www.dedao.cn"
+                and "/share/" in parsed.path,
+                {"id": "article-box"},
+            ),
         ]
 
     def get_processor(self, html: str, url: str) -> HTMLReaderBaseProcessor | None:

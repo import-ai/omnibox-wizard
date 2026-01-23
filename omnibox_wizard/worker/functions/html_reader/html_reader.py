@@ -276,16 +276,32 @@ class HTMLReaderV2(BaseFunction):
         if processor := self.get_processor(html, url):
             with tracer.start_as_current_span("html_processor"):
                 result = await processor.convert(html, url)
-                return result.model_dump(exclude_none=True)
+                result_dict = result.model_dump(exclude_none=True)
+                # Add extract_tags to next_tasks if markdown exists
+                if result_dict.get("markdown"):
+                    extract_tags_task = task.create_next_task(
+                        function="extract_tags",
+                        input={"text": result_dict["markdown"]},
+                    )
+                    result_dict["next_tasks"] = [extract_tags_task.model_dump()]
+                trace_info.info({k: v for k, v in result_dict.items() if k not in ("markdown", "next_tasks")})
+                return result_dict
 
         domain: str = urlparse(url).netloc
         trace_info = trace_info.bind(domain=domain)
 
         result: GeneratedContent = await self.convert(
-            url=url, html=html, trace_info=trace_info
+            url=url, html=html, trace_info=trace_info, task=task
         )
         result_dict: dict = result.model_dump(exclude_none=True)
-        trace_info.info({k: v for k, v in result_dict.items() if k != "markdown"})
+        # Add extract_tags to next_tasks if markdown exists
+        if result_dict.get("markdown"):
+            extract_tags_task = task.create_next_task(
+                function="extract_tags",
+                input={"text": result_dict["markdown"]},
+            )
+            result_dict["next_tasks"] = [extract_tags_task.model_dump()]
+        trace_info.info({k: v for k, v in result_dict.items() if k not in ("markdown", "next_tasks")})
         return result_dict
 
     @tracer.start_as_current_span("get_images")
@@ -389,7 +405,7 @@ class HTMLReaderV2(BaseFunction):
 
     @tracer.start_as_current_span("convert")
     async def convert(
-        self, url: str, html: str, trace_info: TraceInfo
+        self, url: str, html: str, trace_info: TraceInfo, task: Task | None = None
     ) -> GeneratedContent:
         html_doc = Document(html)
 

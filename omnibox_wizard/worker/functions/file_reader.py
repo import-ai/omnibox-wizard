@@ -170,4 +170,24 @@ class FileReader(BaseFunction):
             ]
         if metadata:
             result_dict["metadata"] = metadata
+
+        # Add extract_tags to next_tasks
+        next_tasks = []
+        extract_tags_task = task.create_next_task(
+            function="extract_tags",
+            input={"text": markdown},
+        )
+        next_tasks.append(extract_tags_task.model_dump())
+
+        # Add generate_title for open_api uploads
+        if task.payload and task.payload.get("source") == "open_api":
+            generate_title_task = task.create_next_task(
+                function="generate_title",
+                input={"text": markdown},
+            )
+            next_tasks.append(generate_title_task.model_dump())
+
+        if next_tasks:
+            result_dict["next_tasks"] = next_tasks
+
         return result_dict

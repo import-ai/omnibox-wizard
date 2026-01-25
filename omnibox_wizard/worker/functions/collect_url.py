@@ -48,9 +48,9 @@ class CollectUrlFunction(BaseFunction):
         collect_task = task.create_next_task(
             TaskFunction.COLLECT,
             {
-                "url": scrape_result["final_url"],
-                "html": scrape_result["html"],
-                "title": scrape_result["title"],
+                "url": scrape_result.final_url,
+                "html": scrape_result.html,
+                "title": scrape_result.title,
             },
         )
         return {"next_tasks": [collect_task.model_dump()]}

@@ -208,25 +208,33 @@ class UserQueryPreprocessor:
 
     @classmethod
     def parse_visible_resources(
-        cls, options: ChatRequestOptions, original_tools: list | None = None
+        cls,
+        options: ChatRequestOptions,
+        original_tools: list | None = None,
+        tool_executor: ToolExecutor | None = None,
     ) -> list[str]:
         """Parse visible_resources from resource tools and format for LLM context.
 
-        This provides the LLM with a list of available resources and their short IDs,
+        This provides the LLM with a list of available resources and their cite IDs,
         so it knows what folders/documents exist and can use the appropriate tools.
 
         Args:
             options: The chat request options (may have serialized tools without visible_resources)
             original_tools: Original tools list with visible_resources populated (optional)
+            tool_executor: ToolExecutor instance for cite_id lookup (optional)
         """
         tools_list = original_tools if original_tools is not None else (options.tools or [])
         tools = ToolDict(tools_list)
 
-        if tool := tools.get("private_search",None):
+        if tool := tools.get("private_search", None):
             visible_resources = tool.visible_resources
         else:
             return []
-        
+
+        # Handle case where visible_resources is None (e.g., in tests with simplified attrs)
+        if visible_resources is None:
+            return []
+
         # Separate folders and documents for clarity
         folders = [r for r in visible_resources if r.type == "folder"]
         documents = [r for r in visible_resources if r.type == "resource"]
@@ -241,19 +249,21 @@ class UserQueryPreprocessor:
         if folders:
             lines.append("Folders:")
             for f in folders:
-                lines.append(f"  - {f.id}: {f.name}")
+                cite_id = tool_executor.get_cite_id(f.id) if tool_executor else f.id
+                lines.append(f"  - {cite_id}: {f.name}")
 
         if documents:
             lines.append("")
             lines.append("Documents:")
             for d in documents:
-                lines.append(f"  - {d.id}: {d.name}")
+                cite_id = tool_executor.get_cite_id(d.id) if tool_executor else d.id
+                lines.append(f"  - {cite_id}: {d.name}")
 
         lines.extend([
             "",
             "Tool Usage Guide:",
-            "- To see folder contents: get_children(resource_id) e.g., get_children('f1')",
-            "- To read document content: get_resources([resource_ids]) e.g., get_resources(['r1', 'r2'])",
+            "- To see folder contents: get_children(cite_id) e.g., get_children('1')",
+            "- To read document content: get_resources([cite_ids]) e.g., get_resources(['1', '2'])",
             "- For time-based queries ('recent', 'this week'): use filter_by_time",
             "- For tag-based queries: use filter_by_tag",
             "- private_search is for keyword search across all documents",
@@ -293,14 +303,16 @@ class UserQueryPreprocessor:
 
     @classmethod
     def parse_context(
-        cls, attrs: MessageAttrs,
-        original_tools: list | None = None
+        cls,
+        attrs: MessageAttrs,
+        original_tools: list | None = None,
+        tool_executor: ToolExecutor | None = None,
     ) -> str:
         return remove_continuous_break_lines(
             "\n\n".join(
                 [
                     *cls.parse_selected_resources(attrs),
-                    *cls.parse_visible_resources(attrs, original_tools=original_tools),
+                    *cls.parse_visible_resources(attrs, original_tools=original_tools, tool_executor=tool_executor),
                     *cls.parse_selected_tools(attrs),
                 ]
             )
@@ -308,7 +320,10 @@ class UserQueryPreprocessor:
 
     @classmethod
     def message_dtos_to_openai_messages(
-        cls, dtos: list[MessageDto], original_tools: list | None = None
+        cls,
+        dtos: list[MessageDto],
+        original_tools: list | None = None,
+        tool_executor: ToolExecutor | None = None,
     ) -> list[dict[str, str]]:
         messages: list[dict[str, str]] = []
         # find the last user message index, only add context to the last user message
@@ -324,7 +339,7 @@ class UserQueryPreprocessor:
                     {
                         "role": "system",
                         "content": cls.parse_context(
-                            dto.attrs, original_tools=original_tools
+                            dto.attrs, original_tools=original_tools, tool_executor=tool_executor
                         ),
                     }
                 )
@@ -714,7 +729,7 @@ class Agent(BaseSearchableAgent):
             while messages[-1].message["role"] != "assistant":
                 async for chunk in self.chat(
                     messages=UserQueryPreprocessor.message_dtos_to_openai_messages(
-                        messages, original_tools=agent_request.tools
+                        messages, original_tools=agent_request.tools, tool_executor=tool_executor
                     ),
                     enable_thinking=agent_request.enable_thinking,
                     tools=tool_executor.tools,

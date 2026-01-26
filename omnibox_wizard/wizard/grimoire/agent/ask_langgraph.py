@@ -129,7 +129,7 @@ async def call_llm(state: AgentState, config: RunnableConfig) -> dict:
     with tracer.start_as_current_span("call_llm") as span:
         # Convert to OpenAI format
         openai_messages = UserQueryPreprocessor.message_dtos_to_openai_messages(
-            messages, original_tools=agent_request.tools
+            messages, original_tools=agent_request.tools, tool_executor=tool_executor
         )
 
         # Get OpenAI client
@@ -289,6 +289,7 @@ class AskLangGraph(BaseSearchableAgent):
         options: ChatRequestOptions,
         trace_info: TraceInfo,
         wrap_reranker: bool = True,
+        messages: list[MessageDto] = None,
     ) -> ToolExecutor:
         """Create ToolExecutor from request options.
 
@@ -318,8 +319,23 @@ class AskLangGraph(BaseSearchableAgent):
                     trace_info=trace_info.get_child("reranker"),
                 )
 
+        # Create ToolExecutor first (needed for resource handlers)
+        all_configs = search_configs
+        tool_executor = ToolExecutor({c["name"]: c for c in all_configs})
+
+        # 1. Rebuild cite_id mapping from historical messages (multi-turn support)
+        if messages:
+            for msg in messages:
+                if msg.attrs and msg.attrs.citations:
+                    for citation in msg.attrs.citations:
+                        # citation.link is resource_id
+                        tool_executor.register_resource_with_id(citation.link, citation.id)
+        # 2. Initialize cite_id for visible_resources
+        if private_search_tool and private_search_tool.visible_resources:
+            for resource in private_search_tool.visible_resources:
+                tool_executor.register_resource(resource.id)
+
         # Resource tools: included when private_search is present
-        resource_configs: list[ToolExecutorConfig] = []
         if private_search_tool:
             # Create a BaseResourceTool with info from private_search
             resource_tool = BaseResourceTool(
@@ -329,13 +345,18 @@ class AskLangGraph(BaseSearchableAgent):
             )
             resource_configs = [
                 handler.get_tool_executor_config(
-                    resource_tool, trace_info=trace_info.get_child(name)
+                    resource_tool,
+                    trace_info=trace_info.get_child(name),
+                    tool_executor=tool_executor,
                 )
                 for name, handler in self.resource_handlers.items()
             ]
+            # Add resource configs to tool_executor
+            for cfg in resource_configs:
+                tool_executor.config[cfg["name"]] = cfg
+                tool_executor.tools.append(cfg["schema"])
 
-        all_configs = search_configs + resource_configs
-        return ToolExecutor({c["name"]: c for c in all_configs})
+        return tool_executor
 
     async def _prepare_messages(
         self,
@@ -413,7 +434,11 @@ class AskLangGraph(BaseSearchableAgent):
             queue: asyncio.Queue[ChatBaseResponse | None] = asyncio.Queue()
 
             # Create tool executor
-            tool_executor = self.get_tool_executor(agent_request, trace_info=trace_info)
+            tool_executor = self.get_tool_executor(
+                agent_request,
+                trace_info=trace_info,
+                messages=agent_request.messages,
+            )
 
             # Prepare initial messages
             initial_messages = await self._prepare_messages(

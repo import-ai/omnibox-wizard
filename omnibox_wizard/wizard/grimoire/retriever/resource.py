@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Awaitable, Callable
+from typing import Awaitable, Callable, TYPE_CHECKING
 
 from omnibox_wizard.wizard.grimoire.client.resource_api import ResourceAPIClient
 from omnibox_wizard.wizard.grimoire.entity.resource import ResourceInfo, ResourceToolResult
@@ -9,6 +9,9 @@ from omnibox_wizard.wizard.grimoire.entity.tools import (
     Resource,
     ToolExecutorConfig,
 )
+
+if TYPE_CHECKING:
+    from omnibox_wizard.wizard.grimoire.agent.tool_executor import ToolExecutor
 
 ResourceFunction = Callable[..., Awaitable[ResourceToolResult]]
 
@@ -42,10 +45,9 @@ class GetResourcesHandler(BaseResourceHandler):
     def __init__(self, client: ResourceAPIClient):
         self.client = client
 
-    def get_function(self, tool: BaseResourceTool, **kwargs) -> ResourceFunction:
-        async def _get_resources(resource_ids: list[str]) -> ResourceToolResult:
-            # Resolve short IDs to real IDs
-            # real_ids = tool.resolve_ids(resource_ids)
+    def get_function(self, tool: BaseResourceTool, tool_executor: "ToolExecutor" = None, **kwargs) -> ResourceFunction:
+        async def _get_resources(cite_ids: list[str]) -> ResourceToolResult:
+            resource_ids = [tool_executor.resolve_cite_id(int(cid)) for cid in cite_ids]
             result = await self.client.get_resources(tool.namespace_id, resource_ids)
             return result
 
@@ -57,8 +59,9 @@ class GetResourcesHandler(BaseResourceHandler):
             "type": "function",
             "function": {
                 "name": "get_resources",
+                "display_name": "读取资源",
                 "description": (
-                    "Read the FULL content of resources by their resource IDs. "
+                    "Read the FULL content of resources by their citation IDs. "
                     "ALL resource types (doc, file, link) can be read - the system has already extracted/transcribed their content. "
                     "Use this AFTER filter_by_time/filter_by_tag/filter_by_keyword/get_children when you need detailed content. "
                     "Only request the resources you actually need - don't fetch all at once."
@@ -66,13 +69,13 @@ class GetResourcesHandler(BaseResourceHandler):
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "resource_ids": {
+                        "cite_ids": {
                             "type": "array",
                             "items": {"type": "string"},
-                            "description": "List of resource IDs (e.g., ['r1', 'r2']) to read",
+                            "description": "List of citation IDs (e.g., ['1', '2', '3']) from the context",
                         }
                     },
-                    "required": ["resource_ids"],
+                    "required": ["cite_ids"],
                 },
             },
         }
@@ -84,10 +87,9 @@ class GetChildrenHandler(BaseResourceHandler):
     def __init__(self, client: ResourceAPIClient):
         self.client = client
 
-    def get_function(self, tool: BaseResourceTool, **kwargs) -> ResourceFunction:
-        async def _get_children(resource_id: str, depth: int = 3) -> ResourceToolResult:
-            # Resolve short ID to real ID
-            # real_id = tool.resolve_id(resource_id)
+    def get_function(self, tool: BaseResourceTool, tool_executor: "ToolExecutor" = None, **kwargs) -> ResourceFunction:
+        async def _get_children(cite_id: str, depth: int = 3) -> ResourceToolResult:
+            resource_id = tool_executor.resolve_cite_id(int(cite_id))
             result = await self.client.get_children(tool.namespace_id, resource_id, depth)
             # Set metadata_only mode to reduce token usage
             result.metadata_only = True
@@ -101,6 +103,7 @@ class GetChildrenHandler(BaseResourceHandler):
             "type": "function",
             "function": {
                 "name": "get_children",
+                "display_name": "获取子目录",
                 "description": (
                     "Get children directory tree of a resource. "
                     "Returns METADATA ONLY - use get_resources to read specific document contents. "
@@ -110,9 +113,9 @@ class GetChildrenHandler(BaseResourceHandler):
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "resource_id": {
+                        "cite_id": {
                             "type": "string",
-                            "description": "The folder's short ID (e.g., 'f1', 'f2') from available_resources",
+                            "description": "The folder's citation ID from available_resources",
                         },
                         "depth": {
                             "type": "integer",
@@ -122,7 +125,7 @@ class GetChildrenHandler(BaseResourceHandler):
                             "default": 3,
                         },
                     },
-                    "required": ["resource_id"],
+                    "required": ["cite_id"],
                 },
             },
         }
@@ -134,8 +137,9 @@ class GetParentHandler(BaseResourceHandler):
     def __init__(self, client: ResourceAPIClient):
         self.client = client
 
-    def get_function(self, tool: BaseResourceTool, **kwargs) -> ResourceFunction:
-        async def _get_parent(resource_id: str) -> ResourceToolResult:
+    def get_function(self, tool: BaseResourceTool, tool_executor: "ToolExecutor" = None, **kwargs) -> ResourceFunction:
+        async def _get_parent(cite_id: str) -> ResourceToolResult:
+            resource_id = tool_executor.resolve_cite_id(int(cite_id))
             result = await self.client.get_parent(tool.namespace_id, resource_id)
             return result
 
@@ -147,6 +151,7 @@ class GetParentHandler(BaseResourceHandler):
             "type": "function",
             "function": {
                 "name": "get_parent",
+                "display_name": "获取父文件夹",
                 "description": (
                     "Get the parent folder of a document or subfolder. "
                     "Use this to navigate up the directory structure or find where a document is located."
@@ -154,12 +159,12 @@ class GetParentHandler(BaseResourceHandler):
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "resource_id": {
+                        "cite_id": {
                             "type": "string",
-                            "description": "The short ID of the document or folder (e.g., 'r1', 'f1')",
+                            "description": "The citation ID of the document or folder",
                         }
                     },
-                    "required": ["resource_id"],
+                    "required": ["cite_id"],
                 },
             },
         }
@@ -192,6 +197,7 @@ class FilterByTimeHandler(BaseResourceHandler):
             "type": "function",
             "function": {
                 "name": "filter_by_time",
+                "display_name": "按时间筛选",
                 "description": (
                     "Find documents created or modified within a specific time range. "
                     "Returns METADATA ONLY (title, summary, tags) - use get_resources to fetch full content. "
@@ -239,6 +245,7 @@ class FilterByTagHandler(BaseResourceHandler):
             "type": "function",
             "function": {
                 "name": "filter_by_tag",
+                "display_name": "按标签筛选",
                 "description": (
                     "Find documents with specific tags/labels. "
                     "Returns METADATA ONLY (title, summary, tags) - use get_resources to fetch full content. "
@@ -287,6 +294,7 @@ class FilterByKeywordHandler(BaseResourceHandler):
             "type": "function",
             "function": {
                 "name": "filter_by_keyword",
+                "display_name": "按关键词筛选",
                 "description": (
                     "Filter documents by EXACT keyword matching in name/title or content fields. "
                     "Returns METADATA ONLY (title, summary, tags) - use get_resources to fetch full content. "

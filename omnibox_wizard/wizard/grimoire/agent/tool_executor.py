@@ -57,21 +57,29 @@ def retrieval_wrapper(tool_call_id: str, retrievals: list[BaseRetrieval]) -> Mes
 
 
 def resource_tool_wrapper(
-    tool_call_id: str, result: ResourceToolResult, current_cite_cnt: int = 0
+    tool_call_id: str,
+    result: ResourceToolResult,
+    tool_executor: "ToolExecutor",
 ) -> MessageDto:
     """Wrap resource tool result as MessageDto with citations."""
     citations = result.to_citations()
-    # Assign citation IDs
-    for i, citation in enumerate(citations):
-        citation.id = current_cite_cnt + i + 1
 
-    # Build content with cite_id injected for each resource
+    # Register cite_id for each resource (dynamically assigned)
+    for citation in citations:
+        resource_id = citation.link
+        cite_id = tool_executor.register_resource(resource_id)
+        citation.id = cite_id
+
+    # Build content with cite_id injected for each resource (remove resource_id)
     content_dict = jsonlib.loads(result.to_tool_content())
     if content_dict.get("data"):
         data = content_dict["data"]
         if isinstance(data, list):
             for i, item in enumerate(data):
-                item["cite_id"] = current_cite_cnt + i + 1
+                # remove resource_id, use cite_id
+                if "resource_id" in item:
+                    resource_id = item.pop("resource_id")
+                    item["cite_id"] = tool_executor.get_cite_id(resource_id)
                 # Add summary field in metadata_only mode
                 if result.metadata_only and isinstance(item, dict) and "resource_type" in item:
                     # Find the corresponding ResourceInfo to get summary
@@ -80,7 +88,10 @@ def resource_tool_wrapper(
                         if hasattr(resource_info, 'summary'):
                             item["summary"] = resource_info.summary
         elif isinstance(data, dict):
-            data["cite_id"] = current_cite_cnt + 1
+            # remove resource_id, use cite_id
+            if "resource_id" in data:
+                resource_id = data.pop("resource_id")
+                data["cite_id"] = tool_executor.get_cite_id(resource_id)
             # Add summary field in metadata_only mode
             if result.metadata_only and "resource_type" in data:
                 if result.data:
@@ -117,6 +128,34 @@ class ToolExecutor:
     def __init__(self, config: dict[str, ToolExecutorConfig]):
         self.config: dict[str, ToolExecutorConfig] = config
         self.tools: list[dict] = [config["schema"] for config in config.values()]
+
+        self._cite_to_resource: dict[int, str] = {}
+        self._resource_to_cite: dict[str, int] = {}
+        self._next_cite_id: int = 1
+
+    def register_resource(self, resource_id: str) -> int:
+        if resource_id in self._resource_to_cite:
+            return self._resource_to_cite[resource_id]
+
+        cite_id = self._next_cite_id
+        self._next_cite_id += 1
+        self._cite_to_resource[cite_id] = resource_id
+        self._resource_to_cite[resource_id] = cite_id
+        return cite_id
+
+    def register_resource_with_id(self, resource_id: str, cite_id: int) -> None:
+        self._cite_to_resource[cite_id] = resource_id
+        self._resource_to_cite[resource_id] = cite_id
+        if cite_id >= self._next_cite_id:
+            self._next_cite_id = cite_id + 1
+
+    def resolve_cite_id(self, cite_id: int) -> str:
+        if cite_id not in self._cite_to_resource:
+            raise ValueError(f"Unknown cite_id: {cite_id}")
+        return self._cite_to_resource[cite_id]
+
+    def get_cite_id(self, resource_id: str) -> int | None:
+        return self._resource_to_cite.get(resource_id)
 
     async def astream(
         self,
@@ -184,11 +223,10 @@ class ToolExecutor:
                         assert isinstance(result, ResourceToolResult), (
                             f"Expected ResourceToolResult, got {type(result)}"
                         )
-                        current_cite_cnt: int = get_citation_cnt(message_dtos)
                         message_dto: MessageDto = resource_tool_wrapper(
                             tool_call_id=tool_call_id,
                             result=result,
-                            current_cite_cnt=current_cite_cnt,
+                            tool_executor=self,
                         )
                     else:
                         raise ValueError(f"Unknown function type: {function_name}")

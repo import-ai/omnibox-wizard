@@ -1,6 +1,7 @@
 import base64
 from datetime import datetime
 from typing import BinaryIO
+from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
@@ -9,6 +10,41 @@ class Base(BaseModel):
     created_at: datetime = Field(default_factory=datetime.now)
     updated_at: datetime | None = Field(default=None)
     deleted_at: datetime | None = Field(default=None)
+
+
+class TaskFunction(StrEnum):
+    COLLECT = "collect"
+    COLLECT_URL = "collect_url"
+    UPSERT_INDEX = "upsert_index"
+    DELETE_INDEX = "delete_index"
+    FILE_READER = "file_reader"
+    UPSERT_MESSAGE_INDEX = "upsert_message_index"
+    DELETE_CONVERSATION = "delete_conversation"
+    EXTRACT_TAGS = "extract_tags"
+    GENERATE_TITLE = "generate_title"
+
+
+class NextTaskResponseDto(BaseModel):
+    function: TaskFunction
+    input: dict
+    payload: dict | None = Field(default=None)
+    priority: int | None = Field(default=None)
+
+
+class TaskStatus(StrEnum):
+    PENDING = "pending"
+    RUNNING = "running"
+    FINISHED = "finished"
+    ERROR = "error"
+    CANCELED = "canceled"
+    TIMEOUT = "timeout"
+
+
+class TaskCallbackRequestDto(BaseModel):
+    id: str
+    exception: dict | None = Field(default=None)
+    output: dict | None = Field(default=None)
+    status: TaskStatus | None = Field(default=None)
 
 
 class Task(Base):
@@ -31,6 +67,11 @@ class Task(Base):
     ended_at: datetime | None = None
     canceled_at: datetime | None = None
     status: str | None = None
+
+    def create_next_task(self, function: TaskFunction, i: dict):
+        return NextTaskResponseDto(
+            input=i, function=function, payload=self.payload, priority=self.priority
+        )
 
 
 class Image(BaseModel):

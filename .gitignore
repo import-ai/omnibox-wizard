@@ -166,3 +166,6 @@ tests/omnibox_wizard/resources/files/*
 .vscode/
 
 /tmp
+
+CLAUDE.md
+.serena

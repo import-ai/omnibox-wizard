@@ -9,7 +9,7 @@ from common.exception import CommonException
 from common.plain_reader import read_text_file
 from common.trace_info import TraceInfo
 from omnibox_wizard.worker.config import WorkerConfig
-from omnibox_wizard.worker.entity import Task, Image
+from omnibox_wizard.worker.entity import Task, Image, TaskFunction
 from omnibox_wizard.worker.functions.base_function import BaseFunction
 from omnibox_wizard.worker.functions.file_readers.md_reader import MDReader
 from omnibox_wizard.worker.functions.file_readers.office_reader import (
@@ -170,4 +170,22 @@ class FileReader(BaseFunction):
             ]
         if metadata:
             result_dict["metadata"] = metadata
+
+        # Add extract_tags to next_tasks
+        next_tasks = []
+        extract_tags_task = task.create_next_task(
+            TaskFunction.EXTRACT_TAGS, {"text": markdown}
+        )
+        next_tasks.append(extract_tags_task.model_dump())
+
+        # Add generate_title for open_api uploads
+        if task.payload and task.payload.get("source") == "open_api":
+            generate_title_task = task.create_next_task(
+                TaskFunction.GENERATE_TITLE, {"text": markdown}
+            )
+            next_tasks.append(generate_title_task.model_dump())
+
+        if next_tasks:
+            result_dict["next_tasks"] = next_tasks
+
         return result_dict

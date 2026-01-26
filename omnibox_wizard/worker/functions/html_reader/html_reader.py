@@ -19,7 +19,7 @@ from omnibox_wizard.worker.agent.html_title_extractor import (
     HTMLTitleExtractOutput,
 )
 from omnibox_wizard.worker.config import WorkerConfig
-from omnibox_wizard.worker.entity import Task, Image, GeneratedContent
+from omnibox_wizard.worker.entity import Task, Image, GeneratedContent, TaskFunction
 from omnibox_wizard.worker.functions.base_function import BaseFunction
 from omnibox_wizard.worker.functions.html_reader.processors.base import (
     HTMLReaderBaseProcessor,
@@ -264,6 +264,18 @@ class HTMLReaderV2(BaseFunction):
 
     @tracer.start_as_current_span("run")
     async def run(self, task: Task, trace_info: TraceInfo) -> dict:
+        result_dict: dict = await self.main(task, trace_info)
+        if result_dict.get("markdown"):
+            extract_tags_task = task.create_next_task(
+                TaskFunction.EXTRACT_TAGS, {"text": result_dict["markdown"]}
+            )
+            result_dict.setdefault("next_tasks", []).append(
+                extract_tags_task.model_dump()
+            )
+        return result_dict
+
+    @tracer.start_as_current_span("main")
+    async def main(self, task: Task, trace_info: TraceInfo) -> dict:
         input_dict = task.input
         html = input_dict["html"]
         url = input_dict["url"]
@@ -282,10 +294,9 @@ class HTMLReaderV2(BaseFunction):
         trace_info = trace_info.bind(domain=domain)
 
         result: GeneratedContent = await self.convert(
-            url=url, html=html, trace_info=trace_info
+            url=url, html=html, trace_info=trace_info, task=task
         )
         result_dict: dict = result.model_dump(exclude_none=True)
-        trace_info.info({k: v for k, v in result_dict.items() if k != "markdown"})
         return result_dict
 
     @tracer.start_as_current_span("get_images")
@@ -389,7 +400,7 @@ class HTMLReaderV2(BaseFunction):
 
     @tracer.start_as_current_span("convert")
     async def convert(
-        self, url: str, html: str, trace_info: TraceInfo
+        self, url: str, html: str, trace_info: TraceInfo, task: Task | None = None
     ) -> GeneratedContent:
         html_doc = Document(html)
 

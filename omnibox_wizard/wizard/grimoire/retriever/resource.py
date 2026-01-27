@@ -59,7 +59,7 @@ class GetResourcesHandler(BaseResourceHandler):
             "type": "function",
             "function": {
                 "name": "get_resources",
-                "display_name": "读取资源",
+                "display_name": {"zh": "读取资源", "en": "Get Resources"},
                 "description": (
                     "Read the FULL content of resources by their citation IDs. "
                     "ALL resource types (doc, file, link) can be read - the system has already extracted/transcribed their content. "
@@ -103,7 +103,7 @@ class GetChildrenHandler(BaseResourceHandler):
             "type": "function",
             "function": {
                 "name": "get_children",
-                "display_name": "获取子目录",
+                "display_name": {"zh": "获取子目录", "en": "Get Children"},
                 "description": (
                     "Get children directory tree of a resource. "
                     "Returns METADATA ONLY - use get_resources to read specific document contents. "
@@ -151,7 +151,7 @@ class GetParentHandler(BaseResourceHandler):
             "type": "function",
             "function": {
                 "name": "get_parent",
-                "display_name": "获取父文件夹",
+                "display_name": {"zh": "获取上层文件夹", "en": "Get Parent Folder"},
                 "description": (
                     "Get the parent folder of a document or subfolder. "
                     "Use this to navigate up the directory structure or find where a document is located."
@@ -197,7 +197,7 @@ class FilterByTimeHandler(BaseResourceHandler):
             "type": "function",
             "function": {
                 "name": "filter_by_time",
-                "display_name": "按时间筛选",
+                "display_name": {"zh": "按时间筛选", "en": "Filter by Time"},
                 "description": (
                     "Find documents created or modified within a specific time range. "
                     "Returns METADATA ONLY (title, summary, tags) - use get_resources to fetch full content. "
@@ -245,7 +245,7 @@ class FilterByTagHandler(BaseResourceHandler):
             "type": "function",
             "function": {
                 "name": "filter_by_tag",
-                "display_name": "按标签筛选",
+                "display_name": {"zh": "按标签筛选", "en": "Filter by Tag"},
                 "description": (
                     "Find documents with specific tags/labels. "
                     "Returns METADATA ONLY (title, summary, tags) - use get_resources to fetch full content. "
@@ -294,7 +294,7 @@ class FilterByKeywordHandler(BaseResourceHandler):
             "type": "function",
             "function": {
                 "name": "filter_by_keyword",
-                "display_name": "按关键词筛选",
+                "display_name": {"zh": "按关键词筛选", "en": "Filter by Keyword"},
                 "description": (
                     "Filter documents by EXACT keyword matching in name/title or content fields. "
                     "Returns METADATA ONLY (title, summary, tags) - use get_resources to fetch full content. "

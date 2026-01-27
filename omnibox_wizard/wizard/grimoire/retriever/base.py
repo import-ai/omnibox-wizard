@@ -29,11 +29,12 @@ class BaseRetriever(ABC):
         return self.get_schema()["function"]["name"]
 
     @classmethod
-    def generate_schema(cls, name: str, description: str) -> dict:
+    def generate_schema(cls, name: str, description: str, display_name: dict = None) -> dict:
         return {
             "type": "function",
             "function": {
                 "name": name,
+                "display_name": display_name,
                 "description": description,
                 "parameters": {
                     "type": "object",

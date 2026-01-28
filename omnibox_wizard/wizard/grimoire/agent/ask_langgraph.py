@@ -46,6 +46,7 @@ from omnibox_wizard.wizard.grimoire.retriever.reranker import (
     get_tool_executor_config,
     get_merged_description,
 )
+from omnibox_wizard.wizard.grimoire.entity.tools import ProductDocsTool
 from omnibox_wizard.wizard.grimoire.agent.agent import UserQueryPreprocessor, BaseSearchableAgent
 
 json_dumps = partial(jsonlib.dumps, ensure_ascii=False, separators=(",", ":"))
@@ -295,9 +296,18 @@ class AskLangGraph(BaseSearchableAgent):
 
         - Search tools (private_search, web_search): based on options.tools
         - Resource tools: included when private_search is present
+        - product_docs: always enabled by default
         """
         search_configs: list[ToolExecutorConfig] = []
         private_search_tool = None
+
+        # Always add product_docs tool (default enabled)
+        cfg = self.product_docs_retriever.get_tool_executor_config(
+            ProductDocsTool(),
+            trace_info=trace_info.get_child("product_docs"),
+            lang=options.lang or "简体中文",
+        )
+        search_configs.append(cfg)
 
         # Search tools: based on agent_request.tools
         for tool in options.tools or []:

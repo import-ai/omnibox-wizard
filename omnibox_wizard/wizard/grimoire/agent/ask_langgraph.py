@@ -294,20 +294,12 @@ class AskLangGraph(BaseSearchableAgent):
     ) -> ToolExecutor:
         """Create ToolExecutor from request options.
 
-        - Search tools (private_search, web_search): based on options.tools
-        - Resource tools: included when private_search is present
-        - product_docs: always enabled by default
+        - Search tools (private_search, web_search): based on options.tools, wrapped by reranker
+        - Resource tools: product_docs is ALWAYS available, others only when private_search is present
         """
         search_configs: list[ToolExecutorConfig] = []
+        resource_configs: list[ToolExecutorConfig] = []
         private_search_tool = None
-
-        # Always add product_docs tool (default enabled)
-        cfg = self.product_docs_retriever.get_tool_executor_config(
-            ProductDocsTool(),
-            trace_info=trace_info.get_child("product_docs"),
-            lang=options.lang or "简体中文",
-        )
-        search_configs.append(cfg)
 
         # Search tools: based on agent_request.tools
         for tool in options.tools or []:
@@ -319,7 +311,7 @@ class AskLangGraph(BaseSearchableAgent):
                 if tool.name == "private_search":
                     private_search_tool = tool
 
-        # Apply reranker to search tools
+        # Apply reranker to search tools ONLY (resource tools not wrapped)
         if options.merge_search and search_configs:
             search_configs = [get_tool_executor_config(search_configs, self.reranker)]
         elif wrap_reranker:
@@ -329,7 +321,7 @@ class AskLangGraph(BaseSearchableAgent):
                     trace_info=trace_info.get_child("reranker"),
                 )
 
-        # Create ToolExecutor first (needed for resource handlers)
+        # Create ToolExecutor with search configs first
         all_configs = search_configs
         tool_executor = ToolExecutor({c["name"]: c for c in all_configs})
 
@@ -345,7 +337,18 @@ class AskLangGraph(BaseSearchableAgent):
             for resource in private_search_tool.visible_resources:
                 tool_executor.register_resource(resource.id)
 
-        # Resource tools: included when private_search is present
+        # Resource tools: product_docs is ALWAYS available (independent of private_search)
+        # Other resource tools only when private_search is present
+
+        # Always add product_docs (default enabled, now as resource handler)
+        cfg = self.resource_handlers["product_docs"].get_tool_executor_config(
+            ProductDocsTool(),
+            trace_info=trace_info.get_child("product_docs"),
+            lang=options.lang or "简体中文",
+        )
+        resource_configs.append(cfg)
+
+        # Add other resource tools ONLY when private_search is present
         if private_search_tool:
             # Create a BaseResourceTool with info from private_search
             resource_tool = BaseResourceTool(
@@ -353,18 +356,20 @@ class AskLangGraph(BaseSearchableAgent):
                 namespace_id=private_search_tool.namespace_id,
                 visible_resources=private_search_tool.visible_resources,
             )
-            resource_configs = [
-                handler.get_tool_executor_config(
+            for name, handler in self.resource_handlers.items():
+                if name == "product_docs":
+                    continue  # Already added above
+                cfg = handler.get_tool_executor_config(
                     resource_tool,
                     trace_info=trace_info.get_child(name),
                     tool_executor=tool_executor,
                 )
-                for name, handler in self.resource_handlers.items()
-            ]
-            # Add resource configs to tool_executor
-            for cfg in resource_configs:
-                tool_executor.config[cfg["name"]] = cfg
-                tool_executor.tools.append(cfg["schema"])
+                resource_configs.append(cfg)
+
+        # Add resource configs to tool_executor
+        for cfg in resource_configs:
+            tool_executor.config[cfg["name"]] = cfg
+            tool_executor.tools.append(cfg["schema"])
 
         return tool_executor
 

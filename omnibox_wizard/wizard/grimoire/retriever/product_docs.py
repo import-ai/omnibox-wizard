@@ -1,5 +1,5 @@
 """
-Product Documentation Retriever
+Product Documentation Handler
 
 Fetches official OmniBox product documentation from GitHub repository
 and returns full content based on user's language preference.
@@ -7,16 +7,13 @@ and returns full content based on user's language preference.
 
 import asyncio
 import base64
-from functools import partial
-from typing import Literal
 
 import httpx
 from opentelemetry import trace
 
-from common.trace_info import TraceInfo
-from omnibox_wizard.wizard.grimoire.entity.retrieval import Citation, BaseRetrieval
 from omnibox_wizard.wizard.grimoire.entity.tools import BaseTool
-from omnibox_wizard.wizard.grimoire.retriever.base import BaseRetriever, SearchFunction
+from omnibox_wizard.wizard.grimoire.entity.resource import ResourceToolResult, ResourceInfo
+from omnibox_wizard.wizard.grimoire.retriever.resource import BaseResourceHandler, ResourceFunction
 
 GITHUB_API = "https://api.github.com"
 OWNER = "import-ai"
@@ -25,30 +22,11 @@ REPO = "omnibox-docs"
 tracer = trace.get_tracer(__name__)
 
 
-class ProductDocsRetrieval(BaseRetrieval):
-    """Product documentation retrieval result."""
-    content: str
-    source: Literal["product_docs"] = "product_docs"
+class ProductDocsHandler(BaseResourceHandler):
+    """Handler for product_docs tool.
 
-    def to_prompt(self, exclude_id: bool = False) -> str:
-        return self.content
-
-    def to_citation(self) -> Citation:
-        return Citation(
-            id=self.id,
-            link=f"https://github.com/{OWNER}/{REPO}",
-            title="Product Documentation",
-            snippet=self.content[:200] + "..." if len(self.content) > 200 else self.content,
-            source=self.source,
-        )
-
-
-class ProductDocsRetriever(BaseRetriever):
-    """
-    Retriever for product documentation from GitHub.
-
-    Fetches docs from import-ai/omnibox-docs repository on initialization
-    and returns full content based on user's language preference.
+    Product docs is always available (unlike other resource tools that require private_search),
+    and it doesn't go through the reranker since it returns fixed content.
     """
 
     def __init__(self, github_token: str | None = None):
@@ -103,32 +81,37 @@ class ProductDocsRetriever(BaseRetriever):
         self._cache["en"] = en
         self._initialized = True
 
-    @tracer.start_as_current_span("ProductDocsRetriever.search")
-    async def search(
-        self,
-        query: str = "",
-        *,
-        lang: str = "简体中文",
-        trace_info: TraceInfo | None = None,
-    ):
-        """Return full product documentation in the requested language."""
-        await self._ensure_init()
-        lang_key = "zh" if lang == "简体中文" else "en"
-        content = self._cache.get(lang_key, "")
+    @tracer.start_as_current_span("ProductDocsHandler.get_function")
+    def get_function(self, tool: BaseTool, **kwargs) -> ResourceFunction:
+        """Return a function that fetches product docs and returns ResourceToolResult."""
+        lang = kwargs.get("lang", "简体中文")
 
-        if trace_info:
-            trace_info.debug({
-                "lang": lang_key,
-                "content_length": len(content),
-            })
+        async def _product_docs() -> ResourceToolResult:
+            await self._ensure_init()
+            lang_key = "zh" if lang == "简体中文" else "en"
+            content = self._cache.get(lang_key, "")
 
-        return [ProductDocsRetrieval(content=content)]
+            if content:
+                return ResourceToolResult(
+                    success=True,
+                    data=ResourceInfo(
+                        id="product_docs",
+                        name="OmniBox Product Documentation",
+                        resource_type="doc",
+                        content=content,
+                        updated_at=None,
+                    ),
+                )
+            return ResourceToolResult(
+                success=False,
+                error="Failed to fetch product documentation."
+            )
 
-    def get_function(self, tool: BaseTool, **kwargs) -> SearchFunction:
-        return partial(self.search, **kwargs)
+        return _product_docs
 
     @classmethod
     def get_schema(cls) -> dict:
+        """Return the tool schema for product_docs."""
         return {
             "type": "function",
             "function": {
@@ -142,3 +125,7 @@ class ProductDocsRetriever(BaseRetriever):
                 },
             },
         }
+
+    @property
+    def name(self) -> str:
+        return self.get_schema()["function"]["name"]

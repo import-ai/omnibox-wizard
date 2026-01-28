@@ -19,7 +19,7 @@ ToolName = Literal[
 ]
 
 # Tool categories
-SEARCH_TOOLS: tuple[str, ...] = ("private_search", "web_search", "product_docs", "search")
+SEARCH_TOOLS: tuple[str, ...] = ("private_search", "web_search", "search")
 RESOURCE_TOOLS: tuple[str, ...] = (
     "get_resources",
     "get_children",
@@ -27,6 +27,7 @@ RESOURCE_TOOLS: tuple[str, ...] = (
     "filter_by_time",
     "filter_by_tag",
     "filter_by_keyword",
+    "product_docs",
 )
 AsyncCallable = Callable[..., Awaitable]
 

@@ -51,6 +51,7 @@ from omnibox_wizard.wizard.grimoire.retriever.reranker import (
     Reranker,
 )
 from omnibox_wizard.wizard.grimoire.retriever.searxng import SearXNG
+from omnibox_wizard.wizard.grimoire.retriever.product_docs import ProductDocsRetriever
 from omnibox_wizard.wizard.grimoire.client.resource_api import ResourceAPIClient
 from omnibox_wizard.wizard.grimoire.retriever.resource import (
     BaseResourceHandler,
@@ -354,12 +355,20 @@ class BaseSearchableAgent(BaseStreamable, ABC):
         self.web_search_retriever = SearXNG(
             base_url=config.tools.searxng.base_url, engines=config.tools.searxng.engines
         )
+        # Product docs retriever
+        self.product_docs_retriever = ProductDocsRetriever(
+            github_token=config.tools.github_token
+        )
 
         self.reranker: Reranker = Reranker(config.tools.reranker)
 
         self.retriever_mapping: dict[str, BaseRetriever] = {
             each.name: each
-            for each in [self.knowledge_database_retriever, self.web_search_retriever]
+            for each in [
+                self.knowledge_database_retriever,
+                self.web_search_retriever,
+                self.product_docs_retriever,
+            ]
         }
 
         self.resource_api_client = ResourceAPIClient(config.tools.resource_api, max_resource_limit=config.tools.max_resource_limit)

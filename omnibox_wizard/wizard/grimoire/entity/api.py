@@ -6,6 +6,7 @@ from omnibox_wizard.wizard.grimoire.entity.retrieval import Citation
 from omnibox_wizard.wizard.grimoire.entity.tools import (
     PrivateSearchTool,
     WebSearchTool,
+    ProductDocsTool,
     GetResourcesTool,
     GetChildrenTool,
     GetParentTool,
@@ -23,6 +24,7 @@ class ChatRequestOptions(BaseModel):
     tools: list[
         PrivateSearchTool
         | WebSearchTool
+        | ProductDocsTool
         | GetResourcesTool
         | GetChildrenTool
         | GetParentTool

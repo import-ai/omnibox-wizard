@@ -71,6 +71,7 @@ class ToolsConfig(BaseModel):
     reranker: RerankerConfig = Field(default_factory=RerankerConfig)
     resource_api: BackendConfig = Field(default_factory=BackendConfig)
     max_resource_limit: int = Field(default=200)
+    github_token: str | None = Field(default=None)
 
 class Config(BaseModel):
     vector: VectorConfig

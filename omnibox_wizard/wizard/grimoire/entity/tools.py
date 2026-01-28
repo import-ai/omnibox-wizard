@@ -9,6 +9,7 @@ tracer = trace.get_tracer("grimoire.entity.tools")
 ToolName = Literal[
     "private_search",
     "web_search",
+    "product_docs",
     "get_resources",
     "get_children",
     "get_parent",
@@ -18,7 +19,7 @@ ToolName = Literal[
 ]
 
 # Tool categories
-SEARCH_TOOLS: tuple[str, ...] = ("private_search", "web_search", "search")
+SEARCH_TOOLS: tuple[str, ...] = ("private_search", "web_search", "product_docs", "search")
 RESOURCE_TOOLS: tuple[str, ...] = (
     "get_resources",
     "get_children",
@@ -185,9 +186,16 @@ class FilterByKeywordTool(BaseResourceTool):
     name: Literal["filter_by_keyword"] = "filter_by_keyword"
 
 
+class ProductDocsTool(BaseTool):
+    """Tool to get product documentation."""
+
+    name: Literal["product_docs"] = "product_docs"
+
+
 _Tool = Union[
     PrivateSearchTool,
     WebSearchTool,
+    ProductDocsTool,
     GetResourcesTool,
     GetChildrenTool,
     GetParentTool,

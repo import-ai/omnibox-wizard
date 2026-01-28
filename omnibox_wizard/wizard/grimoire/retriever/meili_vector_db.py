@@ -433,6 +433,7 @@ class MeiliVectorRetriever(BaseRetriever):
         return cls.generate_schema(
             "private_search",
             'Search for user\'s private & personal resources. Return in <cite id=""></cite> format.',
+            display_name={"zh": "知识库搜索", "en": "Knowledge Base Search"},
         )
 
     @tracer.start_as_current_span("MeiliVectorRetriever.query")
@@ -468,6 +469,7 @@ class MeiliVectorRetriever(BaseRetriever):
                 type=self.get_type(
                     chunk.resource_id, private_search_tool.visible_resources or []
                 ),
+                namespace_id=private_search_tool.namespace_id,
                 score=Score(recall=score, rerank=0),
             )
             for chunk, score in recall_result_list

@@ -106,14 +106,13 @@ class ProductDocsRetriever(BaseRetriever):
     @tracer.start_as_current_span("ProductDocsRetriever.search")
     async def search(
         self,
-        query: str,
+        query: str = "",
         *,
         lang: str = "简体中文",
         trace_info: TraceInfo | None = None,
     ):
         """Return full product documentation in the requested language."""
         await self._ensure_init()
-
         lang_key = "zh" if lang == "简体中文" else "en"
         content = self._cache.get(lang_key, "")
 
@@ -130,9 +129,16 @@ class ProductDocsRetriever(BaseRetriever):
 
     @classmethod
     def get_schema(cls) -> dict:
-        return cls.generate_schema(
-            "product_docs",
-            "Get official OmniBox product documentation (pricing, features, plugins, usage). "
-            "Use this tool when users ask questions about the product itself.",
-            display_name={"zh": "产品文档", "en": "Product Docs"},
-        )
+        return {
+            "type": "function",
+            "function": {
+                "name": "product_docs",
+                "display_name": {"zh": "查询产品文档", "en": "Search Product Docs"},
+                "description": "Get official OmniBox product documentation (pricing, features, plugins, usage). Use this tool when users ask questions about the product itself.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {},
+                    "required": [],
+                },
+            },
+        }

@@ -192,6 +192,10 @@ class UserQueryPreprocessor:
         if "private_search" in tools:
             tools = tools + [t for t in RESOURCE_TOOLS if t not in tools]
 
+        # product_docs is always enabled by default, add to selected if not present
+        if "product_docs" not in tools:
+            tools.append("product_docs")
+
         return [
             "\n".join(
                 [

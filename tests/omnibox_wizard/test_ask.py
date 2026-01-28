@@ -6,7 +6,7 @@ import pytest
 
 
 from httpx_sse import connect_sse
-from omnibox_wizard.worker.entity import Task
+from wizard_common.worker.entity import Task
 from common import project_root
 from omnibox_wizard.wizard.grimoire.agent.agent import UserQueryPreprocessor
 from omnibox_wizard.wizard.grimoire.entity.api import MessageDto

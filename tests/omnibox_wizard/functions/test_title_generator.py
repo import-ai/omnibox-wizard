@@ -1,6 +1,6 @@
 import pytest
 
-from omnibox_wizard.worker.entity import Task
+from wizard_common.worker.entity import Task
 from omnibox_wizard.worker.functions.title_generator import TitleGenerator
 
 

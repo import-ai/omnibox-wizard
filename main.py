@@ -10,7 +10,7 @@ from common.config_loader import Loader
 from common.logger import get_logger
 from common.tracing import setup_opentelemetry
 from omnibox_wizard.worker.config import ENV_PREFIX, WorkerConfig
-from omnibox_wizard.worker.entity import Message
+from wizard_common.worker.entity import Message
 from omnibox_wizard.worker.health_server import HealthServer
 from omnibox_wizard.worker.health_tracker import HealthTracker
 from omnibox_wizard.worker.rate_limiter import RateLimiter

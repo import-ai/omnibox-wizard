@@ -15,7 +15,7 @@ from common.logger import get_logger
 from common.trace_info import TraceInfo
 from omnibox_wizard.worker.callback_util import CallbackUtil
 from omnibox_wizard.worker.config import WorkerConfig
-from omnibox_wizard.worker.entity import Message, Task
+from wizard_common.worker.entity import Message, Task
 from omnibox_wizard.worker.functions.base_function import BaseFunction
 from omnibox_wizard.worker.functions.collect_url import CollectUrlFunction
 from omnibox_wizard.worker.functions.file_reader import FileReader

@@ -1,13 +1,14 @@
-from bs4 import BeautifulSoup
+import os
 
 import httpx
+from bs4 import BeautifulSoup
 from opentelemetry import trace
 from pydantic import BaseModel
 
 from common.trace_info import TraceInfo
 from omnibox_wizard.worker.config import WorkerConfig
-from omnibox_wizard.worker.entity import Task, TaskFunction
 from omnibox_wizard.worker.functions.base_function import BaseFunction
+from wizard_common.worker.entity import Task, TaskFunction
 
 tracer = trace.get_tracer(__name__)
 
@@ -37,6 +38,15 @@ class CollectUrlFunction(BaseFunction):
     def __init__(self, config: WorkerConfig):
         self.scrape_base_url: str | None = config.task.scrape_base_url
         self.timeout: int = 60
+        self.video_prefixes: list[str] = list(
+            filter(bool, os.getenv("OB_VIDEO_PREFIXES", "").split(","))
+        )
+
+    def is_video_url(self, url: str) -> bool:
+        for prefix in self.video_prefixes:
+            if url.startswith(prefix):
+                return True
+        return False
 
     @tracer.start_as_current_span("CollectUrlFunction.run")
     async def run(self, task: Task, trace_info: TraceInfo) -> dict:
@@ -45,15 +55,20 @@ class CollectUrlFunction(BaseFunction):
         url = input_dict["url"]
         span.set_attribute("url", url)
         scrape_result = await self._scrape_url(url)
-        collect_task = task.create_next_task(
-            TaskFunction.COLLECT,
-            {
-                "url": scrape_result.final_url,
-                "html": scrape_result.html,
-                "title": scrape_result.title,
-            },
-        )
-        return {"next_tasks": [collect_task.model_dump()]}
+        return {
+            "next_tasks": [
+                task.create_next_task(
+                    TaskFunction.GENERATE_VIDEO_NOTE
+                    if self.is_video_url(url)
+                    else TaskFunction.COLLECT,
+                    {
+                        "url": scrape_result.final_url,
+                        "html": scrape_result.html,
+                        "title": scrape_result.title,
+                    },
+                ).model_dump()
+            ]
+        }
 
     @tracer.start_as_current_span("CollectUrlFunction._scrape_url")
     async def _scrape_url(self, url: str) -> ScrapeResponseDto:

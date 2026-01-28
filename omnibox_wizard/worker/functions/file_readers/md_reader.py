@@ -1,6 +1,6 @@
 import frontmatter
 
-from omnibox_wizard.worker.entity import Image
+from wizard_common.worker.entity import Image
 from common.plain_reader import read_text_file
 
 

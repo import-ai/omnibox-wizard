@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from omnibox_wizard.worker.config import RateLimiterConfig
-from omnibox_wizard.worker.entity import Message
+from wizard_common.worker.entity import Message
 
 
 class RateLimiter:

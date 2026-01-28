@@ -76,10 +76,15 @@ def resource_tool_wrapper(
         data = content_dict["data"]
         if isinstance(data, list):
             for i, item in enumerate(data):
-                # remove resource_id, use cite_id
+                # remove resource_id, use cite_id (put cite_id first for better LLM visibility)
                 if "resource_id" in item:
                     resource_id = item.pop("resource_id")
-                    item["cite_id"] = tool_executor.get_cite_id(resource_id)
+                    cite_id = tool_executor.get_cite_id(resource_id)
+                    # Put cite_id at the beginning of the dict
+                    data[i] = {"cite_id": cite_id, **item}
+                    item = data[i]
+                    # if "name" in item:
+                    #     item["name"] = f"[{cite_id}] {item['name']}"
                 # Add summary field in metadata_only mode
                 if result.metadata_only and isinstance(item, dict) and "resource_type" in item:
                     # Find the corresponding ResourceInfo to get summary
@@ -88,10 +93,16 @@ def resource_tool_wrapper(
                         if hasattr(resource_info, 'summary'):
                             item["summary"] = resource_info.summary
         elif isinstance(data, dict):
-            # remove resource_id, use cite_id
+            # remove resource_id, use cite_id (put cite_id first for better LLM visibility)
             if "resource_id" in data:
                 resource_id = data.pop("resource_id")
-                data["cite_id"] = tool_executor.get_cite_id(resource_id)
+                cite_id = tool_executor.get_cite_id(resource_id)
+                # Put cite_id at the beginning of the dict
+                content_dict["data"] = {"cite_id": cite_id, **data}
+                data = content_dict["data"]
+                # Add cite_id prefix to name for better LLM visibility
+                # if "name" in data:
+                #     data["name"] = f"[{cite_id}] {data['name']}"
             # Add summary field in metadata_only mode
             if result.metadata_only and "resource_type" in data:
                 if result.data:
@@ -114,13 +125,6 @@ def resource_tool_wrapper(
             },
             "attrs": {"citations": citations} if citations else None,
         }
-    )
-
-
-def get_citation_cnt(messages: list[MessageDto]) -> int:
-    return sum(
-        len(message.attrs.citations) if message.attrs and message.attrs.citations else 0
-        for message in messages
     )
 
 
@@ -206,15 +210,17 @@ class ToolExecutor:
                         or function_name.endswith("search")
                     ):
                         # Search tool: result is list[BaseRetrieval], needs citation processing
-                        current_cite_cnt: int = get_citation_cnt(message_dtos)
                         assert isinstance(result, list), (
                             f"Expected list of retrievals, got {type(result)}"
                         )
                         assert all(isinstance(r, BaseRetrieval) for r in result), (
                             f"Expected all items to be BaseRetrieval, got {[type(r) for r in result]}"
                         )
-                        for i, r in enumerate(result):
-                            r.id = current_cite_cnt + i + 1
+                        # Use ToolExecutor registry to assign cite_id (unified with resource tools)
+                        for r in result:
+                            citation = r.to_citation()
+                            cite_id = self.register_resource(citation.link)
+                            r.id = cite_id
                         message_dto: MessageDto = retrieval_wrapper(
                             tool_call_id=tool_call_id, retrievals=result
                         )

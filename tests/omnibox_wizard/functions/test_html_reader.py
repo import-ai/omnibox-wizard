@@ -6,7 +6,7 @@ import pytest
 
 from common import project_root
 from common.trace_info import TraceInfo
-from omnibox_wizard.worker.entity import Task
+from wizard_common.worker.entity import Task
 from omnibox_wizard.worker.functions.html_reader.html_reader import HTMLReaderV2
 from tests.omnibox_wizard.helper.get_collect_html import get_collect_html
 

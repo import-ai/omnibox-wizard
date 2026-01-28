@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 
 from common.trace_info import TraceInfo
 from common import project_root
-from omnibox_wizard.worker.entity import Task
+from wizard_common.worker.entity import Task
 from omnibox_wizard.worker.functions.file_reader import Convertor
 from omnibox_wizard.worker.worker import Worker
 from tests.omnibox_wizard.helper.backend_client import BackendClient

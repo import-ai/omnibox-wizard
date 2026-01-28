@@ -19,7 +19,7 @@ from omnibox_wizard.worker.agent.html_title_extractor import (
     HTMLTitleExtractOutput,
 )
 from omnibox_wizard.worker.config import WorkerConfig
-from omnibox_wizard.worker.entity import Task, Image, GeneratedContent, TaskFunction
+from wizard_common.worker.entity import Task, Image, GeneratedContent, TaskFunction
 from omnibox_wizard.worker.functions.base_function import BaseFunction
 from omnibox_wizard.worker.functions.html_reader.processors.base import (
     HTMLReaderBaseProcessor,

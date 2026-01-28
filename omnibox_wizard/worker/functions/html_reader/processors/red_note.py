@@ -3,7 +3,7 @@ from urllib.parse import urlparse
 from bs4 import BeautifulSoup, Tag, Comment, NavigableString
 from opentelemetry import trace
 
-from omnibox_wizard.worker.entity import GeneratedContent
+from wizard_common.worker.entity import GeneratedContent
 from omnibox_wizard.worker.functions.html_reader.processors.base import (
     HTMLReaderBaseProcessor,
 )

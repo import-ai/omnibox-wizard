@@ -10,7 +10,7 @@ from opentelemetry.trace import Status, StatusCode
 
 from common.exception import CommonException
 from omnibox_wizard.worker.config import WorkerConfig
-from omnibox_wizard.worker.entity import Task
+from wizard_common.worker.entity import Task
 
 tracer = trace.get_tracer(__name__)
 

@@ -7,7 +7,7 @@ import shortuuid
 
 from common.trim_md_table import trim_md_table
 from common.utils import remove_continuous_break_lines
-from omnibox_wizard.worker.entity import Image
+from wizard_common.worker.entity import Image
 from omnibox_wizard.worker.functions.file_readers.utils import (
     guess_extension,
     guess_mimetype,

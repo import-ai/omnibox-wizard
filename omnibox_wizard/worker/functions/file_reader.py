@@ -9,7 +9,7 @@ from common.exception import CommonException
 from common.plain_reader import read_text_file
 from common.trace_info import TraceInfo
 from omnibox_wizard.worker.config import WorkerConfig
-from omnibox_wizard.worker.entity import Task, Image, TaskFunction
+from wizard_common.worker.entity import Task, Image, TaskFunction
 from omnibox_wizard.worker.functions.base_function import BaseFunction
 from omnibox_wizard.worker.functions.file_readers.md_reader import MDReader
 from omnibox_wizard.worker.functions.file_readers.office_reader import (

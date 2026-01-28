@@ -8,7 +8,7 @@ import httpx
 from opentelemetry import trace
 
 from omnibox_wizard.worker.config import WorkerConfig
-from omnibox_wizard.worker.entity import GeneratedContent, Image
+from wizard_common.worker.entity import GeneratedContent, Image
 
 tracer = trace.get_tracer("HTMLReaderBaseProcessor")
 

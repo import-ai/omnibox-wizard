@@ -7,7 +7,7 @@ from omnibox_wizard.wizard.grimoire.entity.chunk import Chunk, ChunkType
 from omnibox_wizard.wizard.grimoire.entity.message import Message
 from omnibox_wizard.wizard.grimoire.retriever.meili_vector_db import MeiliVectorDB
 from omnibox_wizard.worker.config import WorkerConfig
-from omnibox_wizard.worker.entity import Task
+from wizard_common.worker.entity import Task
 from omnibox_wizard.worker.functions.base_function import BaseFunction
 
 

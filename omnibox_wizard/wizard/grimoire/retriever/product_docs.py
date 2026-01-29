@@ -81,7 +81,6 @@ class ProductDocsHandler(BaseResourceHandler):
         self._cache["en"] = en
         self._initialized = True
 
-    @tracer.start_as_current_span("ProductDocsHandler.get_function")
     def get_function(self, tool: BaseTool, **kwargs) -> ResourceFunction:
         """Return a function that fetches product docs and returns ResourceToolResult."""
         lang = kwargs.get("lang", "简体中文")
@@ -117,7 +116,11 @@ class ProductDocsHandler(BaseResourceHandler):
             "function": {
                 "name": "product_docs",
                 "display_name": {"zh": "查询产品文档", "en": "Search Product Docs"},
-                "description": "Get official OmniBox product documentation (pricing, features, plugins, usage). Use this tool when users ask questions about the product itself.",
+                "description": (
+                    "Get official OmniBox product documentation (pricing, features, plugins, usage). "
+                    "Use this tool when users ask questions about the product itself. "
+                    "This tool requires NO parameters - call it with empty arguments: {}"
+                ),
                 "parameters": {
                     "type": "object",
                     "properties": {},

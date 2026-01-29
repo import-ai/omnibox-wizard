@@ -52,6 +52,26 @@ from omnibox_wizard.wizard.grimoire.agent.agent import UserQueryPreprocessor, Ba
 json_dumps = partial(jsonlib.dumps, ensure_ascii=False, separators=(",", ":"))
 tracer = trace.get_tracer(__name__)
 
+
+def get_tool_display_names(tools: list[dict], lang: str = "zh") -> dict[str, str]:
+    """Extract tool name to display_name mapping from tool schemas.
+
+    Args:
+        tools: List of tool schemas with display_name field
+        lang: Language key for display_name ("zh" or "en")
+
+    Returns:
+        Dict mapping technical name to display name
+    """
+    mapping = {}
+    for tool in tools:
+        func = tool.get("function", {})
+        name = func.get("name")
+        display_name = func.get("display_name", {})
+        if name and display_name:
+            mapping[name] = display_name.get(lang, display_name.get("zh", name))
+    return mapping
+
 # ============== State ==============
 class AgentState(TypedDict):
     """Minimal state - just the conversation messages."""
@@ -405,10 +425,15 @@ class AskLangGraph(BaseSearchableAgent):
                 )
                 messages.append(MessageDto.model_validate({"message": system_msg}))
             else:
+                # Native mode: include display_name mapping for user-facing text
+                lang_key = "zh" if (agent_request.lang or "简体中文") == "简体中文" else "en"
+                tool_display_names = get_tool_display_names(all_tools, lang_key)
+
                 for i in range(2):
                     prompt: str = self.template_parser.render_template(
                         self.system_prompt_template,
                         lang=agent_request.lang or "简体中文",
+                        tool_display_names=tool_display_names,
                         **{f"part_{i + 1}_enabled": True},
                     )
                     system_msg: dict = {"role": "system", "content": prompt}

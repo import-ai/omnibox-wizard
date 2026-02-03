@@ -7,6 +7,7 @@ and returns full content based on user's language preference.
 
 import asyncio
 import base64
+import re
 
 import httpx
 from opentelemetry import trace
@@ -81,6 +82,62 @@ class ProductDocsHandler(BaseResourceHandler):
         self._cache["en"] = en
         self._initialized = True
 
+    def _convert_markdown_links(self, content: str, lang_key: str) -> str:
+        """Convert internal markdown links to absolute URLs.
+
+        Rules:
+        - [text](file.md) -> [text](https://www.omnibox.pro/docs/zh-cn/file)  (zh)
+        - [text](file.md#anchor) -> [text](https://www.omnibox.pro/docs/file#anchor)  (en)
+        - [text](./file.md) -> [text](https://www.omnibox.pro/docs/zh-cn/file)
+        - External links (http/https) are preserved
+        - Images (![) are not converted
+        """
+        base_url = "https://www.omnibox.pro/docs"
+        lang_path = "/zh-cn" if lang_key == "zh" else ""
+
+        def replace_link(match):
+            full_text = match.group(0)
+            alt_text = match.group(1)
+            link_path = match.group(2)
+
+            # Skip external links
+            if link_path.startswith(('http://', 'https://', 'mailto:')):
+                return full_text
+
+            # Skip same-page anchor links
+            if link_path.startswith('#'):
+                return full_text
+
+            # Extract anchor if present
+            anchor = ''
+            if '#' in link_path:
+                link_path, anchor = link_path.split('#', 1)
+
+            # Clean up the path
+            if link_path.endswith('.md'):
+                link_path = link_path[:-3]
+
+            # Remove leading ./ or ../
+            link_path = link_path.lstrip('./')
+
+            # Handle index files
+            if link_path.endswith('index'):
+                link_path = link_path[:-5] or ''
+
+            # Build absolute URL
+            url_path = f"{base_url}{lang_path}"
+            if link_path:
+                url_path += f"/{link_path}"
+            if anchor:
+                url_path += f"#{anchor}"
+
+            return f"[{alt_text}]({url_path})"
+
+        # Regex pattern for markdown links (not images)
+        # Negative lookbehind to skip images: !\[
+        pattern = r'(?<!!)\[([^\]]+)\]\(([^)]+)\)'
+        return re.sub(pattern, replace_link, content)
+
     def get_function(self, tool: BaseTool, **kwargs) -> ResourceFunction:
         """Return a function that fetches product docs and returns ResourceToolResult."""
         lang = kwargs.get("lang", "简体中文")
@@ -89,6 +146,10 @@ class ProductDocsHandler(BaseResourceHandler):
             await self._ensure_init()
             lang_key = "zh" if lang == "简体中文" else "en"
             content = self._cache.get(lang_key, "")
+
+            # Convert internal markdown links to absolute URLs
+            if content:
+                content = self._convert_markdown_links(content, lang_key)
 
             if content:
                 return ResourceToolResult(
@@ -119,7 +180,8 @@ class ProductDocsHandler(BaseResourceHandler):
                 "description": (
                     "Get official OmniBox product documentation (pricing, features, plugins, usage). "
                     "Use this tool when users ask questions about the product itself. "
-                    "This tool requires NO parameters - call it with empty arguments: {}"
+                    "This tool requires NO parameters - call it with empty arguments: {}. "
+                    "Documentation links are provided as absolute URLs (e.g., https://www.omnibox.pro/docs/zh-cn/page-name)."
                 ),
                 "parameters": {
                     "type": "object",

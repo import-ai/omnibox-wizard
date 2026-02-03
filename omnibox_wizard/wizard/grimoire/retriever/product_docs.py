@@ -136,7 +136,49 @@ class ProductDocsHandler(BaseResourceHandler):
         # Regex pattern for markdown links (not images)
         # Negative lookbehind to skip images: !\[
         pattern = r'(?<!!)\[([^\]]+)\]\(([^)]+)\)'
-        return re.sub(pattern, replace_link, content)
+        content = re.sub(pattern, replace_link, content)
+
+        # Pattern 2: Handle double-bracket references [[file.md#section]]
+        # These are internal document references that LLM sometimes copies
+        def replace_bracket_ref(match):
+            ref = match.group(1)
+
+            # Skip external URLs
+            if ref.startswith(('http://', 'https://', 'mailto:')):
+                return match.group(0)
+
+            # Extract anchor if present
+            anchor = ''
+            if '#' in ref:
+                ref, anchor = ref.split('#', 1)
+
+            # Clean up the path
+            if ref.endswith('.md'):
+                ref = ref[:-3]
+            ref = ref.lstrip('./')
+
+            # Build display text (use anchor name or last path segment)
+            if anchor:
+                display_text = anchor.replace('-', ' ')
+            elif ref:
+                display_text = ref.split('/')[-1] or 'documentation'
+            else:
+                display_text = 'documentation'
+
+            # Build absolute URL
+            url_path = f"{base_url}{lang_path}"
+            if ref:
+                url_path += f"/{ref}"
+            if anchor:
+                url_path += f"#{anchor}"
+
+            return f"[{display_text}]({url_path})"
+
+        # Match [[...]] but not already converted markdown links
+        bracket_pattern = r'\[\[([^\]]+)\]\]'
+        content = re.sub(bracket_pattern, replace_bracket_ref, content)
+
+        return content
 
     def get_function(self, tool: BaseTool, **kwargs) -> ResourceFunction:
         """Return a function that fetches product docs and returns ResourceToolResult."""

@@ -197,9 +197,9 @@ class ProductDocsHandler(BaseResourceHandler):
                 return ResourceToolResult(
                     success=True,
                     data=ResourceInfo(
-                        id="product_docs",
-                        name="OmniBox Product Documentation",
-                        resource_type="doc",
+                        id=f"https://www.omnibox.pro/docs/{'zh-cn' if lang_key == 'zh' else 'en'}",
+                        name=f"{'OmniBox 产品文档' if lang_key == 'zh' else 'OmniBox Product Documentation'}",
+                        resource_type="link",
                         content=content,
                         updated_at=None,
                     ),

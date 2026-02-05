@@ -87,10 +87,14 @@ class ProductDocsHandler(BaseResourceHandler):
     def _remove_images(self, content: str) -> str:
         """Remove markdown image syntax from content.
 
-        Removes both ![alt](url) and ![alt](url "title") formats.
+        Removes:
+        - ![alt](url)
+        - ![alt](url "title")
+        - ![alt](url){width=...} and other attribute blocks
         """
-        # Pattern to match markdown images: ![alt](url) or ![alt](url "title")
-        image_pattern = r'!\[([^\]]*)\]\([^)]+\)'
+        # Pattern to match markdown images with optional attribute block
+        # Matches: ![alt](url) or ![alt](url "title") or ![alt](url){width=100}
+        image_pattern = r'!\[([^\]]*)\]\([^)]+\)(?:\{[^}]*\})?'
         return re.sub(image_pattern, '', content)
 
     def _convert_markdown_links(self, content: str, lang_key: str) -> str:
@@ -199,15 +203,12 @@ class ProductDocsHandler(BaseResourceHandler):
             if file_path.endswith('.md'):
                 file_path = file_path[:-3]
 
-            # Build display text (the path without .md)
-            display_text = file_path
-
             # Build absolute URL
             url_path = f"{base_url}{lang_path}"
             if file_path:
                 url_path += f"/{file_path}"
 
-            return f"# [{display_text}]({url_path})"
+            return f"# link:{url_path}"
 
         # Match lines that start with # followed by a .md file path
         # Examples: "# applications/qq-assistant.md" or "# browser-extension.md"

@@ -132,14 +132,10 @@ class WebSearchTool(BaseTool):
 
 
 # Resource tools - call backend API to get structured data
-# These tools use short IDs (e.g., r1, f1) that are mapped to real IDs via visible_resources
 
 
 class BaseResourceTool(BaseTool):
-    """Base class for resource tools with ID mapping support.
-
-    Accepts visible_resources and automatically generates short ID mappings.
-    Short ID format: 'r{n}' for resources, 'f{n}' for folders.
+    """Base class for resource tools with visible_resources support.
     """
 
     namespace_id: str

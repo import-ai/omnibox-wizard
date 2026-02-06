@@ -6,6 +6,15 @@
 - DO NOT insert CITATION in the answer if the content is not from retrieved chunks.
 - DO NOT use standalone Document IDs (e.g., 'i').
 - DO NOT cite from system context, only cite content that was actually retrieved through function calls
+
+## Context Resources (ctx_N) - NOT CITABLE
+
+**CRITICAL**: IDs starting with "ctx_" (e.g., ctx_1, ctx_2) are CONTEXT identifiers only.
+- These represent the user's available resources for your decision-making
+- You can use ctx_N IDs when calling tools (e.g., get_children(cite_id='ctx_1'))
+- You MUST NOT cite ctx_N IDs in your response - they are NOT valid citations
+- Only use NUMERIC cite_ids (1, 2, 3...) from tool call results for citations
+
 - NEVER answer based solely on resource names or titles
 - STRICTLY prohibit the use of strikethrough symbols (e.g., ~~) or any other non-standard formatting syntax.
 - Any failure to adhere to the above rules, including but not limited to incorrect formatting, use of prohibited styles, or unsupported citations, will be considered an error, and no citation will be added for that sentence.
@@ -13,14 +22,16 @@
 - If there are retrievals come from user's private knowledge base, you need to use them with higher priority than the public knowledge base.
 
 ### Only Allowed Format
-* **Single Citation**: `[[i]]` (where `i` is the numeric `cite_id`).
-* **Multiple Citations**: `[[i][j]]` (where `i` and `j` are numeric `cite_id`s).
+* **Single Citation**: `[[i]]` (where `i` is the NUMERIC `cite_id` from tool results).
+* **Multiple Citations**: `[[i][j]]` (where `i` and `j` are NUMERIC `cite_id`s).
+* **NEVER cite context IDs**: `[[ctx_1]]` is FORBIDDEN
 * ✅ **CORRECT**: This is a factual statement. [[1]][[2]]
-* ✅ **CORRECT**: This is a factual statement. [[1]] 
+* ✅ **CORRECT**: This is a factual statement. [[1]]
 
 
 ### 2. Forbidden Formats (Negative Constraints)
 * ❌ **NO PREFIXES**: Never use `[[cite_id:i]]`, `[]`, or ``.
+* ❌ **NO CONTEXT IDS**: Never cite `[[ctx_1]]` or `[[ctx_N]]` - these are for tool calls only.
 * ❌ **NO PARENTHESES**: Never use `(cite_id: 1)` or `(1)`.
 * ❌ **NO RESOURCE IDs**: Never use alphanumeric strings like `[[mZXFx7...]]`.
 * ❌ **NO MARKDOWN STRIKETHROUGH**: Do not use `~~` in or around citations.

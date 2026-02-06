@@ -220,13 +220,14 @@ class UserQueryPreprocessor:
     ) -> list[str]:
         """Parse visible_resources from resource tools and format for LLM context.
 
-        This provides the LLM with a list of available resources and their cite IDs,
+        This provides the LLM with a list of available resources and their context IDs,
         so it knows what folders/documents exist and can use the appropriate tools.
+        Context IDs (ctx_N format) are for tool calls only - NOT for citations.
 
         Args:
             options: The chat request options (may have serialized tools without visible_resources)
             original_tools: Original tools list with visible_resources populated (optional)
-            tool_executor: ToolExecutor instance for cite_id lookup (optional)
+            tool_executor: ToolExecutor instance for context_id lookup (optional)
         """
         tools_list = original_tools if original_tools is not None else (options.tools or [])
         tools = ToolDict(tools_list)
@@ -244,34 +245,41 @@ class UserQueryPreprocessor:
         folders = [r for r in visible_resources if r.type == "folder"]
         documents = [r for r in visible_resources if r.type == "resource"]
 
-        # Format for LLM with clear guidance
+        # Format for LLM with clear guidance about non-citability
         lines = [
             "<available_resources>",
-            "User's available folders and documents:",
+            "User's available folders and documents for reference:",
+            "",
+            "NOTE: Context IDs (ctx_N) are for TOOL CALLS ONLY - DO NOT cite them in your response.",
+            "Only cite NUMERIC IDs from tool call results.",
             "",
         ]
 
         if folders:
             lines.append("Folders:")
             for f in folders:
-                cite_id = tool_executor.get_cite_id(f.id) if tool_executor else f.id
-                lines.append(f"  - {cite_id}: {f.name}")
+                # Use get_context_id instead of get_cite_id
+                context_id = tool_executor.get_context_id(f.id) if tool_executor else f"ctx_{f.id}"
+                lines.append(f"  - {context_id}: {f.name}")
 
         if documents:
             lines.append("")
             lines.append("Documents:")
             for d in documents:
-                cite_id = tool_executor.get_cite_id(d.id) if tool_executor else d.id
-                lines.append(f"  - {cite_id}: {d.name}")
+                context_id = tool_executor.get_context_id(d.id) if tool_executor else f"ctx_{d.id}"
+                lines.append(f"  - {context_id}: {d.name}")
 
         lines.extend([
             "",
             "Tool Usage Guide:",
-            "- To see folder contents: get_children(cite_id) e.g., get_children('1')",
-            "- To read document content: get_resources([cite_ids]) e.g., get_resources(['1', '2'])",
+            "- To see folder contents: get_children(cite_id='ctx_1')",
+            "- To read document content: get_resources(cite_ids=['ctx_1', 'ctx_2'])",
             "- For time-based queries ('recent', 'this week'): use filter_by_time",
             "- For tag-based queries: use filter_by_tag",
             "- private_search is for keyword search across all documents",
+            "",
+            "IMPORTANT: After calling tools, use the NUMERIC cite_ids from results",
+            "for citations in your response, NOT the ctx_N IDs shown above.",
             "</available_resources>",
         ])
 

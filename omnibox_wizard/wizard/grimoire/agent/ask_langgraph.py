@@ -352,10 +352,10 @@ class AskLangGraph(BaseSearchableAgent):
                     for citation in msg.attrs.citations:
                         # citation.link is resource_id
                         tool_executor.register_resource_with_id(citation.link, citation.id)
-        # 2. Initialize cite_id for visible_resources
+        # 2. Initialize context_id for visible_resources (not citable by LLM)
         if private_search_tool and private_search_tool.visible_resources:
             for resource in private_search_tool.visible_resources:
-                tool_executor.register_resource(resource.id)
+                tool_executor.register_context_resource(resource.id)
 
         # Resource tools: product_docs is ALWAYS available (independent of private_search)
         # Other resource tools only when private_search is present

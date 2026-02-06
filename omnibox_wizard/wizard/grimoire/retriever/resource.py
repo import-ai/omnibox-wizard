@@ -47,7 +47,8 @@ class GetResourcesHandler(BaseResourceHandler):
 
     def get_function(self, tool: BaseResourceTool, tool_executor: "ToolExecutor" = None, **kwargs) -> ResourceFunction:
         async def _get_resources(cite_ids: list[str]) -> ResourceToolResult:
-            resource_ids = [tool_executor.resolve_cite_id(int(cid)) for cid in cite_ids]
+            # Support both ctx_N and numeric IDs
+            resource_ids = [tool_executor.resolve_any_id(cid) for cid in cite_ids]
             result = await self.client.get_resources(tool.namespace_id, resource_ids)
             return result
 
@@ -89,7 +90,8 @@ class GetChildrenHandler(BaseResourceHandler):
 
     def get_function(self, tool: BaseResourceTool, tool_executor: "ToolExecutor" = None, **kwargs) -> ResourceFunction:
         async def _get_children(cite_id: str, depth: int = 3) -> ResourceToolResult:
-            resource_id = tool_executor.resolve_cite_id(int(cite_id))
+            # Support both ctx_N and numeric IDs
+            resource_id = tool_executor.resolve_any_id(cite_id)
             result = await self.client.get_children(tool.namespace_id, resource_id, depth)
             # Set metadata_only mode to reduce token usage
             result.metadata_only = True
@@ -139,7 +141,8 @@ class GetParentHandler(BaseResourceHandler):
 
     def get_function(self, tool: BaseResourceTool, tool_executor: "ToolExecutor" = None, **kwargs) -> ResourceFunction:
         async def _get_parent(cite_id: str) -> ResourceToolResult:
-            resource_id = tool_executor.resolve_cite_id(int(cite_id))
+            # Support both ctx_N and numeric IDs
+            resource_id = tool_executor.resolve_any_id(cite_id)
             result = await self.client.get_parent(tool.namespace_id, resource_id)
             return result
 

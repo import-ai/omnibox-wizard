@@ -129,15 +129,24 @@ def resource_tool_wrapper(
 
 
 class ToolExecutor:
+    CONTEXT_PREFIX = "ctx_"
+
     def __init__(self, config: dict[str, ToolExecutorConfig]):
         self.config: dict[str, ToolExecutorConfig] = config
         self.tools: list[dict] = [config["schema"] for config in config.values()]
 
+        # For citable resources (tool call results) - numeric IDs starting from 1
         self._cite_to_resource: dict[int, str] = {}
         self._resource_to_cite: dict[str, int] = {}
         self._next_cite_id: int = 1
 
+        # For context/visible resources - prefixed IDs (not citable)
+        self._context_to_resource: dict[str, str] = {}  # "ctx_1" -> resource_id
+        self._resource_to_context: dict[str, str] = {}  # resource_id -> "ctx_1"
+        self._next_context_id: int = 1
+
     def register_resource(self, resource_id: str) -> int:
+        """Register a resource from tool call results - assigns numeric cite_id."""
         if resource_id in self._resource_to_cite:
             return self._resource_to_cite[resource_id]
 
@@ -160,6 +169,34 @@ class ToolExecutor:
 
     def get_cite_id(self, resource_id: str) -> int | None:
         return self._resource_to_cite.get(resource_id)
+
+    def register_context_resource(self, resource_id: str) -> str:
+        """Register a visible/context resource - assigns prefixed ID (not citable)."""
+        if resource_id in self._resource_to_context:
+            return self._resource_to_context[resource_id]
+
+        context_id = f"{self.CONTEXT_PREFIX}{self._next_context_id}"
+        self._next_context_id += 1
+        self._context_to_resource[context_id] = resource_id
+        self._resource_to_context[resource_id] = context_id
+        return context_id
+
+    def get_context_id(self, resource_id: str) -> str | None:
+        """Get the context ID for a visible resource."""
+        return self._resource_to_context.get(resource_id)
+
+    def resolve_context_id(self, context_id: str) -> str:
+        """Resolve a context ID (e.g., 'ctx_1') to resource_id."""
+        if context_id not in self._context_to_resource:
+            raise ValueError(f"Unknown context_id: {context_id}")
+        return self._context_to_resource[context_id]
+
+    def resolve_any_id(self, id_str: str) -> str:
+        """Resolve either a context ID (ctx_N) or cite ID (N) to resource_id."""
+        if isinstance(id_str, str) and id_str.startswith(self.CONTEXT_PREFIX):
+            return self.resolve_context_id(id_str)
+        else:
+            return self.resolve_cite_id(int(id_str))
 
     async def astream(
         self,

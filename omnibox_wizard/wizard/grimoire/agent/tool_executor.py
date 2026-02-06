@@ -198,6 +198,12 @@ class ToolExecutor:
         else:
             return self.resolve_cite_id(int(id_str))
 
+    def get_next_cite_id(self) -> int:
+        """Get next incremental cite_id (for chunk-level citation in search tools)."""
+        cite_id = self._next_cite_id
+        self._next_cite_id += 1
+        return cite_id
+
     async def astream(
         self,
         message_dtos: list[MessageDto],
@@ -253,10 +259,9 @@ class ToolExecutor:
                         assert all(isinstance(r, BaseRetrieval) for r in result), (
                             f"Expected all items to be BaseRetrieval, got {[type(r) for r in result]}"
                         )
-                        # Use ToolExecutor registry to assign cite_id (unified with resource tools)
+                        # Assign unique incremental cite_id to each retrieval (chunk-level citation)
                         for r in result:
-                            citation = r.to_citation()
-                            cite_id = self.register_resource(citation.link)
+                            cite_id = self.get_next_cite_id()
                             r.id = cite_id
                         message_dto: MessageDto = retrieval_wrapper(
                             tool_call_id=tool_call_id, retrievals=result

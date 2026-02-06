@@ -50,7 +50,10 @@ def retrieval_wrapper(tool_call_id: str, retrievals: list[BaseRetrieval]) -> Mes
                 "content": content,
             },
             "attrs": {
-                "citations": [retrieval.to_citation() for retrieval in retrievals]
+                "citations": sorted(
+                    [retrieval.to_citation() for retrieval in retrievals],
+                    key=lambda c: c.id
+                )
             },
         }
     )
@@ -123,7 +126,7 @@ def resource_tool_wrapper(
                 "tool_call_id": tool_call_id,
                 "content": content,
             },
-            "attrs": {"citations": citations} if citations else None,
+            "attrs": {"citations": sorted(citations, key=lambda c: c.id)} if citations else None,
         }
     )
 

@@ -32,6 +32,7 @@
 ### 2. Forbidden Formats (Negative Constraints)
 * ❌ **NO PREFIXES**: Never use `[[cite_id:i]]`, `[]`, or ``.
 * ❌ **NO CONTEXT IDS**: Never cite `[[ctx_1]]` or `[[ctx_N]]` - these are for tool calls only.
-* ❌ **NO PARENTHESES**: Never use `(cite_id: 1)` or `(1)`.
-* ❌ **NO RESOURCE IDs**: Never use alphanumeric strings like `[[mZXFx7...]]`.
+* ❌ **NO PARENTHESES**: Never use `(cite_id: 1)`, `(1)`, or `（cite_id: 1, 2, 3）`.
+* ❌ **NO INLINE ID LISTS**: Never write `cite_id: 1, 2, 3` or list IDs inline in text.
+* ❌ **NO MENTIONING ctx_N IN TEXT**: Never mention `ctx_N` IDs in your response text (e.g., "ctx_3 和 ctx_14").
 * ❌ **NO MARKDOWN STRIKETHROUGH**: Do not use `~~` in or around citations.

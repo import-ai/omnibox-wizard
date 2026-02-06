@@ -278,8 +278,10 @@ class UserQueryPreprocessor:
             "- For tag-based queries: use filter_by_tag",
             "- private_search is for keyword search across all documents",
             "",
-            "IMPORTANT: After calling tools, use the NUMERIC cite_ids from results",
-            "for citations in your response, NOT the ctx_N IDs shown above.",
+            "CRITICAL RULES:",
+            "- Use NUMERIC cite_ids (1, 2, 3...) from tool results for [[i]] citations",
+            "- NEVER mention ctx_N IDs in your response text",
+            "- NEVER write formats like '(cite_id: 1, 2, 3)' or 'ctx_3 和 ctx_14'",
             "</available_resources>",
         ])
 

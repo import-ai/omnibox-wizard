@@ -32,16 +32,16 @@ class ProductDocsHandler(BaseResourceHandler):
 
     def __init__(self, github_token: str | None = None):
         self.github_token = github_token
-        self._cache: dict[str, str] = {"zh": "", "en": ""}
+        self._cache: dict[str, list[dict]] = {"zh": [], "en": []}
         self._initialized = False
 
-    async def _fetch_all(self, path: str) -> str:
-        """Recursively fetch all .md files from a directory and combine."""
+    async def _fetch_all(self, path: str) -> list[dict]:
+        """Recursively fetch all .md files from a directory and return as list."""
         headers = {"Accept": "application/vnd.github.v3+json"}
         if self.github_token:
             headers["Authorization"] = f"token {self.github_token}"
 
-        contents = []
+        files = []
 
         async def fetch(client, repo_path):
             try:
@@ -62,7 +62,7 @@ class ProductDocsHandler(BaseResourceHandler):
                         content = base64.b64decode(f.json()["content"]).decode("utf-8")
                         # Use relative path from docs/lang/ directory
                         relative_path = item['path'].replace(f"docs/{path.split('/')[-1]}/", "")
-                        contents.append(f"\n\n# {relative_path}\n\n{content}")
+                        files.append({"path": relative_path, "content": content})
                     elif item.get("type") == "dir":
                         await fetch(client, item["path"])
             except Exception as e:
@@ -70,7 +70,7 @@ class ProductDocsHandler(BaseResourceHandler):
 
         async with httpx.AsyncClient(base_url=GITHUB_API, timeout=30.0) as client:
             await fetch(client, path)
-        return "\n".join(contents)
+        return files
 
     async def _ensure_init(self):
         """Initialize cache by fetching both language versions in parallel."""
@@ -217,6 +217,23 @@ class ProductDocsHandler(BaseResourceHandler):
 
         return content
 
+    def _extract_name_from_content(self, content: str) -> str:
+        """Extract name from first line of content (typically markdown title)."""
+        first_line = content.strip().split('\n')[0] if content else ""
+        # Remove leading # and whitespace
+        return first_line.lstrip('#').strip() or ""
+
+    def _build_resource_url(self, file_path: str, lang_key: str) -> str:
+        """Build resource URL from file path and language."""
+        base_url = "https://www.omnibox.pro/docs"
+        lang_path = "/zh-cn" if lang_key == "zh" else ""
+
+        # Remove .md extension
+        if file_path.endswith('.md'):
+            file_path = file_path[:-3]
+
+        return f"{base_url}{lang_path}/{file_path}"
+
     def get_function(self, tool: BaseTool, **kwargs) -> ResourceFunction:
         """Return a function that fetches product docs and returns ResourceToolResult."""
         lang = kwargs.get("lang", "简体中文")
@@ -224,28 +241,38 @@ class ProductDocsHandler(BaseResourceHandler):
         async def _product_docs() -> ResourceToolResult:
             await self._ensure_init()
             lang_key = "zh" if lang == "简体中文" else "en"
-            content = self._cache.get(lang_key, "")
+            files = self._cache.get(lang_key, [])
 
-            # Remove images, then convert internal markdown links to absolute URLs
-            if content:
+            if not files:
+                return ResourceToolResult(
+                    success=False,
+                    error="Failed to fetch product documentation."
+                )
+
+            resources = []
+            for file_info in files:
+                file_path = file_info["path"]
+                content = file_info["content"]
+
+                # Process content
                 content = self._remove_images(content)
                 content = self._convert_markdown_links(content, lang_key)
-                content = f"{'# *OmniBox 产品文档*' if lang_key == 'zh' else '# *OmniBox Product Documentation*'}\n\n{content}"
 
-            if content:
-                return ResourceToolResult(
-                    success=True,
-                    data=ResourceInfo(
-                        id=f"https://www.omnibox.pro/docs/{'zh-cn' if lang_key == 'zh' else 'en'}",
-                        name=f"{'OmniBox 产品文档' if lang_key == 'zh' else 'OmniBox Product Documentation'}",
-                        resource_type="link",
-                        content=content,
-                        updated_at=None,
-                    ),
-                )
+                # Build ResourceInfo
+                name = self._extract_name_from_content(content)
+                resource_id = self._build_resource_url(file_path, lang_key)
+
+                resources.append(ResourceInfo(
+                    id=resource_id,
+                    name=name,
+                    resource_type="link",
+                    content=content,
+                    updated_at=None,
+                ))
+
             return ResourceToolResult(
-                success=False,
-                error="Failed to fetch product documentation."
+                success=True,
+                data=resources,
             )
 
         return _product_docs

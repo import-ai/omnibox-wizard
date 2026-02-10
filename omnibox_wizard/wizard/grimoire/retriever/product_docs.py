@@ -275,6 +275,7 @@ class ProductDocsHandler(BaseResourceHandler):
                     "properties": {},
                     "required": [],
                 },
+                "once_only": True,  # Mark as once-only tool - returns complete static snapshot
             },
         }
 

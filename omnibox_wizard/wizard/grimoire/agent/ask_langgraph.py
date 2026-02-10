@@ -136,6 +136,41 @@ def _parse_custom_tool_calls(tool_calls_buffer: str) -> list[dict]:
     return tool_calls
 
 
+def _extract_called_tools_from_messages(messages: list[MessageDto]) -> set[str]:
+    """Extract names of tools that have already been called from message history.
+
+    Scans through messages to find assistant messages with tool_calls and their
+    corresponding tool results, tracking which tools have been executed.
+    """
+    called_tools = set()
+
+    # Track tool_call_ids that have been responded to with tool results
+    completed_tool_calls = set()
+
+    for msg in messages:
+        message = msg.message
+
+        # Check for assistant messages with tool_calls
+        if message.get("role") == "assistant" and message.get("tool_calls"):
+            for tc in message["tool_calls"]:
+                tool_name = tc.get("function", {}).get("name")
+                tool_call_id = tc.get("id")
+                if tool_name and tool_call_id:
+                    # Store for later verification
+                    completed_tool_calls.add((tool_call_id, tool_name))
+
+        # Check for tool responses that match our tracked tool_calls
+        elif message.get("role") == "tool":
+            tool_call_id = message.get("tool_call_id")
+            # Find the matching tool call and mark it as completed
+            for tc_id, tool_name in list(completed_tool_calls):
+                if tc_id == tool_call_id:
+                    called_tools.add(tool_name)
+                    completed_tool_calls.discard((tc_id, tool_name))
+
+    return called_tools
+
+
 # ============== Nodes ==============
 async def call_llm(state: AgentState, config: RunnableConfig) -> dict:
     """Call LLM with streaming output."""
@@ -165,7 +200,15 @@ async def call_llm(state: AgentState, config: RunnableConfig) -> dict:
                 kwargs["extra_body"] = {"enable_thinking": agent_request.enable_thinking}
 
         if tool_executor and tool_executor.tools and not custom_tool_call:
-            kwargs["tools"] = tool_executor.tools
+            # Filter out once-only tools that have already been called
+            called_tools = _extract_called_tools_from_messages(messages)
+            filtered_tools = [
+                t for t in tool_executor.tools
+                if not (t.get("function", {}).get("once_only") and
+                        t.get("function", {}).get("name") in called_tools)
+            ]
+            if filtered_tools:
+                kwargs["tools"] = filtered_tools
 
         # Prepare headers
         headers = {}
@@ -492,8 +535,12 @@ class AskLangGraph(BaseSearchableAgent):
             # Run graph in background
             async def run_graph():
                 try:
+                    # Prepare initial state
+                    initial_state: AgentState = {
+                        "messages": initial_messages,
+                    }
                     await self.graph.ainvoke(
-                        {"messages": initial_messages},
+                        initial_state,
                         config={
                             "configurable": {
                                 "queue": queue,

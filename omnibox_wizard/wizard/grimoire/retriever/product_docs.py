@@ -267,7 +267,8 @@ class ProductDocsHandler(BaseResourceHandler):
                     "Get official OmniBox product documentation (pricing, features, plugins, usage). "
                     "Use this tool when users ask questions about the product itself. "
                     "This tool requires NO parameters - call it with empty arguments: {}. "
-                    "Documentation links are provided as absolute URLs (e.g., https://www.omnibox.pro/docs/zh-cn/page-name)."
+                    "IMPORTANT: This tool returns a COMPLETE snapshot of ALL documentation. "
+                    "Once called, DO NOT call again."
                 ),
                 "parameters": {
                     "type": "object",

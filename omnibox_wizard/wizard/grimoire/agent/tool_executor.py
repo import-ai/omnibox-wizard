@@ -207,6 +207,31 @@ class ToolExecutor:
         self._next_cite_id += 1
         return cite_id
 
+    def _is_tool_already_called(self, function_name: str, message_dtos: list[MessageDto]) -> bool:
+        """Check if a tool has already been called in the message history."""
+        # Track tool_call_ids that have been responded to with tool results
+        completed_tool_calls = set()
+
+        for msg in message_dtos:
+            message = msg.message
+
+            # Check for assistant messages with tool_calls
+            if message.get("role") == "assistant" and message.get("tool_calls"):
+                for tc in message["tool_calls"]:
+                    name = tc.get("function", {}).get("name")
+                    tc_id = tc.get("id")
+                    if name and tc_id:
+                        completed_tool_calls.add((tc_id, name))
+
+            # Check for tool responses that match our tracked tool_calls
+            elif message.get("role") == "tool":
+                tc_id = message.get("tool_call_id")
+                for call_id, name in list(completed_tool_calls):
+                    if call_id == tc_id and name == function_name:
+                        return True
+
+        return False
+
     async def astream(
         self,
         message_dtos: list[MessageDto],
@@ -245,8 +270,59 @@ class ToolExecutor:
                                 }
                             )
                             func = self.config[function_name]["func"]
-                            result = await func(**function_args)
-                            logger.info({"result": model_dump(result)})
+
+                            # Check if this is a once_only tool that has already been called
+                            schema = self.config[function_name].get("schema", {})
+                            function_schema = schema.get("function", {})
+                            if function_schema.get("once_only"):
+                                if self._is_tool_already_called(function_name, message_dtos):
+                                    # Return a hint message instead of executing
+                                    hint_content = jsonlib.dumps({
+                                        "success": False,
+                                        "error": f"Tool '{function_name}' has already been called. Please refer to the previous result in the message history.",
+                                        "hint": f"This tool is marked as 'once_only' and returns complete results in a single call. Please review the previous tool response for '{function_name}' in the conversation history."
+                                    }, ensure_ascii=False, indent=2)
+                                    hint_message_dto = MessageDto.model_validate({
+                                        "message": {
+                                            "role": "tool",
+                                            "tool_call_id": tool_call_id,
+                                            "content": hint_content,
+                                        },
+                                        "attrs": None,
+                                    })
+                                    yield ChatDeltaResponse.model_validate(
+                                        hint_message_dto.model_dump(exclude_none=True)
+                                    )
+                                    yield hint_message_dto
+                                    yield ChatEOSResponse()
+                                    continue
+
+                            try:
+                                result = await func(**function_args)
+                                logger.info({"result": model_dump(result)})
+                            except Exception as e:
+                                func_span.record_exception(e)
+                                logger.error({"error": str(e)})
+                                # Create error result as MessageDto to return to LLM
+                                error_content = jsonlib.dumps({
+                                    "success": False,
+                                    "error": f"Tool execution failed: {str(e)}",
+                                    "hint": "The tool encountered an error. You may try again with different parameters or use a different approach."
+                                }, ensure_ascii=False, indent=2)
+                                error_message_dto = MessageDto.model_validate({
+                                    "message": {
+                                        "role": "tool",
+                                        "tool_call_id": tool_call_id,
+                                        "content": error_content,
+                                    },
+                                    "attrs": None,
+                                })
+                                yield ChatDeltaResponse.model_validate(
+                                    error_message_dto.model_dump(exclude_none=True)
+                                )
+                                yield error_message_dto
+                                yield ChatEOSResponse()
+                                continue
                     else:
                         logger.error({"message": "Unknown function"})
                         raise ValueError(f"Unknown function: {function_name}")

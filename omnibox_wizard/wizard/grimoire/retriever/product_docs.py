@@ -196,10 +196,17 @@ class ProductDocsHandler(BaseResourceHandler):
         return content
 
     def _extract_name_from_content(self, content: str) -> str:
-        """Extract name from first line of content (typically markdown title)."""
-        first_line = content.strip().split('\n')[0] if content else ""
-        # Remove leading # and whitespace
-        return first_line.lstrip('#').strip() or ""
+        """Extract name from first markdown heading (# title) in content."""
+        default_name = "OmniBox Product Documentation"
+        if not content:
+            return default_name
+        # Find first line starting with #
+        for line in content.split('\n'):
+            stripped = line.strip()
+            if stripped.startswith('# '):
+                # Remove leading # and whitespace
+                return stripped.lstrip('#').strip()
+        return default_name
 
     def _build_resource_url(self, file_path: str, lang_key: str) -> str:
         """Build resource URL from file path and language."""

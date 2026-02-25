@@ -3,6 +3,7 @@ import os
 import httpx
 from bs4 import BeautifulSoup
 from opentelemetry import trace
+from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 from pydantic import BaseModel
 
 from common.trace_info import TraceInfo
@@ -76,6 +77,7 @@ class CollectUrlFunction(BaseFunction):
             async with httpx.AsyncClient(
                 base_url=self.scrape_base_url, timeout=self.timeout * 2 + 3
             ) as client:
+                HTTPXClientInstrumentor.instrument_client(client)
                 response = await client.post("/api/v1/scrape", json={"url": url})
                 assert response.is_success, response.text
                 json_response: dict = response.json()

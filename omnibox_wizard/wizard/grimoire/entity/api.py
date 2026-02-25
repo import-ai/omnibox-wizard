@@ -3,7 +3,17 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from omnibox_wizard.wizard.grimoire.entity.retrieval import Citation
-from omnibox_wizard.wizard.grimoire.entity.tools import PrivateSearchTool, WebSearchTool
+from omnibox_wizard.wizard.grimoire.entity.tools import (
+    PrivateSearchTool,
+    WebSearchTool,
+    ProductDocsTool,
+    GetResourcesTool,
+    GetChildrenTool,
+    GetParentTool,
+    FilterByTimeTool,
+    FilterByTagTool,
+    FilterByKeywordTool,
+)
 
 
 class BaseChatRequest(BaseModel):
@@ -11,7 +21,17 @@ class BaseChatRequest(BaseModel):
 
 
 class ChatRequestOptions(BaseModel):
-    tools: list[PrivateSearchTool | WebSearchTool] | None = Field(default=None)
+    tools: list[
+        PrivateSearchTool
+        | WebSearchTool
+        | ProductDocsTool
+        | GetResourcesTool
+        | GetChildrenTool
+        | GetParentTool
+        | FilterByTimeTool
+        | FilterByTagTool
+        | FilterByKeywordTool
+    ] | None = Field(default=None)
     enable_thinking: bool | None = Field(default=None)
     merge_search: bool | None = Field(
         default=None, description="Whether to merge search results from multiple tools."

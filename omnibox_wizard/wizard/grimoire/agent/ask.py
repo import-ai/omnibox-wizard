@@ -1,7 +1,4 @@
-from omnibox_wizard.wizard.config import Config
-from omnibox_wizard.wizard.grimoire.agent.agent import Agent
+from omnibox_wizard.wizard.grimoire.agent.ask_langgraph import AskLangGraph
 
-
-class Ask(Agent):
-    def __init__(self, config: Config):
-        super().__init__(config=config, system_prompt_template_name="ask.j2")
+# Use LangGraph implementation
+Ask = AskLangGraph

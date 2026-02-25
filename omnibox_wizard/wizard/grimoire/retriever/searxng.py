@@ -119,4 +119,5 @@ class SearXNG(BaseRetriever):
         return cls.generate_schema(
             "web_search",
             'Search the web for public information. Return in <cite id=""></cite> format.',
+            display_name={"zh": "网络搜索", "en": "Web Search"},
         )

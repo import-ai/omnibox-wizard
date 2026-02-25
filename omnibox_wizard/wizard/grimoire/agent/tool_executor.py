@@ -14,11 +14,16 @@ from omnibox_wizard.wizard.grimoire.entity.api import (
     MessageDto,
 )
 from omnibox_wizard.wizard.grimoire.entity.chunk import ResourceChunkRetrieval
+from omnibox_wizard.wizard.grimoire.entity.resource import ResourceInfo, ResourceToolResult
 from omnibox_wizard.wizard.grimoire.entity.retrieval import (
     BaseRetrieval,
     retrievals2prompt,
 )
-from omnibox_wizard.wizard.grimoire.entity.tools import ToolExecutorConfig
+from omnibox_wizard.wizard.grimoire.entity.tools import (
+    RESOURCE_TOOLS,
+    SEARCH_TOOLS,
+    ToolExecutorConfig,
+)
 from omnibox_wizard.wizard.grimoire.retriever.searxng import SearXNGRetrieval
 
 tracer = trace.get_tracer(__name__)
@@ -45,23 +50,187 @@ def retrieval_wrapper(tool_call_id: str, retrievals: list[BaseRetrieval]) -> Mes
                 "content": content,
             },
             "attrs": {
-                "citations": [retrieval.to_citation() for retrieval in retrievals]
+                "citations": sorted(
+                    [retrieval.to_citation() for retrieval in retrievals],
+                    key=lambda c: c.id
+                )
             },
         }
     )
 
 
-def get_citation_cnt(messages: list[MessageDto]) -> int:
-    return sum(
-        len(message.attrs.citations) if message.attrs and message.attrs.citations else 0
-        for message in messages
+def resource_tool_wrapper(
+    tool_call_id: str,
+    result: ResourceToolResult,
+    tool_executor: "ToolExecutor",
+) -> MessageDto:
+    """Wrap resource tool result as MessageDto with citations."""
+    citations = result.to_citations()
+
+    # Register cite_id for each resource (dynamically assigned)
+    for citation in citations:
+        resource_id = citation.link
+        cite_id = tool_executor.register_resource(resource_id)
+        citation.id = cite_id
+
+    # Build content with cite_id injected for each resource (remove resource_id)
+    content_dict = jsonlib.loads(result.to_tool_content())
+    if content_dict.get("data"):
+        data = content_dict["data"]
+        if isinstance(data, list):
+            for i, item in enumerate(data):
+                # remove resource_id, use cite_id (put cite_id first for better LLM visibility)
+                if "resource_id" in item:
+                    resource_id = item.pop("resource_id")
+                    cite_id = tool_executor.get_cite_id(resource_id)
+                    # Put cite_id at the beginning of the dict
+                    data[i] = {"cite_id": cite_id, **item}
+                    item = data[i]
+                    # if "name" in item:
+                    #     item["name"] = f"[{cite_id}] {item['name']}"
+                # Add summary field in metadata_only mode
+                if result.metadata_only and isinstance(item, dict) and "resource_type" in item:
+                    # Find the corresponding ResourceInfo to get summary
+                    if result.data and i < len(result.data):
+                        resource_info = result.data[i]
+                        if hasattr(resource_info, 'summary'):
+                            item["summary"] = resource_info.summary
+        elif isinstance(data, dict):
+            # remove resource_id, use cite_id (put cite_id first for better LLM visibility)
+            if "resource_id" in data:
+                resource_id = data.pop("resource_id")
+                cite_id = tool_executor.get_cite_id(resource_id)
+                # Put cite_id at the beginning of the dict
+                content_dict["data"] = {"cite_id": cite_id, **data}
+                data = content_dict["data"]
+                # Add cite_id prefix to name for better LLM visibility
+                # if "name" in data:
+                #     data["name"] = f"[{cite_id}] {data['name']}"
+            # Add summary field in metadata_only mode
+            if result.metadata_only and "resource_type" in data:
+                if result.data:
+                    if isinstance(result.data, ResourceInfo):
+                        resource_info = result.data
+                    elif isinstance(result.data, list) and len(result.data) > 0:
+                        resource_info = result.data[0]
+                    else:
+                        resource_info = None
+                    if resource_info and hasattr(resource_info, 'summary'):
+                        data["summary"] = resource_info.summary
+    content = jsonlib.dumps(content_dict, ensure_ascii=False, indent=2)
+
+    return MessageDto.model_validate(
+        {
+            "message": {
+                "role": "tool",
+                "tool_call_id": tool_call_id,
+                "content": content,
+            },
+            "attrs": {"citations": sorted(citations, key=lambda c: c.id)} if citations else None,
+        }
     )
 
 
 class ToolExecutor:
+    CONTEXT_PREFIX = "ctx_"
+
     def __init__(self, config: dict[str, ToolExecutorConfig]):
         self.config: dict[str, ToolExecutorConfig] = config
         self.tools: list[dict] = [config["schema"] for config in config.values()]
+
+        # For citable resources (tool call results) - numeric IDs starting from 1
+        self._cite_to_resource: dict[int, str] = {}
+        self._resource_to_cite: dict[str, int] = {}
+        self._next_cite_id: int = 1
+
+        # For context/visible resources - prefixed IDs (not citable)
+        self._context_to_resource: dict[str, str] = {}  # "ctx_1" -> resource_id
+        self._resource_to_context: dict[str, str] = {}  # resource_id -> "ctx_1"
+        self._next_context_id: int = 1
+
+    def register_resource(self, resource_id: str) -> int:
+        """Register a resource from tool call results - assigns numeric cite_id."""
+        if resource_id in self._resource_to_cite:
+            return self._resource_to_cite[resource_id]
+
+        cite_id = self._next_cite_id
+        self._next_cite_id += 1
+        self._cite_to_resource[cite_id] = resource_id
+        self._resource_to_cite[resource_id] = cite_id
+        return cite_id
+
+    def register_resource_with_id(self, resource_id: str, cite_id: int) -> None:
+        self._cite_to_resource[cite_id] = resource_id
+        self._resource_to_cite[resource_id] = cite_id
+        if cite_id >= self._next_cite_id:
+            self._next_cite_id = cite_id + 1
+
+    def resolve_cite_id(self, cite_id: int) -> str:
+        if cite_id not in self._cite_to_resource:
+            raise ValueError(f"Unknown cite_id: {cite_id}")
+        return self._cite_to_resource[cite_id]
+
+    def get_cite_id(self, resource_id: str) -> int | None:
+        return self._resource_to_cite.get(resource_id)
+
+    def register_context_resource(self, resource_id: str) -> str:
+        """Register a visible/context resource - assigns prefixed ID (not citable)."""
+        if resource_id in self._resource_to_context:
+            return self._resource_to_context[resource_id]
+
+        context_id = f"{self.CONTEXT_PREFIX}{self._next_context_id}"
+        self._next_context_id += 1
+        self._context_to_resource[context_id] = resource_id
+        self._resource_to_context[resource_id] = context_id
+        return context_id
+
+    def get_context_id(self, resource_id: str) -> str | None:
+        """Get the context ID for a visible resource."""
+        return self._resource_to_context.get(resource_id)
+
+    def resolve_context_id(self, context_id: str) -> str:
+        """Resolve a context ID (e.g., 'ctx_1') to resource_id."""
+        if context_id not in self._context_to_resource:
+            raise ValueError(f"Unknown context_id: {context_id}")
+        return self._context_to_resource[context_id]
+
+    def resolve_any_id(self, id_str: str) -> str:
+        """Resolve either a context ID (ctx_N) or cite ID (N) to resource_id."""
+        if isinstance(id_str, str) and id_str.startswith(self.CONTEXT_PREFIX):
+            return self.resolve_context_id(id_str)
+        else:
+            return self.resolve_cite_id(int(id_str))
+
+    def get_next_cite_id(self) -> int:
+        """Get next incremental cite_id (for chunk-level citation in search tools)."""
+        cite_id = self._next_cite_id
+        self._next_cite_id += 1
+        return cite_id
+
+    def _is_tool_already_called(self, function_name: str, message_dtos: list[MessageDto]) -> bool:
+        """Check if a tool has already been called in the message history."""
+        # Track tool_call_ids that have been responded to with tool results
+        completed_tool_calls = set()
+
+        for msg in message_dtos:
+            message = msg.message
+
+            # Check for assistant messages with tool_calls
+            if message.get("role") == "assistant" and message.get("tool_calls"):
+                for tc in message["tool_calls"]:
+                    name = tc.get("function", {}).get("name")
+                    tc_id = tc.get("id")
+                    if name and tc_id:
+                        completed_tool_calls.add((tc_id, name))
+
+            # Check for tool responses that match our tracked tool_calls
+            elif message.get("role") == "tool":
+                tc_id = message.get("tool_call_id")
+                for call_id, name in list(completed_tool_calls):
+                    if call_id == tc_id and name == function_name:
+                        return True
+
+        return False
 
     async def astream(
         self,
@@ -101,27 +270,93 @@ class ToolExecutor:
                                 }
                             )
                             func = self.config[function_name]["func"]
-                            result = await func(**function_args)
-                            logger.info({"result": model_dump(result)})
+
+                            # Check if this is a once_only tool that has already been called
+                            schema = self.config[function_name].get("schema", {})
+                            function_schema = schema.get("function", {})
+                            if function_schema.get("once_only"):
+                                if self._is_tool_already_called(function_name, message_dtos):
+                                    # Return a hint message instead of executing
+                                    hint_content = jsonlib.dumps({
+                                        "success": False,
+                                        "error": f"Tool '{function_name}' has already been called. Please refer to the previous result in the message history.",
+                                        "hint": f"This tool is marked as 'once_only' and returns complete results in a single call. Please review the previous tool response for '{function_name}' in the conversation history."
+                                    }, ensure_ascii=False, indent=2)
+                                    hint_message_dto = MessageDto.model_validate({
+                                        "message": {
+                                            "role": "tool",
+                                            "tool_call_id": tool_call_id,
+                                            "content": hint_content,
+                                        },
+                                        "attrs": None,
+                                    })
+                                    yield ChatDeltaResponse.model_validate(
+                                        hint_message_dto.model_dump(exclude_none=True)
+                                    )
+                                    yield hint_message_dto
+                                    yield ChatEOSResponse()
+                                    continue
+
+                            try:
+                                result = await func(**function_args)
+                                logger.info({"result": model_dump(result)})
+                            except Exception as e:
+                                func_span.record_exception(e)
+                                logger.error({"error": str(e)})
+                                # Create error result as MessageDto to return to LLM
+                                error_content = jsonlib.dumps({
+                                    "success": False,
+                                    "error": f"Tool execution failed: {str(e)}",
+                                    "hint": "The tool encountered an error. You may try again with different parameters or use a different approach."
+                                }, ensure_ascii=False, indent=2)
+                                error_message_dto = MessageDto.model_validate({
+                                    "message": {
+                                        "role": "tool",
+                                        "tool_call_id": tool_call_id,
+                                        "content": error_content,
+                                    },
+                                    "attrs": None,
+                                })
+                                yield ChatDeltaResponse.model_validate(
+                                    error_message_dto.model_dump(exclude_none=True)
+                                )
+                                yield error_message_dto
+                                yield ChatEOSResponse()
+                                continue
                     else:
                         logger.error({"message": "Unknown function"})
                         raise ValueError(f"Unknown function: {function_name}")
 
-                    if function_name.endswith("search"):
-                        current_cite_cnt: int = get_citation_cnt(message_dtos)
+                    if (
+                        function_name in SEARCH_TOOLS
+                        or function_name.endswith("search")
+                    ):
+                        # Search tool: result is list[BaseRetrieval], needs citation processing
                         assert isinstance(result, list), (
                             f"Expected list of retrievals, got {type(result)}"
                         )
                         assert all(isinstance(r, BaseRetrieval) for r in result), (
                             f"Expected all items to be BaseRetrieval, got {[type(r) for r in result]}"
                         )
-                        for i, r in enumerate(result):
-                            r.id = current_cite_cnt + i + 1
+                        # Assign unique incremental cite_id to each retrieval (chunk-level citation)
+                        for r in result:
+                            cite_id = self.get_next_cite_id()
+                            r.id = cite_id
                         message_dto: MessageDto = retrieval_wrapper(
                             tool_call_id=tool_call_id, retrievals=result
                         )
+                    elif function_name in RESOURCE_TOOLS:
+                        # Resource tool: result is ResourceToolResult, format as JSON with citations
+                        assert isinstance(result, ResourceToolResult), (
+                            f"Expected ResourceToolResult, got {type(result)}"
+                        )
+                        message_dto: MessageDto = resource_tool_wrapper(
+                            tool_call_id=tool_call_id,
+                            result=result,
+                            tool_executor=self,
+                        )
                     else:
-                        raise ValueError(f"Unknown function: {function_name}")
+                        raise ValueError(f"Unknown function type: {function_name}")
 
                     yield ChatDeltaResponse.model_validate(
                         message_dto.model_dump(exclude_none=True)

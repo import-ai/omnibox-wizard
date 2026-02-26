@@ -12,8 +12,9 @@ from common.config_loader import Loader
 from common.logger import get_logger
 from common.trace_info import TraceInfo
 from omnibox_wizard.wizard.api.server import app
-from omnibox_wizard.wizard.config import Config, ENV_PREFIX
+from omnibox_wizard.wizard.config import ENV_PREFIX
 from omnibox_wizard.worker.config import WorkerConfig
+from wizard_common.grimoire.config import GrimoireAgentConfig
 from omnibox_wizard.worker.worker import Worker
 from tests.omnibox_wizard.helper.backend_client import BackendClient
 from tests.omnibox_wizard.helper.meilisearch_container import MeiliSearchContainer
@@ -69,9 +70,9 @@ async def base_url() -> str:
 
 
 @pytest.fixture(scope="function")
-def config(meilisearch_endpoint: str) -> Config:
+def config(meilisearch_endpoint: str) -> GrimoireAgentConfig:
     load_dotenv()
-    loader = Loader(Config, env_prefix=ENV_PREFIX)
+    loader = Loader(GrimoireAgentConfig, env_prefix=ENV_PREFIX)
     config = loader.load()
     yield config
 
@@ -85,9 +86,9 @@ def worker_config(meilisearch_endpoint: str) -> WorkerConfig:
 
 
 @pytest.fixture(scope="function")
-def remote_config() -> Config:
+def remote_config() -> GrimoireAgentConfig:
     load_dotenv()
-    loader = Loader(Config, env_prefix=ENV_PREFIX)
+    loader = Loader(GrimoireAgentConfig, env_prefix=ENV_PREFIX)
     config = loader.load()
     yield config
 
@@ -101,13 +102,13 @@ def remote_worker_config() -> WorkerConfig:
 
 
 @pytest.fixture(scope="function")
-def remote_client(remote_config: Config) -> httpx.Client:
+def remote_client(remote_config: GrimoireAgentConfig) -> httpx.Client:
     with TestClient(app) as client:
         yield client
 
 
 @pytest.fixture(scope="function")
-async def worker_init(config: Config) -> bool:
+async def worker_init(config: GrimoireAgentConfig) -> bool:
     env: dict = os.environ.copy()
     cwd: str = project_root.path()
     worker_process = subprocess.Popen(
@@ -121,7 +122,7 @@ async def worker_init(config: Config) -> bool:
 
 
 @pytest.fixture(scope="function")
-def client(config: Config) -> httpx.Client:
+def client(config: GrimoireAgentConfig) -> httpx.Client:
     with TestClient(app) as client:
         yield client
 

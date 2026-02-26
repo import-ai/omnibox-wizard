@@ -8,9 +8,9 @@ import pytest
 from httpx_sse import connect_sse
 from wizard_common.worker.entity import Task
 from common import project_root
-from omnibox_wizard.wizard.grimoire.agent.agent import UserQueryPreprocessor
-from omnibox_wizard.wizard.grimoire.entity.api import MessageDto
-from omnibox_wizard.wizard.grimoire.entity.tools import Condition
+from wizard_common.grimoire.agent.agent import UserQueryPreprocessor
+from wizard_common.grimoire.entity.api import MessageDto
+from wizard_common.grimoire.entity.tools import Condition
 from omnibox_wizard.worker.worker import Worker
 
 

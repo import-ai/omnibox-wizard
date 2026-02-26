@@ -4,10 +4,11 @@ from typing import List, Tuple
 import pytest
 
 from common.config_loader import Loader
-from omnibox_wizard.wizard.config import Config, ENV_PREFIX
-from omnibox_wizard.wizard.grimoire.entity.chunk import Chunk, ChunkType
-from omnibox_wizard.wizard.grimoire.entity.tools import Condition
-from omnibox_wizard.wizard.grimoire.retriever.meili_vector_db import MeiliVectorDB
+from omnibox_wizard.wizard.config import ENV_PREFIX
+from wizard_common.grimoire.config import GrimoireAgentConfig
+from wizard_common.grimoire.entity.chunk import Chunk, ChunkType
+from wizard_common.grimoire.entity.tools import Condition
+from wizard_common.grimoire.retriever.meili_vector_db import MeiliVectorDB
 
 namespace_id = "pytest"
 
@@ -17,8 +18,8 @@ async def db(meilisearch_endpoint: str) -> MeiliVectorDB:
     from dotenv import load_dotenv
 
     load_dotenv()
-    loader = Loader(Config, env_prefix=ENV_PREFIX)
-    config: Config = loader.load()
+    loader = Loader(GrimoireAgentConfig, env_prefix=ENV_PREFIX)
+    config: GrimoireAgentConfig = loader.load()
     db: MeiliVectorDB = MeiliVectorDB(config.vector)
     common_params = {
         "chunk_type": ChunkType.keyword,

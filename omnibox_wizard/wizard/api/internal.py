@@ -13,9 +13,10 @@ from omnibox_wizard.wizard.api.entity import (
     CommonAITextRequest,
     TagsResponse,
 )
-from omnibox_wizard.wizard.config import Config, ENV_PREFIX
-from omnibox_wizard.wizard.grimoire.common_ai import CommonAI
-from omnibox_wizard.wizard.grimoire.retriever.meili_vector_db import MeiliVectorDB
+from omnibox_wizard.wizard.config import ENV_PREFIX
+from wizard_common.grimoire.common_ai import CommonAI
+from wizard_common.grimoire.config import GrimoireAgentConfig
+from wizard_common.grimoire.retriever.meili_vector_db import MeiliVectorDB
 
 dumps = partial(lib_dumps, ensure_ascii=False, separators=(",", ":"))
 internal_router = APIRouter(prefix="/internal/api/v1/wizard")
@@ -23,11 +24,11 @@ common_ai: CommonAI = ...
 vector_db: MeiliVectorDB
 
 
-async def init():
+async def init(app):
     global common_ai
     global vector_db
-    loader = Loader(Config, env_prefix=ENV_PREFIX)
-    config: Config = loader.load()
+    loader = Loader(GrimoireAgentConfig, env_prefix=ENV_PREFIX)
+    config: GrimoireAgentConfig = loader.load()
 
     common_ai = CommonAI(config.grimoire.openai)
     vector_db = MeiliVectorDB(config.vector)

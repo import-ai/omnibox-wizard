@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field
 
-from omnibox_wizard.wizard.config import GrimoireConfig, VectorConfig
+from wizard_common.grimoire.config import GrimoireConfig, VectorConfig
 
 
 class BackendConfig(BaseModel):

@@ -40,6 +40,9 @@ from omnibox_wizard.worker.functions.html_reader.processors.red_note import (
     RedNoteProcessor,
 )
 from omnibox_wizard.worker.functions.html_reader.processors.x import XProcessor
+from omnibox_wizard.worker.functions.html_reader.processors.feishu import (
+    FeishuProcessor,
+)
 from omnibox_wizard.worker.functions.html_reader.selectors.base import BaseSelector
 from omnibox_wizard.worker.functions.html_reader.selectors.common import CommonSelector
 from omnibox_wizard.worker.functions.html_reader.selectors.zhihu_a import (
@@ -224,6 +227,7 @@ class HTMLReaderV2(BaseFunction):
             OKJikeWebProcessor(config=config),
             OKJikeMProcessor(config=config),
             XProcessor(config=config),
+            FeishuProcessor(config=config),
         ]
         self.selectors: list[BaseSelector] = [
             CommonSelector(

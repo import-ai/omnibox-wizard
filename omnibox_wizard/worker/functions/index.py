@@ -3,9 +3,9 @@ from typing import List
 from langchain_text_splitters import MarkdownTextSplitter
 
 from common.trace_info import TraceInfo
-from omnibox_wizard.wizard.grimoire.entity.chunk import Chunk, ChunkType
-from omnibox_wizard.wizard.grimoire.entity.message import Message
-from omnibox_wizard.wizard.grimoire.retriever.meili_vector_db import MeiliVectorDB
+from wizard_common.grimoire.entity.chunk import Chunk, ChunkType
+from wizard_common.grimoire.entity.message import Message
+from wizard_common.grimoire.retriever.meili_vector_db import MeiliVectorDB
 from omnibox_wizard.worker.config import WorkerConfig
 from wizard_common.worker.entity import Task
 from omnibox_wizard.worker.functions.base_function import BaseFunction

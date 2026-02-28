@@ -1,6 +1,6 @@
 import pytest
 
-from omnibox_wizard.wizard.grimoire.agent.stream_parser import (
+from wizard_common.grimoire.agent.stream_parser import (
     StreamParser,
     DeltaOperation,
 )

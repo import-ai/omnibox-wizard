@@ -1,8 +1,8 @@
 import pytest
 
 from common.trace_info import TraceInfo
-from omnibox_wizard.wizard.config import Config
-from omnibox_wizard.wizard.grimoire.common_ai import CommonAI
+from wizard_common.grimoire.common_ai import CommonAI
+from wizard_common.grimoire.config import GrimoireAgentConfig
 
 text_list: list[str] = [
     "小明是谁？",
@@ -14,7 +14,7 @@ text_list: list[str] = [
 
 
 @pytest.fixture(scope="function")
-def common_ai(remote_config: Config) -> CommonAI:
+def common_ai(remote_config: GrimoireAgentConfig) -> CommonAI:
     return CommonAI(remote_config.grimoire.openai)
 
 

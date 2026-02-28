@@ -5,5 +5,5 @@ from wizard_common.agent.base import BaseAgent as _BaseAgent, InputType, OutputT
 
 class BaseAgent(_BaseAgent[InputType, OutputType]):
     template_parser = TemplateParser(
-        project_root.path("omnibox_wizard/resources/prompt_templates")
+        project_root.path("wizard_common/resources/prompt_templates")
     )

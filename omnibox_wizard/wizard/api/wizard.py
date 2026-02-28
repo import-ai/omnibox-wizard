@@ -9,11 +9,12 @@ from sse_starlette import EventSourceResponse
 from common.config_loader import Loader
 from common.trace_info import TraceInfo
 from omnibox_wizard.wizard.api.depends import get_trace_info
-from omnibox_wizard.wizard.config import Config, ENV_PREFIX
-from omnibox_wizard.wizard.grimoire.agent.ask import Ask
-from omnibox_wizard.wizard.grimoire.agent.write import Write
-from omnibox_wizard.wizard.grimoire.base_streamable import BaseStreamable, ChatResponse
-from omnibox_wizard.wizard.grimoire.entity.api import AgentRequest, BaseChatRequest
+from omnibox_wizard.wizard.config import ENV_PREFIX
+from wizard_common.grimoire.agent.ask import Ask
+from wizard_common.grimoire.config import GrimoireAgentConfig
+from wizard_common.grimoire.agent.write import Write
+from wizard_common.grimoire.base_streamable import BaseStreamable, ChatResponse
+from wizard_common.grimoire.entity.api import AgentRequest, BaseChatRequest
 
 dumps = partial(lib_dumps, ensure_ascii=False, separators=(",", ":"))
 wizard_router = APIRouter(prefix="/wizard")
@@ -21,10 +22,10 @@ ask: Ask = ...
 write: Write = ...
 
 
-async def init():
+async def init(app):
     global ask, write
-    loader = Loader(Config, env_prefix=ENV_PREFIX)
-    config: Config = loader.load()
+    loader = Loader(GrimoireAgentConfig, env_prefix=ENV_PREFIX)
+    config: GrimoireAgentConfig = loader.load()
 
     ask = Ask(config)
     write = Write(config)

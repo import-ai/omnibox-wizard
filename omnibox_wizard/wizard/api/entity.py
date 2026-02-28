@@ -2,7 +2,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from omnibox_wizard.wizard.grimoire.entity.index_record import (
+from wizard_common.grimoire.entity.index_record import (
     IndexRecord,
     IndexRecordType,
 )

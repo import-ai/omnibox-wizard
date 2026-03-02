@@ -51,6 +51,7 @@ async def run_worker(
             group_id=config.kafka.group,
             auto_offset_reset="earliest",
             enable_auto_commit=False,
+            max_poll_interval_ms=config.kafka.max_poll_interval_ms,
         )
         await consumer.start()
         consumers.append(consumer)

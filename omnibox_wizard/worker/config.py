@@ -93,6 +93,7 @@ class KafkaConfig(BaseModel):
     broker: str
     topic: str = Field(default="omnibox-tasks")
     group: str = Field(default="omnibox-wizard")
+    max_poll_interval_ms: int = Field(default=600000)
 
 
 class RateLimiterConfig(BaseModel):

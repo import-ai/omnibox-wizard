@@ -1,5 +1,6 @@
 from typing import List
 
+import shortuuid
 from langchain_text_splitters import MarkdownTextSplitter
 
 from common.trace_info import TraceInfo
@@ -49,6 +50,7 @@ class UpsertIndex(DeleteIndex):
 
         chunk_list: List[Chunk] = [
             Chunk(
+                chunk_id=f"{task.namespace_id}_{resource_id}_{shortuuid.uuid()}",
                 title=title,
                 text=chunk,
                 chunk_type=ChunkType.snippet,

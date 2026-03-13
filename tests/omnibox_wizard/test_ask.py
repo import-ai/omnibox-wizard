@@ -35,7 +35,7 @@ def assert_stream(stream: Iterator[str]) -> list[dict]:
         response = jsonlib.loads(each)
         response_type = response["response_type"]
         assert response_type in ["bos", "delta", "eos", "done", "error"]
-        assert response_type != "error"
+        assert response_type != "error", each
         if response_type == "delta":
             message = response["message"]
             for key in ["content", "reasoning_content"]:

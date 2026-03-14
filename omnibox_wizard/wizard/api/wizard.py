@@ -34,7 +34,6 @@ async def init(app):
     write = Write(config)
 
 
-@tracer.start_as_current_span("wizard.stream_wrapper")
 async def stream_wrapper(
     request: BaseModel, stream: AsyncIterator[ChatResponse], trace_info: TraceInfo
 ) -> AsyncIterator[dict]:
@@ -66,9 +65,10 @@ async def stream_wrapper(
 async def call_stream(
     s: BaseStreamable, request: BaseChatRequest, trace_info: TraceInfo
 ) -> AsyncIterator[dict]:
-    stream = s.astream(trace_info.get_child("agent"), request)
-    async for delta in stream_wrapper(request, stream, trace_info):  # noqa
-        yield delta
+    with tracer.start_as_current_span("wizard.call_stream"):
+        stream = s.astream(trace_info.get_child("agent"), request)
+        async for delta in stream_wrapper(request, stream, trace_info):  # noqa
+            yield delta
 
 
 async def sse_format(iterator: AsyncIterator[dict]) -> AsyncIterator[str]:

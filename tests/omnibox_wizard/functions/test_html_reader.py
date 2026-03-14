@@ -6,9 +6,15 @@ import pytest
 
 from common import project_root
 from common.trace_info import TraceInfo
+from tests.omnibox_wizard.helper.get_task_by_id import get_task_by_id
 from wizard_common.worker.entity import Task
 from omnibox_wizard.worker.functions.html_reader.html_reader import HTMLReaderV2
 from tests.omnibox_wizard.helper.get_collect_html import get_collect_html
+from dotenv import load_dotenv
+
+from worker.config import WorkerConfig
+
+load_dotenv()
 
 
 def get_tasks() -> list[Task]:
@@ -70,6 +76,16 @@ async def test_html_reader_v2(
 async def test_html_reader_by_csv(
     task: Task, trace_info: TraceInfo, remote_worker_config
 ):
+    result = await process_task(task, trace_info, remote_worker_config)
+    print("=" * 32)
+    print("# " + result["title"] + "\n\n" + result["markdown"])
+
+
+@pytest.mark.parametrize("task_id", os.getenv("OBW_TEST_TASK_IDS", "").split(","))
+async def test_html_reader_by_task_id(
+    task_id: str, trace_info: TraceInfo, remote_worker_config: WorkerConfig
+):
+    task: Task = await get_task_by_id(task_id)
     result = await process_task(task, trace_info, remote_worker_config)
     print("=" * 32)
     print("# " + result["title"] + "\n\n" + result["markdown"])

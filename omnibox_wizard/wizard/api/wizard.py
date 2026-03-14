@@ -2,7 +2,9 @@ from functools import partial
 from json import dumps as lib_dumps
 from typing import AsyncIterator
 
+import openai
 from fastapi import APIRouter, Depends
+from opentelemetry import trace
 from pydantic import BaseModel
 from sse_starlette import EventSourceResponse
 
@@ -20,6 +22,7 @@ dumps = partial(lib_dumps, ensure_ascii=False, separators=(",", ":"))
 wizard_router = APIRouter(prefix="/wizard")
 ask: Ask = ...
 write: Write = ...
+tracer = trace.get_tracer("wizard-router")
 
 
 async def init(app):
@@ -34,28 +37,38 @@ async def init(app):
 async def stream_wrapper(
     request: BaseModel, stream: AsyncIterator[ChatResponse], trace_info: TraceInfo
 ) -> AsyncIterator[dict]:
+    span = trace.get_current_span()
     trace_info.debug({"request": request.model_dump(exclude_none=True)})
+    error: Exception | None = None
+    error_message: str | None = ""
     try:
         async for delta in stream:
             yield delta.model_dump(exclude_none=True)
+    except openai.APIError as e:
+        error, error_message = e, "Inappropriate content"
     except Exception as e:
-        yield {"response_type": "error", "message": "Unknown error"}
+        error, error_message = e, "Unknown error"
+    if error:
+        span.record_exception(error)
+        span.set_attribute("error_message", error_message)
         trace_info.exception(
             {
-                "exception_class": e.__class__.__name__,
-                "exception_message": str(e),
+                "exception_class": error.__class__.__name__,
+                "exception_message": str(error),
                 "request": request.model_dump(exclude_none=True),
             }
         )
+        yield {"response_type": "error", "message": error_message}
     yield {"response_type": "done"}
 
 
 async def call_stream(
     s: BaseStreamable, request: BaseChatRequest, trace_info: TraceInfo
 ) -> AsyncIterator[dict]:
-    stream = s.astream(trace_info.get_child("agent"), request)
-    async for delta in stream_wrapper(request, stream, trace_info):  # noqa
-        yield delta
+    with tracer.start_as_current_span("wizard.call_stream"):
+        stream = s.astream(trace_info.get_child("agent"), request)
+        async for delta in stream_wrapper(request, stream, trace_info):  # noqa
+            yield delta
 
 
 async def sse_format(iterator: AsyncIterator[dict]) -> AsyncIterator[str]:

@@ -18,6 +18,7 @@ from wizard_common.grimoire.config import GrimoireAgentConfig
 from omnibox_wizard.worker.worker import Worker
 from tests.omnibox_wizard.helper.backend_client import BackendClient
 from tests.omnibox_wizard.helper.meilisearch_container import MeiliSearchContainer
+from worker.rate_limiter import RateLimiter
 
 logger = get_logger("fixture")
 
@@ -129,7 +130,12 @@ def client(config: GrimoireAgentConfig) -> httpx.Client:
 
 @pytest.fixture(scope="function")
 async def worker(worker_config: WorkerConfig) -> Worker:
-    worker = Worker(config=worker_config, worker_id=0)
+    worker = Worker(
+        config=worker_config,
+        worker_id=0,
+        health_tracker=None,
+        rate_limiter=RateLimiter(worker_config.rate),
+    )
     return worker
 
 

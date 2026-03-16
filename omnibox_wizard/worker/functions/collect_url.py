@@ -10,6 +10,7 @@ from common.trace_info import TraceInfo
 from omnibox_wizard.worker.config import WorkerConfig
 from omnibox_wizard.worker.functions.base_function import BaseFunction
 from wizard_common.worker.entity import Task, TaskFunction
+from urllib.parse import urlparse
 
 tracer = trace.get_tracer(__name__)
 
@@ -43,10 +44,15 @@ class CollectUrlFunction(BaseFunction):
             filter(bool, os.getenv("OB_VIDEO_PREFIXES", "").split(","))
         )
 
-    def is_video_url(self, url: str) -> bool:
+    def is_video(self, url: str, html: str) -> bool:
         for prefix in self.video_prefixes:
             if url.startswith(prefix):
                 return True
+        if (
+            urlparse(url).netloc in ["xiaohongshu.com", "xhslink.com"]
+            and '"type":"video"' in html
+        ):
+            return True
         return False
 
     @tracer.start_as_current_span("CollectUrlFunction.run")
@@ -56,11 +62,13 @@ class CollectUrlFunction(BaseFunction):
         url = input_dict["url"]
         span.set_attribute("url", url)
         scrape_result = await self._scrape_url(url)
+        is_video = self.is_video(scrape_result.final_url, scrape_result.html)
+        span.set_attribute("is_video", is_video)
         return {
             "next_tasks": [
                 task.create_next_task(
                     TaskFunction.GENERATE_VIDEO_NOTE
-                    if self.is_video_url(url)
+                    if is_video
                     else TaskFunction.COLLECT,
                     {
                         "url": scrape_result.final_url,

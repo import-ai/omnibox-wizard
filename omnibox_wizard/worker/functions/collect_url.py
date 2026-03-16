@@ -36,6 +36,14 @@ async def scrape(url: str, timeout: int) -> ScrapeResponseDto:
     return ScrapeResponseDto(html=html, title=title, final_url=final_url)
 
 
+def is_xhs(url: str) -> bool:
+    domain: str = urlparse(url).netloc
+    for pattern in ["xiaohongshu.com", "xhslink.com"]:
+        if pattern in domain:
+            return True
+    return False
+
+
 class CollectUrlFunction(BaseFunction):
     def __init__(self, config: WorkerConfig):
         self.scrape_base_url: str | None = config.task.scrape_base_url
@@ -48,10 +56,8 @@ class CollectUrlFunction(BaseFunction):
         for prefix in self.video_prefixes:
             if url.startswith(prefix):
                 return True
-        if (
-            urlparse(url).netloc in ["xiaohongshu.com", "xhslink.com"]
-            and '"type":"video"' in html
-        ):
+
+        if is_xhs(url) and '"type":"video"' in html:
             return True
         return False
 

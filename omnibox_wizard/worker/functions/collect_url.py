@@ -10,6 +10,7 @@ from common.trace_info import TraceInfo
 from omnibox_wizard.worker.config import WorkerConfig
 from omnibox_wizard.worker.functions.base_function import BaseFunction
 from wizard_common.worker.entity import Task, TaskFunction
+from urllib.parse import urlparse
 
 tracer = trace.get_tracer(__name__)
 
@@ -43,41 +44,14 @@ class CollectUrlFunction(BaseFunction):
             filter(bool, os.getenv("OB_VIDEO_PREFIXES", "").split(","))
         )
 
-    @staticmethod
-    def _is_xiaohongshu_url(url: str) -> bool:
-        if not url:
-            return False
-        return (
-            "xiaohongshu.com" in url
-            or "xhslink.com" in url
-        )
-
-    def _is_video_by_url(self, url: str) -> bool:
+    def is_video(self, url: str, html: str) -> bool:
         for prefix in self.video_prefixes:
             if url.startswith(prefix):
                 return True
-        return False
-
-    def _is_video_by_html(self, url: str, html: str) -> bool:
-        if not html:
-            return False
-        try:
-            soup = BeautifulSoup(html, "html.parser")
-            if soup.find("video"):
-                return True
-            meta_type = soup.find("meta", property="og:type")
-            if meta_type and meta_type.get("content") == "video":
-                return True
-            if self._is_xiaohongshu_url(url) and '"type":"video"' in html:
-                return True
-        except Exception:
-            return False
-        return False
-
-    def is_video(self, url: str, html: str) -> bool:
-        if self._is_video_by_url(url):
-            return True
-        if self._is_video_by_html(url, html):
+        if (
+            urlparse(url).netloc in ["xiaohongshu.com", "xhslink.com"]
+            and '"type":"video"' in html
+        ):
             return True
         return False
 

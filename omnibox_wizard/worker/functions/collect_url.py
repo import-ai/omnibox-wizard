@@ -43,10 +43,42 @@ class CollectUrlFunction(BaseFunction):
             filter(bool, os.getenv("OB_VIDEO_PREFIXES", "").split(","))
         )
 
-    def is_video_url(self, url: str) -> bool:
+    @staticmethod
+    def _is_xiaohongshu_url(url: str) -> bool:
+        if not url:
+            return False
+        return (
+            "xiaohongshu.com" in url
+            or "xhslink.com" in url
+        )
+
+    def _is_video_by_url(self, url: str) -> bool:
         for prefix in self.video_prefixes:
             if url.startswith(prefix):
                 return True
+        return False
+
+    def _is_video_by_html(self, url: str, html: str) -> bool:
+        if not html:
+            return False
+        try:
+            soup = BeautifulSoup(html, "html.parser")
+            if soup.find("video"):
+                return True
+            meta_type = soup.find("meta", property="og:type")
+            if meta_type and meta_type.get("content") == "video":
+                return True
+            if self._is_xiaohongshu_url(url) and '"type":"video"' in html:
+                return True
+        except Exception:
+            return False
+        return False
+
+    def is_video(self, url: str, html: str) -> bool:
+        if self._is_video_by_url(url):
+            return True
+        if self._is_video_by_html(url, html):
+            return True
         return False
 
     @tracer.start_as_current_span("CollectUrlFunction.run")
@@ -56,11 +88,13 @@ class CollectUrlFunction(BaseFunction):
         url = input_dict["url"]
         span.set_attribute("url", url)
         scrape_result = await self._scrape_url(url)
+        is_video = self.is_video(scrape_result.final_url, scrape_result.html)
+        span.set_attribute("is_video", is_video)
         return {
             "next_tasks": [
                 task.create_next_task(
                     TaskFunction.GENERATE_VIDEO_NOTE
-                    if self.is_video_url(url)
+                    if is_video
                     else TaskFunction.COLLECT,
                     {
                         "url": scrape_result.final_url,

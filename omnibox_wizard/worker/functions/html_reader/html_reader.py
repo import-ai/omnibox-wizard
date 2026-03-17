@@ -244,8 +244,9 @@ class HTMLReaderV2(BaseFunction):
             ),
             CommonSelector("www.reddit.com", {"name": "shreddit-post-text-body"}),
             LambdaSelector(
-                lambda parsed, soup: parsed.netloc == "www.dedao.cn"
-                and "/share/" in parsed.path,
+                lambda parsed, soup: (
+                    parsed.netloc == "www.dedao.cn" and "/share/" in parsed.path
+                ),
                 {"id": "article-box"},
             ),
         ]

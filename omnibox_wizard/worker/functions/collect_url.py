@@ -1,5 +1,3 @@
-import os
-
 import httpx
 from bs4 import BeautifulSoup
 from opentelemetry import trace
@@ -10,7 +8,6 @@ from common.trace_info import TraceInfo
 from omnibox_wizard.worker.config import WorkerConfig
 from omnibox_wizard.worker.functions.base_function import BaseFunction
 from wizard_common.worker.entity import Task, TaskFunction
-from urllib.parse import urlparse
 
 tracer = trace.get_tracer(__name__)
 
@@ -36,30 +33,10 @@ async def scrape(url: str, timeout: int) -> ScrapeResponseDto:
     return ScrapeResponseDto(html=html, title=title, final_url=final_url)
 
 
-def is_xhs(url: str) -> bool:
-    domain: str = urlparse(url).netloc
-    for pattern in ["xiaohongshu.com", "xhslink.com"]:
-        if pattern in domain:
-            return True
-    return False
-
-
 class CollectUrlFunction(BaseFunction):
     def __init__(self, config: WorkerConfig):
         self.scrape_base_url: str | None = config.task.scrape_base_url
         self.timeout: int = 60
-        self.video_prefixes: list[str] = list(
-            filter(bool, os.getenv("OB_VIDEO_PREFIXES", "").split(","))
-        )
-
-    def is_video(self, url: str, html: str) -> bool:
-        for prefix in self.video_prefixes:
-            if url.startswith(prefix):
-                return True
-
-        if is_xhs(url) and '"type":"video"' in html:
-            return True
-        return False
 
     @tracer.start_as_current_span("CollectUrlFunction.run")
     async def run(self, task: Task, trace_info: TraceInfo) -> dict:
@@ -68,15 +45,11 @@ class CollectUrlFunction(BaseFunction):
         url = input_dict["url"]
         span.set_attribute("url", url)
         scrape_result = await self._scrape_url(url)
-        is_video = self.is_video(scrape_result.final_url, scrape_result.html)
-        span.set_attribute("is_video", is_video)
         return {
             "title": scrape_result.title,
             "next_tasks": [
                 task.create_next_task(
-                    TaskFunction.GENERATE_VIDEO_NOTE
-                    if is_video
-                    else TaskFunction.COLLECT,
+                    TaskFunction.WEB_ANALYSIS,
                     {
                         "url": scrape_result.final_url,
                         "html": scrape_result.html,

@@ -71,6 +71,7 @@ class CollectUrlFunction(BaseFunction):
         is_video = self.is_video(scrape_result.final_url, scrape_result.html)
         span.set_attribute("is_video", is_video)
         return {
+            "title": scrape_result.title,
             "next_tasks": [
                 task.create_next_task(
                     TaskFunction.GENERATE_VIDEO_NOTE
@@ -82,7 +83,7 @@ class CollectUrlFunction(BaseFunction):
                         "title": scrape_result.title,
                     },
                 ).model_dump()
-            ]
+            ],
         }
 
     @tracer.start_as_current_span("CollectUrlFunction._scrape_url")

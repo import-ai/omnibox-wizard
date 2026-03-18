@@ -1,6 +1,7 @@
 import os
 from urllib.parse import urlparse
 
+from bs4 import BeautifulSoup
 from opentelemetry import trace
 
 from common.trace_info import TraceInfo
@@ -26,12 +27,16 @@ class WebAnalysisFunction(BaseFunction):
         )
 
     def is_video(self, url: str, html: str) -> bool:
+        if is_xhs(url):
+            soup = BeautifulSoup(html, "html.parser")
+            if element := soup.find(attrs={"data-type": True}):
+                data_type = element.get("data-type")
+                if data_type == "video":
+                    return True
+            return False
         for prefix in self.video_prefixes:
             if url.startswith(prefix):
                 return True
-
-        if is_xhs(url) and '"type":"video"' in html:
-            return True
         return False
 
     @tracer.start_as_current_span("WebAnalysisFunction.run")

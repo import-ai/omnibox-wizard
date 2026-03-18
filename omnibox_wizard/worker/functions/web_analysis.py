@@ -27,20 +27,16 @@ class WebAnalysisFunction(BaseFunction):
         )
 
     def is_video(self, url: str, html: str) -> bool:
-        for prefix in self.video_prefixes:
-            if url.startswith(prefix):
-                return True
-
         if is_xhs(url):
             soup = BeautifulSoup(html, "html.parser")
-            element = soup.find(attrs={"data-type": True})
-            if element:
+            if element := soup.find(attrs={"data-type": True}):
                 data_type = element.get("data-type")
                 if data_type == "video":
                     return True
-                elif data_type == "normal":
-                    return False
-
+            return False
+        for prefix in self.video_prefixes:
+            if url.startswith(prefix):
+                return True
         return False
 
     @tracer.start_as_current_span("WebAnalysisFunction.run")

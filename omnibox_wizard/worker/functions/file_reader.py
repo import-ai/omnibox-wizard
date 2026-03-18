@@ -18,6 +18,23 @@ from omnibox_wizard.worker.functions.file_readers.office_reader import (
 )
 
 
+def get_lang_from_user_options(user_options: dict) -> str | None:
+    """Map user language option to extract_tags lang format.
+
+    Args:
+        user_options: User options dictionary from payload
+
+    Returns:
+        '简体中文', 'English', or None if not set
+    """
+    language = user_options.get("language", "")
+    if language == "zh-CN":
+        return "简体中文"
+    elif language == "en-US":
+        return "English"
+    return None
+
+
 class Convertor:
     def __init__(
         self,
@@ -171,14 +188,21 @@ class FileReader(BaseFunction):
         if metadata:
             result_dict["metadata"] = metadata
 
-        # Add extract_tags to next_tasks
+        # Add extract_tags to next_tasks only if enabled
         next_tasks = []
-        extract_tags_task = task.create_next_task(
-            TaskFunction.EXTRACT_TAGS, {"text": markdown}
-        )
-        next_tasks.append(extract_tags_task.model_dump())
+        user = task.payload.get("user", {}) if task.payload else {}
+        user_options = user.get("options", {})
+        if user_options.get("enable_ai_tag_extraction", "true") == "true":
+            lang = get_lang_from_user_options(user_options)
+            extract_tags_input = {"text": markdown}
+            if lang:
+                extract_tags_input["lang"] = lang
+            extract_tags_task = task.create_next_task(
+                TaskFunction.EXTRACT_TAGS, extract_tags_input
+            )
+            next_tasks.append(extract_tags_task.model_dump())
 
-        # Add generate_title for open_api uploads
+        # Add generate_title for open_api uploads (always)
         if task.payload and task.payload.get("source") == "open_api":
             generate_title_task = task.create_next_task(
                 TaskFunction.GENERATE_TITLE, {"text": markdown}

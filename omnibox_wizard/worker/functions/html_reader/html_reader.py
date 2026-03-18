@@ -56,6 +56,23 @@ json_dumps = partial(jsonlib.dumps, separators=(",", ":"), ensure_ascii=False)
 tracer = trace.get_tracer("HTMLReaderV2")
 
 
+def get_lang_from_user_options(user_options: dict) -> str | None:
+    """Map user language option to extract_tags lang format.
+
+    Args:
+        user_options: User options dictionary from payload
+
+    Returns:
+        '简体中文', 'English', or None if not set
+    """
+    language = user_options.get("language", "")
+    if language == "zh-CN":
+        return "简体中文"
+    elif language == "en-US":
+        return "English"
+    return None
+
+
 class Preprocessor:
     SPACE_PATTERN: re.Pattern = re.compile(r"\s{2,}")
 
@@ -244,8 +261,9 @@ class HTMLReaderV2(BaseFunction):
             ),
             CommonSelector("www.reddit.com", {"name": "shreddit-post-text-body"}),
             LambdaSelector(
-                lambda parsed, soup: parsed.netloc == "www.dedao.cn"
-                and "/share/" in parsed.path,
+                lambda parsed, soup: (
+                    parsed.netloc == "www.dedao.cn" and "/share/" in parsed.path
+                ),
                 {"id": "article-box"},
             ),
         ]
@@ -266,12 +284,19 @@ class HTMLReaderV2(BaseFunction):
     async def run(self, task: Task, trace_info: TraceInfo) -> dict:
         result_dict: dict = await self.main(task, trace_info)
         if result_dict.get("markdown"):
-            extract_tags_task = task.create_next_task(
-                TaskFunction.EXTRACT_TAGS, {"text": result_dict["markdown"]}
-            )
-            result_dict.setdefault("next_tasks", []).append(
-                extract_tags_task.model_dump()
-            )
+            user = task.payload.get("user", {}) if task.payload else {}
+            user_options = user.get("options", {})
+            if user_options.get("enable_ai_tag_extraction", "true") == "true":
+                lang = get_lang_from_user_options(user_options)
+                extract_tags_input = {"text": result_dict["markdown"]}
+                if lang:
+                    extract_tags_input["lang"] = lang
+                extract_tags_task = task.create_next_task(
+                    TaskFunction.EXTRACT_TAGS, extract_tags_input
+                )
+                result_dict.setdefault("next_tasks", []).append(
+                    extract_tags_task.model_dump()
+                )
         return result_dict
 
     @tracer.start_as_current_span("main")

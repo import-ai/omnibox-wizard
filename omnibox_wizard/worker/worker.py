@@ -28,6 +28,7 @@ from omnibox_wizard.worker.functions.index import (
 )
 from omnibox_wizard.worker.functions.tag_extractor import TagExtractor
 from omnibox_wizard.worker.functions.title_generator import TitleGenerator
+from omnibox_wizard.worker.functions.web_analysis import WebAnalysisFunction
 from omnibox_wizard.worker.health_tracker import HealthTracker
 from omnibox_wizard.worker.rate_limiter import RateLimiter
 from omnibox_wizard.worker.task_manager import TaskManager
@@ -55,6 +56,7 @@ class Worker:
         self.worker_dict: dict[str, BaseFunction] = {
             "collect": HTMLReaderV2(config),
             "collect_url": CollectUrlFunction(config),
+            "web_analysis": WebAnalysisFunction(config),
             "upsert_index": UpsertIndex(config),
             "delete_index": DeleteIndex(config),
             "file_reader": self.file_reader,

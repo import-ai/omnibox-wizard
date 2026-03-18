@@ -1,4 +1,5 @@
 import os
+import re
 from urllib.parse import urlparse
 
 from opentelemetry import trace
@@ -30,8 +31,12 @@ class WebAnalysisFunction(BaseFunction):
             if url.startswith(prefix):
                 return True
 
-        if is_xhs(url) and '"type":"video"' in html:
-            return True
+        if is_xhs(url):
+            data_type_match = re.search(r'data-type="(video|normal)"', html)
+            if data_type_match:
+                return data_type_match.group(1) == "video"
+
+            return '"type":"video"' in html
         return False
 
     @tracer.start_as_current_span("WebAnalysisFunction.run")

@@ -1,7 +1,7 @@
 import os
-import re
 from urllib.parse import urlparse
 
+from bs4 import BeautifulSoup
 from opentelemetry import trace
 
 from common.trace_info import TraceInfo
@@ -32,11 +32,15 @@ class WebAnalysisFunction(BaseFunction):
                 return True
 
         if is_xhs(url):
-            data_type_match = re.search(r'data-type="(video|normal)"', html)
-            if data_type_match:
-                return data_type_match.group(1) == "video"
+            soup = BeautifulSoup(html, "html.parser")
+            element = soup.find(attrs={"data-type": True})
+            if element:
+                data_type = element.get("data-type")
+                if data_type == "video":
+                    return True
+                elif data_type == "normal":
+                    return False
 
-            return '"type":"video"' in html
         return False
 
     @tracer.start_as_current_span("WebAnalysisFunction.run")

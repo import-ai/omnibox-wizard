@@ -20,6 +20,14 @@ def is_xhs(url: str) -> bool:
     return False
 
 
+def is_douyin(url: str) -> bool:
+    domain: str = urlparse(url).netloc
+    for pattern in ["douyin.com"]:
+        if pattern in domain:
+            return True
+    return False
+
+
 class WebAnalysisFunction(BaseFunction):
     def __init__(self, config: WorkerConfig):
         self.video_prefixes: list[str] = list(
@@ -34,6 +42,14 @@ class WebAnalysisFunction(BaseFunction):
                 if data_type == "video":
                     return True
             return False
+        if is_douyin(url):
+            soup = BeautifulSoup(html, "html.parser")
+            if feed_active := soup.find(attrs={"data-e2e": "feed-active-video"}):
+                for container in feed_active.find_all("xg-video-container"):
+                    if "hideXgVideo" not in container.get("class", []):
+                        return True
+                return False
+            return True
         for prefix in self.video_prefixes:
             if url.startswith(prefix):
                 return True

@@ -35,15 +35,14 @@ class WebAnalysisFunction(BaseFunction):
         )
 
     def is_video(self, url: str, html: str) -> bool:
+        soup = BeautifulSoup(html, "html.parser")
         if is_xhs(url):
-            soup = BeautifulSoup(html, "html.parser")
             if element := soup.find(attrs={"data-type": True}):
                 data_type = element.get("data-type")
                 if data_type == "video":
                     return True
             return False
         if is_douyin(url):
-            soup = BeautifulSoup(html, "html.parser")
             if feed_active := soup.find(attrs={"data-e2e": "feed-active-video"}):
                 for container in feed_active.find_all("xg-video-container"):
                     if "hideXgVideo" not in container.get("class", []):

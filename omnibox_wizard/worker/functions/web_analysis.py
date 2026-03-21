@@ -3,11 +3,11 @@ from urllib.parse import urlparse
 
 from bs4 import BeautifulSoup
 from opentelemetry import trace
+from wizard_common.worker.entity import Task, TaskFunction
 
 from common.trace_info import TraceInfo
 from omnibox_wizard.worker.config import WorkerConfig
 from omnibox_wizard.worker.functions.base_function import BaseFunction
-from wizard_common.worker.entity import Task, TaskFunction
 
 tracer = trace.get_tracer(__name__)
 
@@ -29,7 +29,7 @@ def is_douyin(url: str) -> bool:
 
 
 class WebAnalysisFunction(BaseFunction):
-    def __init__(self, config: WorkerConfig):
+    def __init__(self, _: WorkerConfig):
         self.video_prefixes: list[str] = list(
             filter(bool, os.getenv("OB_VIDEO_PREFIXES", "").split(","))
         )
@@ -37,17 +37,14 @@ class WebAnalysisFunction(BaseFunction):
     def is_video(self, url: str, html: str) -> bool:
         soup = BeautifulSoup(html, "html.parser")
         if is_xhs(url):
-            if element := soup.find(attrs={"data-type": True}):
-                data_type = element.get("data-type")
-                if data_type == "video":
-                    return True
-            return False
+            element = soup.find(attrs={"data-type": True})
+            return element.get("data-type") == "video" if element else False
         if is_douyin(url):
             if feed_active := soup.find(attrs={"data-e2e": "feed-active-video"}):
-                for container in feed_active.find_all("xg-video-container"):
-                    if "hideXgVideo" not in container.get("class", []):
-                        return True
-                return False
+                return any(
+                    "hideXgVideo" not in c.get("class", "")
+                    for c in feed_active.find_all("xg-video-container")
+                )
             return True
         for prefix in self.video_prefixes:
             if url.startswith(prefix):

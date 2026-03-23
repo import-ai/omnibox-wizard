@@ -282,8 +282,11 @@ class HTMLReaderV2(BaseFunction):
     async def run(self, task: Task, trace_info: TraceInfo) -> dict:
         result_dict: dict = await self.main(task, trace_info)
         if result_dict.get("markdown"):
+            next_tasks: list[dict] = []
             user = task.payload.get("user", {}) if task.payload else {}
             user_options = user.get("options", {})
+
+            # Add extract_tags to next_tasks if enabled
             if user_options.get("enable_ai_tag_extraction", "true") == "true":
                 lang = get_lang_from_user_options(user_options)
                 extract_tags_input = {"text": result_dict["markdown"]}
@@ -292,9 +295,20 @@ class HTMLReaderV2(BaseFunction):
                 extract_tags_task = task.create_next_task(
                     TaskFunction.EXTRACT_TAGS, extract_tags_input
                 )
-                result_dict.setdefault("next_tasks", []).append(
-                    extract_tags_task.model_dump()
-                )
+                next_tasks.append(extract_tags_task.model_dump())
+
+            # Add generate_title to next_tasks
+            generate_title_task = task.create_next_task(
+                TaskFunction.GENERATE_TITLE,
+                {
+                    "title": result_dict.get("title", ""),
+                    "content": result_dict["markdown"],
+                },
+            )
+            next_tasks.append(generate_title_task.model_dump())
+
+            if next_tasks:
+                result_dict["next_tasks"] = next_tasks
         return result_dict
 
     @tracer.start_as_current_span("main")

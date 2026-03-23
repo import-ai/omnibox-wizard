@@ -38,17 +38,24 @@ class TitleGenerator(BaseFunction):
 
     @tracer.start_as_current_span("TitleGenerator.run")
     async def run(self, task: Task, trace_info: TraceInfo) -> dict:
+        span = trace.get_current_span()
         input_dict = task.input
-        title = input_dict.get("title", "")
+        raw_title = input_dict.get("title", "")
         content = input_dict.get("content", "")
 
-        if (not title) and (not content):
+        if (not raw_title) and (not content):
             raise ValueError("Text input is required for title generation")
 
         trace_info = trace_info.bind(text_length=len(content))
         trace_info.info({"message": "Starting title generation"})
 
-        title = (await self.get_title(content, title, trace_info),)
+        title = await self.get_title(content, raw_title, trace_info)
+        span.set_attributes(
+            {
+                "raw_title": raw_title,
+                "title": title,
+            }
+        )
 
         result_dict = {"title": title}
         trace_info.info(

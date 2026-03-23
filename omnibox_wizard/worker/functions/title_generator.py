@@ -4,7 +4,10 @@ from common.trace_info import TraceInfo
 from omnibox_wizard.worker.config import WorkerConfig
 from omnibox_wizard.worker.functions.base_function import BaseFunction
 from wizard_common.worker.entity import Task
-from worker.agent.html_title_extractor import HTMLTitleExtractOutput, HTMLTitleExtractor
+from omnibox_wizard.worker.agent.html_title_extractor import (
+    HTMLTitleExtractOutput,
+    HTMLTitleExtractor,
+)
 
 tracer = trace.get_tracer("TitleGenerator")
 

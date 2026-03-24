@@ -1,4 +1,3 @@
-import asyncio
 import json as jsonlib
 import re
 from functools import partial
@@ -16,10 +15,8 @@ from common.trace_info import TraceInfo
 from omnibox_wizard.worker.agent.html_content_extractor import HTMLContentExtractor
 from omnibox_wizard.worker.agent.html_title_extractor import (
     HTMLTitleExtractor,
-    HTMLTitleExtractOutput,
 )
 from omnibox_wizard.worker.config import WorkerConfig
-from wizard_common.worker.entity import Task, Image, GeneratedContent, TaskFunction
 from omnibox_wizard.worker.functions.base_function import BaseFunction
 from omnibox_wizard.worker.functions.html_reader.processors.base import (
     HTMLReaderBaseProcessor,
@@ -42,15 +39,16 @@ from omnibox_wizard.worker.functions.html_reader.processors.red_note import (
 from omnibox_wizard.worker.functions.html_reader.processors.x import XProcessor
 from omnibox_wizard.worker.functions.html_reader.selectors.base import BaseSelector
 from omnibox_wizard.worker.functions.html_reader.selectors.common import CommonSelector
+from omnibox_wizard.worker.functions.html_reader.selectors.lambda_selector import (
+    LambdaSelector,
+)
 from omnibox_wizard.worker.functions.html_reader.selectors.zhihu_a import (
     ZhihuAnswerSelector,
 )
 from omnibox_wizard.worker.functions.html_reader.selectors.zhihu_q import (
     ZhihuQuestionSelector,
 )
-from omnibox_wizard.worker.functions.html_reader.selectors.lambda_selector import (
-    LambdaSelector,
-)
+from wizard_common.worker.entity import Task, Image, GeneratedContent, TaskFunction
 
 json_dumps = partial(jsonlib.dumps, separators=(",", ":"), ensure_ascii=False)
 tracer = trace.get_tracer("HTMLReaderV2")
@@ -280,12 +278,15 @@ class HTMLReaderV2(BaseFunction):
                 return selector
         return None
 
-    @tracer.start_as_current_span("run")
+    @tracer.start_as_current_span("HTMLReaderV2.run")
     async def run(self, task: Task, trace_info: TraceInfo) -> dict:
         result_dict: dict = await self.main(task, trace_info)
         if result_dict.get("markdown"):
+            next_tasks: list[dict] = []
             user = task.payload.get("user", {}) if task.payload else {}
             user_options = user.get("options", {})
+
+            # Add extract_tags to next_tasks if enabled
             if user_options.get("enable_ai_tag_extraction", "true") == "true":
                 lang = get_lang_from_user_options(user_options)
                 extract_tags_input = {"text": result_dict["markdown"]}
@@ -294,9 +295,20 @@ class HTMLReaderV2(BaseFunction):
                 extract_tags_task = task.create_next_task(
                     TaskFunction.EXTRACT_TAGS, extract_tags_input
                 )
-                result_dict.setdefault("next_tasks", []).append(
-                    extract_tags_task.model_dump()
-                )
+                next_tasks.append(extract_tags_task.model_dump())
+
+            # Add generate_title to next_tasks
+            generate_title_task = task.create_next_task(
+                TaskFunction.GENERATE_TITLE,
+                {
+                    "title": result_dict.get("title", ""),
+                    "content": result_dict["markdown"],
+                },
+            )
+            next_tasks.append(generate_title_task.model_dump())
+
+            if next_tasks:
+                result_dict["next_tasks"] = next_tasks
         return result_dict
 
     @tracer.start_as_current_span("main")
@@ -334,23 +346,6 @@ class HTMLReaderV2(BaseFunction):
                 fetch_src_list.append((src, alt))
 
         return await HTMLReaderBaseProcessor.get_images(fetch_src_list)
-
-    @tracer.start_as_current_span("get_title")
-    async def get_title(
-        self, markdown: str, raw_title: str, trace_info: TraceInfo
-    ) -> str:
-        span = trace.get_current_span()
-        try:
-            snippet: str = markdown.strip()[:512]
-            title_extract_output: HTMLTitleExtractOutput = (
-                await self.html_title_extractor.ainvoke(
-                    {"title": raw_title, "snippet": snippet}, trace_info
-                )
-            )
-            return title_extract_output.title
-        except Exception as e:
-            span.record_exception(e)
-            return raw_title
 
     @tracer.start_as_current_span("content_selector")
     def parse_with_selector(
@@ -458,8 +453,7 @@ class HTMLReaderV2(BaseFunction):
             except Exception as e:
                 span.record_exception(e)
 
-        images, title = await asyncio.gather(
-            self.get_images(html=selected_html or html, markdown=markdown),
-            self.get_title(markdown, raw_title, trace_info),
+        images = await self.get_images(html=selected_html or html, markdown=markdown)
+        return GeneratedContent(
+            title=raw_title, markdown=markdown, images=images or None
         )
-        return GeneratedContent(title=title, markdown=markdown, images=images or None)

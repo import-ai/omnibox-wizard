@@ -34,3 +34,32 @@ class SearchRequest(BaseModel):
 
 class SearchResponse(BaseModel):
     records: list[IndexRecord] = Field(description="search results")
+
+
+class WeaviateResourceMetaInfo(BaseModel):
+    resource_id: str
+    parent_id: str
+
+
+class UpsertWeaviateResourceRequest(BaseModel):
+    namespace_id: str
+    title: str = ""
+    content: str = ""
+    meta_info: WeaviateResourceMetaInfo
+
+
+class UpsertWeaviateOpenAIMessage(BaseModel):
+    role: str
+    content: str
+
+
+class UpsertWeaviateMessage(BaseModel):
+    conversation_id: str
+    message_id: str
+    message: UpsertWeaviateOpenAIMessage
+
+
+class UpsertWeaviateMessageRequest(BaseModel):
+    namespace_id: str
+    user_id: str
+    message: UpsertWeaviateMessage

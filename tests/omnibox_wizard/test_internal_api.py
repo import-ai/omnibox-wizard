@@ -32,6 +32,12 @@ def mock_common_ai():
         yield mock
 
 
+@pytest.fixture
+def mock_weaviate_vector_db():
+    with patch("omnibox_wizard.wizard.api.internal.weaviate_vector_db") as mock:
+        yield mock
+
+
 class TestTitleAPI:
     """Test cases for /title endpoint with lang parameter"""
 
@@ -309,3 +315,42 @@ class TestEntityValidation:
         # Empty tags should be valid
         empty_response = TagsResponse(tags=[])
         assert empty_response.tags == []
+
+
+class TestWeaviateUpsertAPI:
+    async def test_upsert_weaviate_resource(self, client, mock_weaviate_vector_db):
+        payload = {
+            "namespace_id": "ns_1",
+            "title": "Doc",
+            "content": "hello world",
+            "meta_info": {
+                "resource_id": "resource_1",
+                "parent_id": "parent_1",
+            },
+        }
+        response = client.post(
+            "/internal/api/v1/wizard/upsert_weaviate/resource", json=payload
+        )
+        assert response.status_code == 200
+        assert response.json() == {"success": True}
+        mock_weaviate_vector_db.remove_chunks.assert_called_once_with(
+            "ns_1", "resource_1"
+        )
+        mock_weaviate_vector_db.insert_chunks.assert_called_once()
+
+    async def test_upsert_weaviate_message(self, client, mock_weaviate_vector_db):
+        payload = {
+            "namespace_id": "ns_1",
+            "user_id": "user_1",
+            "message": {
+                "conversation_id": "conversation_1",
+                "message_id": "message_1",
+                "message": {"role": "user", "content": "hello"},
+            },
+        }
+        response = client.post(
+            "/internal/api/v1/wizard/upsert_weaviate/message", json=payload
+        )
+        assert response.status_code == 200
+        assert response.json() == {"success": True}
+        mock_weaviate_vector_db.upsert_message.assert_called_once()

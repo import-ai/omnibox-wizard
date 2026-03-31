@@ -86,8 +86,6 @@ async def upsert_weaviate_resource(
     request: UpsertWeaviateResourceRequest,
     _trace_info: TraceInfo = Depends(get_trace_info),
 ):
-    resource_id = request.meta_info.resource_id
-    meta_info = request.meta_info.model_dump(exclude_none=True)
     texts = splitter.split_text(request.content)
     chunks = [
         Chunk(
@@ -96,11 +94,14 @@ async def upsert_weaviate_resource(
             chunk_type=ChunkType.snippet,
             start_index=request.content.index(text),
             end_index=request.content.index(text) + len(text),
-            **meta_info,
+            resource_id=request.resource_id,
+            parent_id=request.parent_id,
+            resource_tag_ids=request.resource_tag_ids,
+            resource_tag_names=request.resource_tag_names,
         )
         for text in texts
     ]
-    await weaviate_vector_db.remove_chunks(request.namespace_id, resource_id)
+    await weaviate_vector_db.remove_chunks(request.namespace_id, request.resource_id)
     await weaviate_vector_db.insert_chunks(request.namespace_id, chunks)
     return {"success": True}
 

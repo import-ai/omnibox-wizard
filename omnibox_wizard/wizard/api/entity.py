@@ -2,10 +2,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from wizard_common.grimoire.entity.index_record import (
-    IndexRecord,
-    IndexRecordType,
-)
+from wizard_common.grimoire.entity.index_record import IndexRecord, IndexRecordType
 
 
 class CommonAITextRequest(BaseModel):
@@ -36,16 +33,14 @@ class SearchResponse(BaseModel):
     records: list[IndexRecord] = Field(description="search results")
 
 
-class WeaviateResourceMetaInfo(BaseModel):
-    resource_id: str
-    parent_id: str
-
-
 class UpsertWeaviateResourceRequest(BaseModel):
     namespace_id: str
+    resource_id: str
+    parent_id: str
     title: str = ""
     content: str = ""
-    meta_info: WeaviateResourceMetaInfo
+    resource_tag_ids: list[str] = Field(default_factory=list)
+    resource_tag_names: list[str] = Field(default_factory=list)
 
 
 class UpsertWeaviateOpenAIMessage(BaseModel):

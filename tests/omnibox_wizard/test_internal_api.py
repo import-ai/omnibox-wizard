@@ -2,6 +2,7 @@ import pytest
 from unittest.mock import patch
 from fastapi.testclient import TestClient
 from fastapi import FastAPI
+from wizard_common.grimoire.entity.chunk import Chunk
 
 from omnibox_wizard.wizard.api.internal import internal_router
 from omnibox_wizard.wizard.api.entity import (
@@ -323,10 +324,10 @@ class TestWeaviateUpsertAPI:
             "namespace_id": "ns_1",
             "title": "Doc",
             "content": "hello world",
-            "meta_info": {
-                "resource_id": "resource_1",
-                "parent_id": "parent_1",
-            },
+            "resource_id": "resource_1",
+            "parent_id": "parent_1",
+            "resource_tag_ids": ["tag_1", "tag_2"],
+            "resource_tag_names": ["alpha", "beta"],
         }
         response = client.post(
             "/internal/api/v1/wizard/upsert_weaviate/resource", json=payload
@@ -337,6 +338,11 @@ class TestWeaviateUpsertAPI:
             "ns_1", "resource_1"
         )
         mock_weaviate_vector_db.insert_chunks.assert_called_once()
+        chunks = mock_weaviate_vector_db.insert_chunks.call_args.args[1]
+        assert len(chunks) == 1
+        assert isinstance(chunks[0], Chunk)
+        assert chunks[0].resource_tag_ids == ["tag_1", "tag_2"]
+        assert chunks[0].resource_tag_names == ["alpha", "beta"]
 
     async def test_upsert_weaviate_message(self, client, mock_weaviate_vector_db):
         payload = {

@@ -3,12 +3,12 @@ from typing import List
 from langchain_text_splitters import MarkdownTextSplitter
 
 from common.trace_info import TraceInfo
+from omnibox_wizard.worker.config import WorkerConfig
+from omnibox_wizard.worker.functions.base_function import BaseFunction
 from wizard_common.grimoire.entity.chunk import Chunk, ChunkType
 from wizard_common.grimoire.entity.message import Message
 from wizard_common.grimoire.retriever.weaviate_vector_db import WeaviateVectorDB
-from omnibox_wizard.worker.config import WorkerConfig
 from wizard_common.worker.entity import Task
-from omnibox_wizard.worker.functions.base_function import BaseFunction
 
 
 class DeleteIndex(BaseFunction):
@@ -43,6 +43,8 @@ class UpsertIndex(DeleteIndex):
 
         meta_info: dict = input_data["meta_info"] | {"namespace_id": task.namespace_id}
         chunks = self.spliter.split_text(content)
+        if not chunks:
+            chunks.append("")
 
         chunk_list: List[Chunk] = [
             Chunk(

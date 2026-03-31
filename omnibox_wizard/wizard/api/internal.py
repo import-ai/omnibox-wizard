@@ -8,13 +8,13 @@ from common.config_loader import Loader
 from common.trace_info import TraceInfo
 from omnibox_wizard.wizard.api.depends import get_trace_info
 from omnibox_wizard.wizard.api.entity import (
+    CommonAITextRequest,
     SearchRequest,
     SearchResponse,
-    TitleResponse,
-    CommonAITextRequest,
     TagsResponse,
-    UpsertWeaviateResourceRequest,
+    TitleResponse,
     UpsertWeaviateMessageRequest,
+    UpsertWeaviateResourceRequest,
 )
 from omnibox_wizard.wizard.config import ENV_PREFIX
 from wizard_common.grimoire.common_ai import CommonAI
@@ -83,6 +83,8 @@ async def upsert_weaviate_resource(
     _trace_info: TraceInfo = Depends(get_trace_info),
 ):
     texts = splitter.split_text(request.content)
+    if not texts:
+        texts.append("")
     chunks = [
         Chunk(
             title=request.title,

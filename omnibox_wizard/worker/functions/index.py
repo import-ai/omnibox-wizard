@@ -5,7 +5,7 @@ from langchain_text_splitters import MarkdownTextSplitter
 from common.trace_info import TraceInfo
 from wizard_common.grimoire.entity.chunk import Chunk, ChunkType
 from wizard_common.grimoire.entity.message import Message
-from wizard_common.grimoire.retriever.meili_vector_db import MeiliVectorDB
+from wizard_common.grimoire.retriever.weaviate_vector_db import WeaviateVectorDB
 from omnibox_wizard.worker.config import WorkerConfig
 from wizard_common.worker.entity import Task
 from omnibox_wizard.worker.functions.base_function import BaseFunction
@@ -13,15 +13,13 @@ from omnibox_wizard.worker.functions.base_function import BaseFunction
 
 class DeleteIndex(BaseFunction):
     def __init__(self, config: WorkerConfig):
-        self.vector_db: MeiliVectorDB = MeiliVectorDB(config.vector)
+        self.vector_db: WeaviateVectorDB = WeaviateVectorDB(config.vector)
 
     async def run(self, task: Task, trace_info: TraceInfo) -> dict:
         input_data = task.input
         namespace_id: str = task.namespace_id
         resource_id: str = input_data["resource_id"]
-        tasks = []
-        await self.vector_db.remove_chunks(namespace_id, resource_id, tasks)
-        await self.vector_db.wait_for_tasks(tasks)
+        await self.vector_db.remove_chunks(namespace_id, resource_id)
         return {"success": True}
 
 
@@ -36,8 +34,7 @@ class UpsertIndex(DeleteIndex):
     async def run(self, task: Task, trace_info: TraceInfo) -> dict:
         input_data = task.input
         resource_id: str = input_data["meta_info"]["resource_id"]
-        tasks = []
-        await self.vector_db.remove_chunks(task.namespace_id, resource_id, tasks)
+        await self.vector_db.remove_chunks(task.namespace_id, resource_id)
 
         title: str = input_data.get("title", "")
         content: str = input_data.get("content", "")
@@ -58,40 +55,31 @@ class UpsertIndex(DeleteIndex):
             )
             for chunk in chunks
         ]
-        await self.vector_db.insert_chunks(task.namespace_id, chunk_list, tasks)
-        await self.vector_db.wait_for_tasks(tasks)
+        await self.vector_db.insert_chunks(task.namespace_id, chunk_list)
         return {"success": True}
 
 
 class UpsertMessageIndex(BaseFunction):
     def __init__(self, config: WorkerConfig):
         super().__init__()
-        self.vector_db: MeiliVectorDB = MeiliVectorDB(config.vector)
+        self.vector_db: WeaviateVectorDB = WeaviateVectorDB(config.vector)
 
     async def run(self, task: Task, trace_info: TraceInfo) -> dict:
         message = Message(**task.input)
-        tasks = []
-        await self.vector_db.upsert_message(
-            task.namespace_id, task.user_id, message, tasks
-        )
-        await self.vector_db.wait_for_tasks(tasks)
+        await self.vector_db.upsert_message(task.namespace_id, task.user_id, message)
         return {"success": True}
 
 
 class DeleteConversation(BaseFunction):
     def __init__(self, config: WorkerConfig):
         super().__init__()
-        self.vector_db: MeiliVectorDB = MeiliVectorDB(config.vector)
+        self.vector_db: WeaviateVectorDB = WeaviateVectorDB(config.vector)
 
     async def run(self, task: Task, trace_info: TraceInfo) -> dict:
         conversation_id: str = task.input.get("conversation_id", "")
         if conversation_id == "":
             return {"success": False, "error": "conversation_id is required"}
-        tasks = []
-        await self.vector_db.remove_conversation(
-            task.namespace_id, conversation_id, tasks
-        )
-        await self.vector_db.wait_for_tasks(tasks)
+        await self.vector_db.remove_conversation(task.namespace_id, conversation_id)
         return {"success": True}
 
 

@@ -21,27 +21,23 @@ from wizard_common.grimoire.common_ai import CommonAI
 from wizard_common.grimoire.config import GrimoireAgentConfig
 from wizard_common.grimoire.entity.chunk import Chunk, ChunkType
 from wizard_common.grimoire.entity.message import Message
-from wizard_common.grimoire.retriever.meili_vector_db import MeiliVectorDB
 from wizard_common.grimoire.retriever.weaviate_vector_db import WeaviateVectorDB
 
 dumps = partial(lib_dumps, ensure_ascii=False, separators=(",", ":"))
 internal_router = APIRouter(prefix="/internal/api/v1/wizard")
 common_ai: CommonAI = ...
-vector_db: MeiliVectorDB
-weaviate_vector_db: WeaviateVectorDB
 splitter = MarkdownTextSplitter(chunk_size=1024, chunk_overlap=128)
+vector_db: WeaviateVectorDB
 
 
 async def init(app):
     global common_ai
     global vector_db
-    global weaviate_vector_db
     loader = Loader(GrimoireAgentConfig, env_prefix=ENV_PREFIX)
     config: GrimoireAgentConfig = loader.load()
 
     common_ai = CommonAI(config.grimoire.openai)
-    vector_db = MeiliVectorDB(config.vector)
-    weaviate_vector_db = WeaviateVectorDB(config.vector)
+    vector_db = WeaviateVectorDB(config.vector)
 
 
 @internal_router.post("/title", tags=["LLM"], response_model=TitleResponse)
@@ -101,8 +97,8 @@ async def upsert_weaviate_resource(
         )
         for text in texts
     ]
-    await weaviate_vector_db.remove_chunks(request.namespace_id, request.resource_id)
-    await weaviate_vector_db.insert_chunks(request.namespace_id, chunks)
+    await vector_db.remove_chunks(request.namespace_id, request.resource_id)
+    await vector_db.insert_chunks(request.namespace_id, chunks)
     return {"success": True}
 
 
@@ -112,7 +108,5 @@ async def upsert_weaviate_message(
     _trace_info: TraceInfo = Depends(get_trace_info),
 ):
     message = Message(**request.message.model_dump())
-    await weaviate_vector_db.upsert_message(
-        request.namespace_id, request.user_id, message
-    )
+    await vector_db.upsert_message(request.namespace_id, request.user_id, message)
     return {"success": True}

@@ -28,6 +28,14 @@ def is_douyin(url: str) -> bool:
     return False
 
 
+def is_tiktok(url: str) -> bool:
+    domain: str = urlparse(url).netloc
+    for pattern in ["tiktok.com", "tiktokv.com"]:
+        if pattern in domain:
+            return True
+    return False
+
+
 class WebAnalysisFunction(BaseFunction):
     def __init__(self, _: WorkerConfig):
         self.video_prefixes: list[str] = list(
@@ -46,6 +54,18 @@ class WebAnalysisFunction(BaseFunction):
                     for c in feed_active.find_all("xg-video-container")
                 )
             return True
+        if is_tiktok(url):
+            parsed = urlparse(url)
+            if "/photo/" in parsed.path:
+                return False
+            if "/video/" in parsed.path:
+                return True
+            active_slide = soup.find(attrs={"class": "swiper-slide-active"})
+            if active_slide:
+                active_html = str(active_slide)
+                if "photomode" in active_html or "DivPhotoPlayerContainer" in active_html or "ImgPhotoSlide" in active_html:
+                    return False
+                return True
         for prefix in self.video_prefixes:
             if url.startswith(prefix):
                 return True

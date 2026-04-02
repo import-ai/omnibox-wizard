@@ -18,7 +18,7 @@ from wizard_common.grimoire.config import GrimoireAgentConfig
 from omnibox_wizard.worker.worker import Worker
 from tests.omnibox_wizard.helper.backend_client import BackendClient
 from tests.omnibox_wizard.helper.meilisearch_container import MeiliSearchContainer
-from worker.rate_limiter import RateLimiter
+from omnibox_wizard.worker.rate_limiter import RateLimiter
 
 logger = get_logger("fixture")
 

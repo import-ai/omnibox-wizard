@@ -66,13 +66,6 @@ class WebAnalysisFunction(BaseFunction):
                 if "photomode" in active_html or "DivPhotoPlayerContainer" in active_html or "ImgPhotoSlide" in active_html:
                     return False
                 return True
-            photo_imgs = [
-                img for img in soup.find_all("img")
-                if "photomode" in img.get("src", "")
-            ]
-            if photo_imgs or "DivPhotoPlayerContainer" in html or "ImgPhotoSlide" in html:
-                return False
-            return True
         for prefix in self.video_prefixes:
             if url.startswith(prefix):
                 return True

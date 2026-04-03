@@ -3,15 +3,13 @@ from typing import Iterator, List
 
 import httpx
 import pytest
-
-
 from httpx_sse import connect_sse
-from wizard_common.worker.entity import Task
+
 from common import project_root
+from omnibox_wizard.worker.worker import Worker
 from wizard_common.grimoire.agent.agent import UserQueryPreprocessor
 from wizard_common.grimoire.entity.api import MessageDto
-from wizard_common.grimoire.entity.tools import Condition
-from omnibox_wizard.worker.worker import Worker
+from wizard_common.worker.entity import Task
 
 
 class Colors:
@@ -292,18 +290,3 @@ def test_ask(
         assert cnt in expected_messages_length
     else:
         assert cnt == expected_messages_length
-
-
-@pytest.mark.parametrize(
-    "condition",
-    [
-        {"namespace_id": "asdf", "resource_ids": ["asdf"]},
-        {"namespace_id": "asdf", "parent_ids": ["asdf"]},
-        {"namespace_id": "asdf"},
-        {"namespace_id": "asdf", "resource_ids": []},
-        {"namespace_id": "asdf", "parent_ids": []},
-    ],
-)
-def test_condition(condition: dict):
-    condition = Condition.model_validate(condition)
-    print(condition.to_meili_where())

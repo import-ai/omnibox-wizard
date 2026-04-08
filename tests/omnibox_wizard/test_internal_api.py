@@ -2,6 +2,7 @@ import pytest
 from unittest.mock import patch
 from fastapi.testclient import TestClient
 from fastapi import FastAPI
+from wizard_common.grimoire.entity.chunk import Chunk
 
 from omnibox_wizard.wizard.api.internal import internal_router
 from omnibox_wizard.wizard.api.entity import (
@@ -29,6 +30,12 @@ def client(app):
 def mock_common_ai():
     """Mock CommonAI instance"""
     with patch("omnibox_wizard.wizard.api.internal.common_ai") as mock:
+        yield mock
+
+
+@pytest.fixture
+def mock_weaviate_vector_db():
+    with patch("omnibox_wizard.wizard.api.internal.weaviate_vector_db") as mock:
         yield mock
 
 
@@ -309,3 +316,47 @@ class TestEntityValidation:
         # Empty tags should be valid
         empty_response = TagsResponse(tags=[])
         assert empty_response.tags == []
+
+
+class TestWeaviateUpsertAPI:
+    async def test_upsert_weaviate_resource(self, client, mock_weaviate_vector_db):
+        payload = {
+            "namespace_id": "ns_1",
+            "title": "Doc",
+            "content": "hello world",
+            "resource_id": "resource_1",
+            "parent_id": "parent_1",
+            "resource_tag_ids": ["tag_1", "tag_2"],
+            "resource_tag_names": ["alpha", "beta"],
+        }
+        response = client.post(
+            "/internal/api/v1/wizard/upsert_weaviate/resource", json=payload
+        )
+        assert response.status_code == 200
+        assert response.json() == {"success": True}
+        mock_weaviate_vector_db.remove_chunks.assert_called_once_with(
+            "ns_1", "resource_1"
+        )
+        mock_weaviate_vector_db.insert_chunks.assert_called_once()
+        chunks = mock_weaviate_vector_db.insert_chunks.call_args.args[1]
+        assert len(chunks) == 1
+        assert isinstance(chunks[0], Chunk)
+        assert chunks[0].resource_tag_ids == ["tag_1", "tag_2"]
+        assert chunks[0].resource_tag_names == ["alpha", "beta"]
+
+    async def test_upsert_weaviate_message(self, client, mock_weaviate_vector_db):
+        payload = {
+            "namespace_id": "ns_1",
+            "user_id": "user_1",
+            "message": {
+                "conversation_id": "conversation_1",
+                "message_id": "message_1",
+                "message": {"role": "user", "content": "hello"},
+            },
+        }
+        response = client.post(
+            "/internal/api/v1/wizard/upsert_weaviate/message", json=payload
+        )
+        assert response.status_code == 200
+        assert response.json() == {"success": True}
+        mock_weaviate_vector_db.upsert_message.assert_called_once()

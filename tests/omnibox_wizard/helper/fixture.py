@@ -19,18 +19,10 @@ from omnibox_wizard.worker.worker import Worker
 from tests.omnibox_wizard.helper.backend_client import BackendClient
 from tests.omnibox_wizard.helper.meilisearch_container import MeiliSearchContainer
 from omnibox_wizard.worker.rate_limiter import RateLimiter
+from worker.rate_limiter import RateLimiter
+
 
 logger = get_logger("fixture")
-
-
-@pytest.fixture(scope="function")
-def meilisearch_endpoint() -> str:
-    with MeiliSearchContainer() as meilisearch:
-        server_info: dict = meilisearch.get_config()
-        endpoint: str = server_info["endpoint"]
-        os.environ[f"{ENV_PREFIX}_VECTOR_HOST"] = endpoint
-        os.environ[f"{ENV_PREFIX}_VECTOR_MEILI_API_KEY"] = server_info["master_key"]
-        yield endpoint
 
 
 @pytest.fixture(scope="function")
@@ -71,7 +63,7 @@ async def base_url() -> str:
 
 
 @pytest.fixture(scope="function")
-def config(meilisearch_endpoint: str) -> GrimoireAgentConfig:
+def config() -> GrimoireAgentConfig:
     load_dotenv()
     loader = Loader(GrimoireAgentConfig, env_prefix=ENV_PREFIX)
     config = loader.load()
@@ -79,7 +71,7 @@ def config(meilisearch_endpoint: str) -> GrimoireAgentConfig:
 
 
 @pytest.fixture(scope="function")
-def worker_config(meilisearch_endpoint: str) -> WorkerConfig:
+def worker_config() -> WorkerConfig:
     load_dotenv()
     loader = Loader(WorkerConfig, env_prefix=ENV_PREFIX)
     config = loader.load()

@@ -66,6 +66,10 @@ class WebAnalysisFunction(BaseFunction):
                 if "photomode" in active_html or "DivPhotoPlayerContainer" in active_html or "ImgPhotoSlide" in active_html:
                     return False
                 return True
+            html_lower = html.lower()
+            if "mime_type=video" in html_lower or "<video" in html_lower or "video/tos/" in html_lower:
+                return True
+            return True
         for prefix in self.video_prefixes:
             if url.startswith(prefix):
                 return True

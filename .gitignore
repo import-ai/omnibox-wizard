@@ -169,7 +169,4 @@ tests/omnibox_wizard/resources/files/*
 
 CLAUDE.md
 .serena
-tests/omnibox_wizard/test_get_task.py
-
-a.html
 

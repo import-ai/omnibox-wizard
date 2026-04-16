@@ -1,11 +1,10 @@
 FROM python:3.12 AS builder
 
-RUN wget -O- https://install.python-poetry.org | python3 -
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 WORKDIR /app
 
-COPY pyproject.toml poetry.lock /app/
-RUN /root/.local/bin/poetry config virtualenvs.create false \
-    && /root/.local/bin/poetry install --no-interaction --no-root --no-directory --only main
+COPY pyproject.toml uv.lock /app/
+RUN uv sync --frozen --no-dev --no-install-project
 
 FROM python:3.12
 

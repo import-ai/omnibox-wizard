@@ -63,7 +63,11 @@ class WebAnalysisFunction(BaseFunction):
             active_slide = soup.find(attrs={"class": "swiper-slide-active"})
             if active_slide:
                 active_html = str(active_slide)
-                if "photomode" in active_html or "DivPhotoPlayerContainer" in active_html or "ImgPhotoSlide" in active_html:
+                if (
+                    "photomode" in active_html
+                    or "DivPhotoPlayerContainer" in active_html
+                    or "ImgPhotoSlide" in active_html
+                ):
                     return False
             return True
         for prefix in self.video_prefixes:

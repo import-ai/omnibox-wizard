@@ -13,9 +13,7 @@ tracer = trace.get_tracer(__name__)
 class TagExtractor(BaseFunction):
     def __init__(self, config: WorkerConfig):
         self.config = config
-        self.tag_extractor = TagsExtractor(
-            config=config.grimoire.openai.get_config("mini")
-        )
+        self.tag_extractor = TagsExtractor(config.grimoire.openai)
 
     @tracer.start_as_current_span("TagExtractor.run")
     async def run(self, task: Task, trace_info: TraceInfo) -> dict:

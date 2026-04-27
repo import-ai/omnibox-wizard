@@ -15,9 +15,7 @@ tracer = trace.get_tracer("TitleGenerator")
 class TitleGenerator(BaseFunction):
     def __init__(self, config: WorkerConfig):
         self.config = config
-        self.html_title_extractor = HTMLTitleExtractor(
-            config=config.grimoire.openai.get_config("mini")
-        )
+        self.html_title_extractor = HTMLTitleExtractor(config.grimoire.openai)
 
     @tracer.start_as_current_span("TitleGenerator.get_title")
     async def get_title(

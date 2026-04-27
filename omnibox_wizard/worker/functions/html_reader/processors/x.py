@@ -27,13 +27,32 @@ class XProcessor(HTMLReaderBaseProcessor):
         if soup.select_one('div[data-testid="twitterArticleReadView"]'):
             result = self._convert_article(soup)
         else:
-            result = self._convert_tweet(soup)
+            main_tweet_container = self._find_main_tweet_container(soup)
+            if main_tweet_container:
+                result = self._convert_tweet(main_tweet_container)
+            else:
+                result = self._convert_tweet(soup)
         
         if result.images:
             image_links = [(img.link, img.name) for img in result.images]
             downloaded_images = await self.get_images(image_links)
             result.images = downloaded_images
         return result
+    
+    def _find_main_tweet_container(self, soup: BeautifulSoup) -> BeautifulSoup:
+        for tweet in soup.find_all('div', attrs={'data-testid': 'tweet'}):
+            tweet_text = tweet.find('div', attrs={'data-testid': 'tweetText'})
+            if not tweet_text:
+                continue
+            
+            current = tweet
+            for depth in range(15):
+                if not current:
+                    break
+                if current.get('data-testid') == 'primaryColumn':
+                    return tweet
+                current = current.parent
+        return None
     
     def _extract_quote_info(self,soup) -> tuple[str, list[Image]]:
         print(f"DEBUG: 开始提取引用信息")
@@ -202,12 +221,12 @@ class XProcessor(HTMLReaderBaseProcessor):
             print(f"DEBUG: result_parts为空")
             return "", []
 
-    def _convert_tweet(self, soup) -> GeneratedContent:
-        quote_info, quote_images = self._extract_quote_info(soup)
-        content: Tag = soup.select_one("div[data-testid=tweetText]")
+    def _convert_tweet(self, tweet_container: BeautifulSoup) -> GeneratedContent:
+        quote_info, quote_images = self._extract_quote_info(tweet_container)
+        content: Tag = tweet_container.select_one("div[data-testid=tweetText]")
         quote_images_links = {img.link for img in quote_images}
         images: list[Image] = []
-        tweet = soup.select_one('[data-testid="tweet"]')
+        tweet = tweet_container.select_one('[data-testid="tweet"]')
         if tweet:
             for img in tweet.find_all("img"):
                 if src := img.get("src"):

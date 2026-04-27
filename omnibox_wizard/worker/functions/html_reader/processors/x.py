@@ -25,8 +25,15 @@ class XProcessor(HTMLReaderBaseProcessor):
         soup = BeautifulSoup(html, "html.parser")
 
         if soup.select_one('div[data-testid="twitterArticleReadView"]'):
-            return self._convert_article(soup)
-        return self._convert_tweet(soup)
+            result = self._convert_article(soup)
+        else:
+            result = self._convert_tweet(soup)
+        
+        if result.images:
+            image_links = [(img.link, img.name) for img in result.images]
+            downloaded_images = await self.get_images(image_links)
+            result.images = downloaded_images
+        return result
     
     def _extract_quote_info(self,soup) -> tuple[str, list[Image]]:
         print(f"DEBUG: 开始提取引用信息")
@@ -101,7 +108,7 @@ class XProcessor(HTMLReaderBaseProcessor):
             print(f"DEBUG: result_parts = {result_parts}")
             for img in quote_container.find_all("img"):
                 if src := img.get("src"):
-                    if "profile_images" not in src and "emoji" not in src:
+                    if "profile_images" not in src and "emoji" not in src and "abs.twimg.com/emoji" not in src:
                         alt = img.get("alt", src)
                         result_parts.append(f"![{alt}]({src})")
                         quote_images.append(
@@ -115,7 +122,7 @@ class XProcessor(HTMLReaderBaseProcessor):
                         print(f"DEBUG: 添加文章封面图片: {src[:50]}...")
 
             if result_parts:
-                result = "--- 引用的文章 ---\n" + "\n\n".join(result_parts)
+                result = "--- 引用的文章 ---\n" + "\n\n".join(result_parts) + "\n--- 引用的文章 ---\n"
                 return result, quote_images
             print(f"DEBUG: result_parts为空")
             return "", []
@@ -154,7 +161,7 @@ class XProcessor(HTMLReaderBaseProcessor):
 
                 for img in quote_container.find_all("img"):
                     if src := img.get("src"):
-                        if "profile_images" not in src and "emoji" not in src:
+                        if "profile_images" not in src and "emoji" not in src and "abs.twimg.com/emoji" not in src:
                             quote_images.append(
                                 Image.model_validate({
                                     "name": img.get("alt", src),
@@ -176,7 +183,7 @@ class XProcessor(HTMLReaderBaseProcessor):
                 
                 for img in quote_container.find_all("img"):
                         if src := img.get("src"):
-                            if "profile_images" not in src and "emoji" not in src:
+                            if "profile_images" not in src and "emoji" not in src and "abs.twimg.com/emoji" not in src:
                                 alt = img.get("alt", src)
                                 result_parts.append(f"![{alt}]({src})")
                                 print(f"DEBUG: 添加引用图片到文本: {src[:50]}...")
@@ -190,8 +197,8 @@ class XProcessor(HTMLReaderBaseProcessor):
             
             print(f"DEBUG: result_parts = {result_parts}")
             if result_parts:
-                result = "--- 引用的帖子 ---\n" + "\n\n".join(result_parts),quote_images
-                return result
+                result = "--- 引用的帖子 ---\n" + "\n\n".join(result_parts) + "\n\n--- 引用的帖子 ---\n"
+                return result, quote_images
             print(f"DEBUG: result_parts为空")
             return "", []
 
@@ -204,7 +211,7 @@ class XProcessor(HTMLReaderBaseProcessor):
         if tweet:
             for img in tweet.find_all("img"):
                 if src := img.get("src"):
-                    if "profile_images" not in src and "emoji" not in src:
+                    if "profile_images" not in src and "emoji" not in src and "abs.twimg.com/emoji" not in src:
                         if src not in quote_images_links:
                             images.append(
                                 Image.model_validate(
@@ -224,6 +231,9 @@ class XProcessor(HTMLReaderBaseProcessor):
             ]
         )
         if content:
+            for img in content.find_all("img"):
+                if "abs.twimg.com/emoji" in (img.get("src", "")):
+                    img.replace_with(img.get("alt", ""))
             content_with_br: str = str(content).replace("\n", "<br>\n")
             content_with_br = content_with_br.replace('href="/','href="https://x.com/')
             markdown = html2text(content_with_br, bodywidth=0) + "\n\n" + markdown
@@ -249,7 +259,7 @@ class XProcessor(HTMLReaderBaseProcessor):
                         for img in imgs:
                             src = img.get("src", "")
                             alt = img.get("alt", "")
-                            if src and "profile_images" not in src and "emoji" not in src:
+                            if src and "profile_images" not in src and "emoji" not in src and "abs.twimg.com/emoji" not in src:
                                 title_images.append(Image.model_validate({
                                     "name": alt,
                                     "link": src,
@@ -327,7 +337,7 @@ class XProcessor(HTMLReaderBaseProcessor):
                 if img:
                     src = img.get("src", "")
                     alt = img.get("alt", "")
-                    if src and "profile_images" not in src and "emoji" not in src:
+                    if src and "profile_images" not in src and "emoji" not in src and "abs.twimg.com/emoji" not in src:
                         markdown_parts.append(f"![{alt}]({src})")
                         images.append(Image.model_validate({
                             "name": alt,
@@ -373,7 +383,7 @@ class XProcessor(HTMLReaderBaseProcessor):
             for img in simple_tweet.find_all('img'):
                 src = img.get("src", "")
                 alt = img.get("alt", "")
-                if src and "profile_images" not in src and "emoji" not in src:
+                if src and "profile_images" not in src and "emoji" not in src and "abs.twimg.com/emoji" not in src:
                     quote_parts.append(f"![{alt}]({src})")
 
                     quote_images.append(Image.model_validate({
@@ -403,7 +413,7 @@ class XProcessor(HTMLReaderBaseProcessor):
             for img in simple_tweet.find_all("img"):
                 src = img.get("src", "")
                 alt = img.get("alt", "")
-                if src and "profile_images" not in src and "emoji" not in src:
+                if src and "profile_images" not in src and "emoji" not in src and "abs.twimg.com/emoji" not in src:
                     quote_parts.append(f"![{alt}]({src})")
                     quote_images.append(
                         Image.model_validate({

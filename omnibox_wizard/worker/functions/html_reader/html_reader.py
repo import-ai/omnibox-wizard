@@ -289,7 +289,10 @@ class HTMLReaderV2(BaseFunction):
             # Add extract_tags to next_tasks if enabled
             if user_options.get("enable_ai_tag_extraction", "true") == "true":
                 lang = get_lang_from_user_options(user_options)
-                extract_tags_input = {"text": result_dict["markdown"]}
+                extract_tags_input = {
+                    "title": result_dict.get("title", ""),
+                    "content": result_dict["markdown"],
+                }
                 if lang:
                     extract_tags_input["lang"] = lang
                 extract_tags_task = task.create_next_task(

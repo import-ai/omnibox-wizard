@@ -16,32 +16,41 @@ from omnibox_wizard.wizard.api.entity import (
     UpsertWeaviateResourceRequest,
 )
 from omnibox_wizard.wizard.config import ENV_PREFIX
-from wizard_common.grimoire.common_ai import CommonAI
 from wizard_common.grimoire.config import GrimoireAgentConfig
 from wizard_common.grimoire.entity.chunk import Chunk, ChunkType
 from wizard_common.grimoire.entity.message import Message
 from wizard_common.grimoire.retriever.weaviate_vector_db import WeaviateVectorDB
+from omnibox_wizard.worker.agent.chat_title_generator import (
+    ChatTitleGenerator,
+    ChatTitleGenerateOutput,
+)
 
 dumps = partial(lib_dumps, ensure_ascii=False, separators=(",", ":"))
 internal_router = APIRouter(prefix="/internal/api/v1/wizard")
-common_ai: CommonAI = ...
 splitter = MarkdownTextSplitter(chunk_size=1024, chunk_overlap=128)
 vector_db: WeaviateVectorDB
+title_generator: ChatTitleGenerator
 
 
 async def init(_):
-    global common_ai
+    global title_generator
     global vector_db
     loader = Loader(GrimoireAgentConfig, env_prefix=ENV_PREFIX)
     config: GrimoireAgentConfig = loader.load()
 
-    common_ai = CommonAI(config.grimoire.openai)
+    title_generator = ChatTitleGenerator(config.grimoire.openai)
     vector_db = WeaviateVectorDB(config.vector)
 
 
 @internal_router.post("/title", tags=["LLM"], response_model=TitleResponse)
 async def title(request: CommonAITextRequest):
-    return TitleResponse(title=await common_ai.title(request.text, lang=request.lang))
+    output: ChatTitleGenerateOutput = await title_generator.ainvoke(
+        {
+            "text": request.text,
+            "lang": request.lang or "简体中文",
+        }
+    )
+    return TitleResponse(title=output.title)
 
 
 @internal_router.post("/search", tags=[], response_model=SearchResponse)

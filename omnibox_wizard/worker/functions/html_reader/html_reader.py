@@ -326,6 +326,9 @@ class HTMLReaderV2(BaseFunction):
                     return result.model_dump(exclude_none=True)
                 except Exception as e:
                     process_span.record_exception(e)
+                    return {
+                        "markdown": f"Processor failed: {str(e)}"
+                    }
 
         domain: str = urlparse(url).netloc
         trace_info = trace_info.bind(domain=domain)

@@ -11,7 +11,6 @@ from omnibox_wizard.wizard.api.entity import (
     CommonAITextRequest,
     SearchRequest,
     SearchResponse,
-    TagsResponse,
     TitleResponse,
     UpsertWeaviateMessageRequest,
     UpsertWeaviateResourceRequest,
@@ -30,7 +29,7 @@ splitter = MarkdownTextSplitter(chunk_size=1024, chunk_overlap=128)
 vector_db: WeaviateVectorDB
 
 
-async def init(app):
+async def init(_):
     global common_ai
     global vector_db
     loader = Loader(GrimoireAgentConfig, env_prefix=ENV_PREFIX)
@@ -41,31 +40,12 @@ async def init(app):
 
 
 @internal_router.post("/title", tags=["LLM"], response_model=TitleResponse)
-async def title(
-    request: CommonAITextRequest, trace_info: TraceInfo = Depends(get_trace_info)
-):
-    return TitleResponse(
-        title=await common_ai.title(
-            request.text, lang=request.lang, trace_info=trace_info
-        )
-    )
-
-
-@internal_router.post("/tags", tags=["LLM"], response_model=TagsResponse)
-async def tags(
-    request: CommonAITextRequest, trace_info: TraceInfo = Depends(get_trace_info)
-):
-    return TagsResponse(
-        tags=await common_ai.tags(
-            request.text, lang=request.lang, trace_info=trace_info
-        )
-    )
+async def title(request: CommonAITextRequest):
+    return TitleResponse(title=await common_ai.title(request.text, lang=request.lang))
 
 
 @internal_router.post("/search", tags=[], response_model=SearchResponse)
-async def search(
-    request: SearchRequest, trace_info: TraceInfo = Depends(get_trace_info)
-):
+async def search(request: SearchRequest):
     records = await vector_db.search(
         query=request.query,
         namespace_id=request.namespace_id,
@@ -78,10 +58,7 @@ async def search(
 
 
 @internal_router.post("/upsert_weaviate/resource", tags=[])
-async def upsert_weaviate_resource(
-    request: UpsertWeaviateResourceRequest,
-    _trace_info: TraceInfo = Depends(get_trace_info),
-):
+async def upsert_weaviate_resource(request: UpsertWeaviateResourceRequest):
     texts = splitter.split_text(request.content)
     if not texts:
         texts.append("")

@@ -13,9 +13,6 @@ from readability.cleaners import clean_attributes
 
 from common.trace_info import TraceInfo
 from omnibox_wizard.worker.agent.html_content_extractor import HTMLContentExtractor
-from omnibox_wizard.worker.agent.html_title_extractor import (
-    HTMLTitleExtractor,
-)
 from omnibox_wizard.worker.config import WorkerConfig
 from omnibox_wizard.worker.functions.base_function import BaseFunction
 from omnibox_wizard.worker.functions.html_reader.processors.base import (
@@ -226,12 +223,7 @@ class HTMLReaderV2(BaseFunction):
     }
 
     def __init__(self, config: WorkerConfig):
-        self.html_title_extractor = HTMLTitleExtractor(
-            config.grimoire.openai.get_config("mini")
-        )
-        self.html_content_extractor = HTMLContentExtractor(
-            config.grimoire.openai.get_config("mini")
-        )
+        self.html_content_extractor = HTMLContentExtractor(config.grimoire.openai)
         self.processors: list[HTMLReaderBaseProcessor] = [
             GreenNoteProcessor(config=config),
             GreenNoticeProcessor(config=config),

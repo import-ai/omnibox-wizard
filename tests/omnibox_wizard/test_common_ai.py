@@ -30,7 +30,7 @@ def common_ai(remote_config: GrimoireAgentConfig) -> CommonAI:
     ],
 )
 async def test_title(common_ai: CommonAI, trace_info: TraceInfo, text: str):
-    title: str = await common_ai.title(text, trace_info=trace_info)
+    title: str = await common_ai.chat_title_generator(text, trace_info=trace_info)
     print(title)
 
 
@@ -76,7 +76,9 @@ async def test_title_with_lang_parameter(
     expected_type: type,
 ):
     """Test title generation with different language parameters"""
-    title: str = await common_ai.title(text, lang=lang, trace_info=trace_info)
+    title: str = await common_ai.chat_title_generator(
+        text, lang=lang, trace_info=trace_info
+    )
     assert isinstance(title, expected_type)
     assert len(title) > 0
     print(f"Text: {text} | Lang: {lang} | Title: {title}")
@@ -115,7 +117,7 @@ async def test_tags_with_lang_parameter(
 async def test_title_default_lang(common_ai: CommonAI, trace_info: TraceInfo):
     """Test title generation with default language (简体中文)"""
     text = "人工智能是什么？"
-    title: str = await common_ai.title(text, trace_info=trace_info)
+    title: str = await common_ai.chat_title_generator(text, trace_info=trace_info)
     assert isinstance(title, str)
     assert len(title) > 0
     print(f"Default lang title: {title}")
@@ -149,11 +151,15 @@ async def test_multilingual_consistency(
 ):
     """Test that different language settings produce consistent results for similar content"""
     # Test with Chinese
-    title_zh = await common_ai.title(text, lang="简体中文", trace_info=trace_info)
+    title_zh = await common_ai.chat_title_generator(
+        text, lang="简体中文", trace_info=trace_info
+    )
     tags_zh = await common_ai.tags(text, lang="简体中文", trace_info=trace_info)
 
     # Test with English
-    title_en = await common_ai.title(text, lang="English", trace_info=trace_info)
+    title_en = await common_ai.chat_title_generator(
+        text, lang="English", trace_info=trace_info
+    )
     tags_en = await common_ai.tags(text, lang="English", trace_info=trace_info)
 
     # Both should return valid results
@@ -171,7 +177,7 @@ async def test_edge_case_empty_lang(common_ai: CommonAI, trace_info: TraceInfo):
     """Test behavior with empty language parameter"""
     text = "测试文本"
     # Should use default lang when empty string is passed
-    title = await common_ai.title(text, lang="", trace_info=trace_info)
+    title = await common_ai.chat_title_generator(text, lang="", trace_info=trace_info)
     tags = await common_ai.tags(text, lang="", trace_info=trace_info)
 
     assert isinstance(title, str)

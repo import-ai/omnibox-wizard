@@ -5,7 +5,10 @@ from common.utils import json_dumps
 from omnibox_wizard.worker.config import WorkerConfig
 from omnibox_wizard.worker.functions.base_function import BaseFunction
 from wizard_common.worker.entity import Task
-from worker.agent.html_tags_extractor import TagsExtractor, TagsExtractOutput
+from omnibox_wizard.worker.agent.html_tags_extractor import (
+    TagsExtractor,
+    TagsExtractOutput,
+)
 
 tracer = trace.get_tracer(__name__)
 

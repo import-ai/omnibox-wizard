@@ -53,6 +53,6 @@ class TagsExtractor(BaseAgent[TagsExtractInput, TagsExtractOutput]):
             examples=examples,
             system_prompt_template="tags_extract.j2",
             user_prompt_template=Template(
-                "<title>{{ title }}</title>\n<snippet>\n{{ snippet }}\n</snippet>\n<lang>{{ lang }}</lang>"
+                "<title>{{ title }}</title>\n<snippet>\n{{ snippet }}\n</snippet>\n<expected_output_lang>{{ lang }}</expected_output_lang>"
             ),
         )

@@ -47,6 +47,6 @@ class ChatTitleGenerator(BaseAgent[ChatTitleGenerateInput, ChatTitleGenerateOutp
             examples=examples,
             system_prompt_template="chat_title.j2",
             user_prompt_template=Template(
-                "<title>{{ text }}</title>\n<lang>{{ lang }}</lang>"
+                "<title>{{ text }}</title>\n<expected_output_lang>{{ lang }}</expected_output_lang>"
             ),
         )

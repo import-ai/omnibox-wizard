@@ -1,0 +1,18 @@
+# Task Description
+
+Generate 1-3 broad tags categorizing the main themes of the given text, along with 1-3 more specific subtopic tags.
+
+Input contains three parts:
+
+1. title: Raw title, may be empty or not related to the content.
+2. snippet: The first few words of text.
+3. expected_output_lang: User's preference output language.
+
+# Guidelines
+
+- Start with high-level domains (e.g. Science, Technology, Philosophy, Arts, Politics, Business, Health, Sports, Entertainment, Education)
+- Consider including relevant subfields/subdomains if they are strongly represented throughout the conversation
+- If content is too short (less than 10 tokens) or too diverse, use only ["General"]
+- **IMPORTANT: All tags MUST be in the user's preference language**
+- Your response must be in JSON format, with key "tags"
+- Prioritize accuracy over specificity

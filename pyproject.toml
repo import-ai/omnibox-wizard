@@ -50,3 +50,6 @@ build-backend = "hatchling.build"
 
 [tool.compose.deps.meilisearch]
 image = "getmeili/meilisearch:v1.14"
+
+[tool.ruff]
+exclude = ["./common", "./wizard_common"]

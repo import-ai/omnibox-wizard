@@ -1,5 +1,6 @@
 from urllib.parse import urlparse
 import re
+import logging
 from bs4 import BeautifulSoup, Tag
 from html2text import html2text
 from opentelemetry import trace
@@ -10,6 +11,7 @@ from omnibox_wizard.worker.functions.html_reader.processors.base import (
 )
 
 tracer = trace.get_tracer("XProcessor")
+logger = logging.getLogger(__name__)
 
 
 class XProcessor(HTMLReaderBaseProcessor):
@@ -56,11 +58,11 @@ class XProcessor(HTMLReaderBaseProcessor):
         return None
     
     def _extract_quote_info(self,soup) -> tuple[str, list[Image]]:
-        print(f"DEBUG: 开始提取引用信息")
+        logger.info("Start extracting quote information")
 
         article_cover = soup.find('div', attrs={'data-testid': 'article-cover-image'})
         if article_cover:
-            print(f"DEBUG: 找到 article-cover-image, 处理文章引用")
+            logger.debug("Detected article quote (article-cover-image found)")
             current = article_cover
             quote_container = None
             
@@ -72,43 +74,34 @@ class XProcessor(HTMLReaderBaseProcessor):
                     current = current.parent
                     if current.find('div', attrs={'data-testid': 'Tweet-User-Avatar'}):
                         quote_container = current
-                        print(f"DEBUG: 找引用容器, 在第{i+1}层")
                         break
                 else:
                     break
-            
+
             if not quote_container:
-                print(f"DEBUG: 没有找到包含头像的引用容器")
+                logger.warning("Quote container not found")
                 return "", []
-            
+
             result_parts = []
             quote_images = []
             user_name_div = quote_container.find('div', attrs={'data-testid': 'User-Name'})
             if user_name_div:
                 all_text = user_name_div.get_text()
-                print(f"DEBUG: User-Name 容器文字: {all_text[:100]}")
                 username_match = re.search(r'@[\w]+', all_text)
                 if username_match:
                     username = username_match.group()
                     result_parts.append(username)
-                    print(f"DEBUG: 找到用户名: {username}")
-                else:
-                    print(f"DEBUG: 没有找到 @ 开头的用户名")
             
             if article_cover.parent:
                 siblings = article_cover.parent.find_all('div', recursive=False)
-                print(f"DEBUG: 找到 {len(siblings)}个兄弟div")
                 for i, div in enumerate(siblings):
                     if div != article_cover:
                         title_spans = div.find_all('span', class_='css-1jxf684')
-                        print(f"DEBUG: 第{i+1} 个兄弟div找到 {len(title_spans)} 个span")
                         for span in title_spans:
                             text = span.get_text(strip=True)
-                            print(f"DEBUG: 检查文字: {text[:50]}")
                             if text and '文章' not in text and len(text) < 100 and len(text) > 5:
                                 article_title = text
                                 result_parts.append(f"引用文章: {article_title}")
-                                print(f"DEBUG: 找到文章标题")
                                 break
                         if any("引用文章:" in part for part in result_parts):
                             break
@@ -123,9 +116,7 @@ class XProcessor(HTMLReaderBaseProcessor):
                             summary_text = summary_span.get_text(strip=True)
                             if summary_text and len(summary_text) > 20:
                                 result_parts.append(f"摘要: {summary_text}")
-                                print(f"DEBUG: 找到文章摘要: {summary_text[:50]}...")
                                 break
-            print(f"DEBUG: result_parts = {result_parts}")
             for img in quote_container.find_all("img"):
                 if src := img.get("src"):
                     if "profile_images" not in src and "emoji" not in src and "abs.twimg.com/emoji" not in src:
@@ -139,21 +130,18 @@ class XProcessor(HTMLReaderBaseProcessor):
                                 "mimetype": "",
                             })
                         )
-                        print(f"DEBUG: 添加文章封面图片: {src[:50]}...")
 
             if result_parts:
                 result = "--- 引用的文章 ---\n" + "\n\n".join(result_parts) + "\n--- 引用的文章 ---\n"
                 return result, quote_images
-            print(f"DEBUG: result_parts为空")
             return "", []
         else:
-            print(f"DEBUG: 没有找到 article-cover-image尝试查找普通推文引用")
+            logger.info("No article cover found, trying tweet quote extraction")
             main_tweet_text = soup.select_one("div[data-testid=tweetText]")
 
             if not main_tweet_text:
-                print(f"DEBUG: 没有找到推文,无法确定引用推文")
                 return "", []
-            
+
             quote_containers = []
 
             for avatar in soup.find_all('div', attrs={'data-testid': 'Tweet-User-Avatar'}):
@@ -164,21 +152,18 @@ class XProcessor(HTMLReaderBaseProcessor):
                         if tweet_text and tweet_text != main_tweet_text:
                             if current not in quote_containers:
                                 quote_containers.append(current)
-                                print(f"DEBUG: 找到候选引用容器, 在第{depth}层")
                                 break
                         current = current.parent
-            
+
             if not quote_containers:
-                print(f"DEBUG: 没有找到引用推文容器")
+                logger.warning("No quote tweet containers found")
                 return "", []
-            
-            print(f"DEBUG: 找到 {len(quote_containers)} 个引用推文")
+
+            logger.info(f"Found {len(quote_containers)} quote tweets")
 
             result_parts = []
             quote_images = []
             for i, quote_container in enumerate(quote_containers):
-                print(f"DEBUG: 处理第{i+1}个引用推文")
-
                 for img in quote_container.find_all("img"):
                     if src := img.get("src"):
                         if "profile_images" not in src and "emoji" not in src and "abs.twimg.com/emoji" not in src:
@@ -190,7 +175,6 @@ class XProcessor(HTMLReaderBaseProcessor):
                                     "mimetype": "",
                                 })
                             )
-                            print(f"DEBUG: 找到引用图片: {src[:50]}...")
 
                 user_name_div = quote_container.find('div', attrs={'data-testid': 'User-Name'})
                 if user_name_div:
@@ -199,27 +183,21 @@ class XProcessor(HTMLReaderBaseProcessor):
                     if username_match:
                         username = username_match.group()
                         result_parts.append(username)
-                        print(f"DEBUG: 找到用户名: {username}")
-                
+
                 for img in quote_container.find_all("img"):
                         if src := img.get("src"):
                             if "profile_images" not in src and "emoji" not in src and "abs.twimg.com/emoji" not in src:
                                 alt = img.get("alt", src)
                                 result_parts.append(f"![{alt}]({src})")
-                                print(f"DEBUG: 添加引用图片到文本: {src[:50]}...")
 
                 tweet_text = quote_container.find('div', attrs={'data-testid': 'tweetText'})
                 if tweet_text:
                     tweet_content = tweet_text.get_text(strip=True)
                     if tweet_content:
                         result_parts.append(f"引用内容: {tweet_content}")
-                        print(f"DEBUG: 找到推文引用内容: {tweet_content[:50]}...")
-            
-            print(f"DEBUG: result_parts = {result_parts}")
             if result_parts:
                 result = "--- 引用的帖子 ---\n" + "\n\n".join(result_parts) + "\n\n--- 引用的帖子 ---\n"
                 return result, quote_images
-            print(f"DEBUG: result_parts为空")
             return "", []
 
     def _convert_tweet(self, tweet_container: BeautifulSoup) -> GeneratedContent:
@@ -332,15 +310,13 @@ class XProcessor(HTMLReaderBaseProcessor):
             elif tag_name == "section":
                 simple_tweet = block.select_one('[data-testid="simpleTweet"]')
                 if simple_tweet:
-                    print(f"DEBUG: 在seciton中找到的simpleTweet, 将调用_extract_article_quote")
+                    logger.info("Found simpleTweet in section, calling _extract_article_quote")
                     quote_info, quote_images = self._extract_article_quote(block)
-                    print(f"DEBUG: _extract_article_quote返回结果: quote_info长度={len(quote_info) if quote_info else 0}, quote_images数量={len(quote_images)}")
+                    logger.debug(f"Article quote extraction result: quote_info_length={len(quote_info) if quote_info else 0}, quote_images_count={len(quote_images)}")
                     if quote_info:
                         markdown_parts.append(quote_info)
                         images.extend(quote_images)
                     continue
-                else:
-                    print(f"DEBUG: 在section中没找到simpleTweet")
                 code = block.select_one("pre code")
                 if code:
                     code_classes = code.get("class", [])
@@ -371,34 +347,30 @@ class XProcessor(HTMLReaderBaseProcessor):
         return GeneratedContent(title=title, markdown=markdown, images=all_images or None)
     
     def _extract_article_quote(self, block:Tag) -> tuple[str, list[Image]]:
-        print(f"DEBUG _extract_article_quote: 开始处理")
+        logger.debug("Start processing article quote extraction")
         simple_tweet = block.select_one('[data-testid="simpleTweet"]')
         if not simple_tweet:
             return "", []
-        
+
         article_cover = simple_tweet.select_one('[data-testid="article-cover-image"]')
 
         quote_parts = []
         quote_images = []
 
         if article_cover:
-            print(f"DEBUG _extract_article_quote:检测到文章引用")
+            logger.debug("Detected article quote in _extract_article_quote")
             author_div = simple_tweet.select_one('[data-testid="User-Name"]')
             if author_div:
-                print(f"DEBUG _extract_article_quote: 找到User-Name")
                 author_text = author_div.get_text(strip=True)
                 username_match = re.search(r'@[\w]+', author_text)
                 if username_match:
                     quote_parts.append(username_match.group())
-            
+
             tweet_content = simple_tweet.get_text(strip=True)
             if tweet_content:
-                print(f"DEBUG _extract_article_quote: 推文内容: {tweet_content[:100]}")
                 if author_div and author_text in tweet_content:
                     tweet_content = tweet_content.replace(author_text, '', 1).strip()
                     quote_parts.append(tweet_content)
-            else:
-                print(f"DEBUG _extract_article_quote: 推文内容为空")
 
             for img in simple_tweet.find_all('img'):
                 src = img.get("src", "")
@@ -413,22 +385,20 @@ class XProcessor(HTMLReaderBaseProcessor):
                         "mimetype": ""
                     }))            
         else:
-            print(f"DEBUG _extract_article_quote:检测到推文引用")
+            logger.debug("Detected tweet quote in _extract_article_quote")
             author_div = simple_tweet.select_one('[data-testid="User-Name"]')
             if author_div:
                 all_text = author_div.get_text()
                 username_match = re.search(r'@[\w]+', all_text)
-                if username_match:                             
-                    username = username_match.group()          
+                if username_match:
+                    username = username_match.group()
                     quote_parts.append(username)
-                    print(f"DEBUG _extract_article_quote:找到用户名: {username}")
-            
+
             tweet_text_div = simple_tweet.select_one('[data-testid="tweetText"]')
             if tweet_text_div:
                 tweet_content = tweet_text_div.get_text(strip=True)
                 if tweet_content:
                     quote_parts.append(tweet_content)
-                    print(f"DEBUG _extract_article_quote: 找到推文内容: {tweet_content[:50]}...")
             
             for img in simple_tweet.find_all("img"):
                 src = img.get("src", "")
@@ -445,13 +415,13 @@ class XProcessor(HTMLReaderBaseProcessor):
                     )
 
         if quote_parts:
-            print(f"DEBUG _extract_article_quote: 返回引用内容,长度: {len(quote_parts)}")
+            logger.debug(f"Returning quote content with {len(quote_parts)} parts")
             if article_cover:
                 return "--- 引用的文章 ---\n" + "\n\n".join(quote_parts) + "\n--- 引用的文章 ---\n",quote_images
             else:
                 return "--- 引用的帖子 ---\n" + "\n\n".join(quote_parts) + "\n--- 引用的帖子 ---\n",quote_images
         else:
-            print(f"DEBUG _extract_article_quote: quote_parts为空, 返回空内容")
+            logger.warning("Quote parts is empty, returning empty content")
         return "", []
 
     def _get_article_block_text(self, block: Tag) -> str:

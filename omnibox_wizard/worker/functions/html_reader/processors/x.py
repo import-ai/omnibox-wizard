@@ -23,6 +23,7 @@ class XProcessor(HTMLReaderBaseProcessor):
     @tracer.start_as_current_span("XProcessor.convert")
     async def convert(self, html: str, url: str) -> GeneratedContent:
         soup = BeautifulSoup(html, "html.parser")
+        soup = self._clean_comment_section(soup)
 
         if soup.select_one('div[data-testid="twitterArticleReadView"]'):
             result = self._convert_article(soup)
@@ -499,3 +500,31 @@ class XProcessor(HTMLReaderBaseProcessor):
         if is_bold and inner_text.strip():
             return f"**{inner_text}**"
         return inner_text
+
+    def _clean_comment_section(self,soup):
+        time_elements = soup.find_all('div', class_='r-12kyg2d')
+
+        if len(time_elements) < 2:
+            return soup
+        
+        time_bar = time_elements[1]
+        main_container = time_bar
+        for _ in range(8):
+            main_container = main_container.parent
+            if not main_container:
+                return soup
+        
+        main_tweet_div = None
+        for child in main_container.children:
+            if time_bar in list(child.descendants):
+                main_tweet_div = child
+                break
+        
+        if main_tweet_div:
+            current = main_tweet_div.next_sibling
+            while current:
+                next_sibling = current.next_sibling
+                current.decompose()
+                current = next_sibling
+        
+        return soup

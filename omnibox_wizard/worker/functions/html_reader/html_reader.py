@@ -318,9 +318,12 @@ class HTMLReaderV2(BaseFunction):
 
         # Special case
         if processor := self.get_processor(html, url):
-            with tracer.start_as_current_span("html_processor"):
-                result = await processor.convert(html, url)
-                return result.model_dump(exclude_none=True)
+            with tracer.start_as_current_span("html_processor") as process_span:
+                try:
+                    result = await processor.convert(html, url)
+                    return result.model_dump(exclude_none=True)
+                except Exception as e:
+                    process_span.record_exception(e)
 
         domain: str = urlparse(url).netloc
         trace_info = trace_info.bind(domain=domain)

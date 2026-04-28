@@ -254,6 +254,9 @@ class HTMLReaderV2(BaseFunction):
             CommonSelector("www.zhihu.com", {"class_": "RichText"}, True),
             CommonSelector("zhuanlan.zhihu.com", {"name": "article"}),
             CommonSelector("www.163.com", {"name": "div", "class_": "post_body"}),
+            CommonSelector(
+                "x.com", {"name": "div", "attrs": {"data-testid": "tweetText"}}
+            ),
             CommonSelector("www.reddit.com", {"name": "shreddit-post-text-body"}),
             LambdaSelector(
                 lambda parsed, soup: (
@@ -326,9 +329,6 @@ class HTMLReaderV2(BaseFunction):
                     return result.model_dump(exclude_none=True)
                 except Exception as e:
                     process_span.record_exception(e)
-                    return {
-                        "markdown": f"Processor failed: {str(e)}"
-                    }
 
         domain: str = urlparse(url).netloc
         trace_info = trace_info.bind(domain=domain)

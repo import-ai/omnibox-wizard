@@ -35,41 +35,39 @@ class XProcessor(HTMLReaderBaseProcessor):
                 result = self._convert_tweet(main_tweet_container)
             else:
                 result = self._convert_tweet(soup)
-        
+
         if result.images:
             image_links = [(img.link, img.name) for img in result.images]
             downloaded_images = await self.get_images(image_links)
             result.images = downloaded_images
         return result
-    
-    def _find_main_tweet_container(self, soup: BeautifulSoup) -> BeautifulSoup:
+
+    def _find_main_tweet_container(self, soup: BeautifulSoup) -> Tag | None:
         for tweet in soup.find_all('div', attrs={'data-testid': 'tweet'}):
             tweet_text = tweet.find('div', attrs={'data-testid': 'tweetText'})
             if not tweet_text:
                 continue
-            
+
             current = tweet
-            for depth in range(15):
+            for _ in range(15):
                 if not current:
                     break
                 if current.get('data-testid') == 'primaryColumn':
                     return tweet
                 current = current.parent
         return None
-    
-    def _extract_quote_info(self,soup) -> tuple[str, list[Image]]:
-        logger.info("Start extracting quote information")
+
+    def _extract_quote_info(self, soup: BeautifulSoup | Tag) -> tuple[str, list[Image]]:
+        logger.debug("Start extracting quote information")
 
         article_cover = soup.find('div', attrs={'data-testid': 'article-cover-image'})
         if article_cover:
             logger.debug("Detected article quote (article-cover-image found)")
-            current = article_cover
-            quote_container = None
-            
+
             current = article_cover
             quote_container = None
 
-            for i in range(15):
+            for _ in range(15):
                 if current and current.parent:
                     current = current.parent
                     if current.find('div', attrs={'data-testid': 'Tweet-User-Avatar'}):
@@ -91,10 +89,10 @@ class XProcessor(HTMLReaderBaseProcessor):
                 if username_match:
                     username = username_match.group()
                     result_parts.append(username)
-            
+
             if article_cover.parent:
                 siblings = article_cover.parent.find_all('div', recursive=False)
-                for i, div in enumerate(siblings):
+                for div in siblings:
                     if div != article_cover:
                         title_spans = div.find_all('span', class_='css-1jxf684')
                         for span in title_spans:
@@ -105,10 +103,10 @@ class XProcessor(HTMLReaderBaseProcessor):
                                 break
                         if any("引用文章:" in part for part in result_parts):
                             break
-        
+
             if article_cover.parent:
                 siblings = article_cover.parent.find_all('div', recursive=False)
-                for i, div in enumerate(siblings):
+                for div in siblings:
                     style = div.get('style', '')
                     if '-webkit-line-clamp' in style:
                         summary_span = div.find('span', class_='css-1jxf684')
@@ -119,7 +117,7 @@ class XProcessor(HTMLReaderBaseProcessor):
                                 break
             for img in quote_container.find_all("img"):
                 if src := img.get("src"):
-                    if "profile_images" not in src and "emoji" not in src and "abs.twimg.com/emoji" not in src:
+                    if self._is_content_image(src):
                         alt = img.get("alt", src)
                         result_parts.append(f"![{alt}]({src})")
                         quote_images.append(
@@ -132,11 +130,10 @@ class XProcessor(HTMLReaderBaseProcessor):
                         )
 
             if result_parts:
-                result = "--- 引用的文章 ---\n" + "\n\n".join(result_parts) + "\n--- 引用的文章 ---\n"
-                return result, quote_images
+                return self._format_quote_block("引用的文章", result_parts), quote_images
             return "", []
         else:
-            logger.info("No article cover found, trying tweet quote extraction")
+            logger.debug("No article cover found, trying tweet quote extraction")
             main_tweet_text = soup.select_one("div[data-testid=tweetText]")
 
             if not main_tweet_text:
@@ -146,7 +143,7 @@ class XProcessor(HTMLReaderBaseProcessor):
 
             for avatar in soup.find_all('div', attrs={'data-testid': 'Tweet-User-Avatar'}):
                 current = avatar.parent
-                for depth in range(10):
+                for _ in range(10):
                     if current:
                         tweet_text = current.find('div', attrs={'data-testid': 'tweetText'})
                         if tweet_text and tweet_text != main_tweet_text:
@@ -159,23 +156,11 @@ class XProcessor(HTMLReaderBaseProcessor):
                 logger.warning("No quote tweet containers found")
                 return "", []
 
-            logger.info(f"Found {len(quote_containers)} quote tweets")
+            logger.debug(f"Found {len(quote_containers)} quote tweets")
 
             result_parts = []
             quote_images = []
-            for i, quote_container in enumerate(quote_containers):
-                for img in quote_container.find_all("img"):
-                    if src := img.get("src"):
-                        if "profile_images" not in src and "emoji" not in src and "abs.twimg.com/emoji" not in src:
-                            quote_images.append(
-                                Image.model_validate({
-                                    "name": img.get("alt", src),
-                                    "link": src,
-                                    "data": "",
-                                    "mimetype": "",
-                                })
-                            )
-
+            for quote_container in quote_containers:
                 user_name_div = quote_container.find('div', attrs={'data-testid': 'User-Name'})
                 if user_name_div:
                     all_text = user_name_div.get_text()
@@ -185,10 +170,18 @@ class XProcessor(HTMLReaderBaseProcessor):
                         result_parts.append(username)
 
                 for img in quote_container.find_all("img"):
-                        if src := img.get("src"):
-                            if "profile_images" not in src and "emoji" not in src and "abs.twimg.com/emoji" not in src:
-                                alt = img.get("alt", src)
-                                result_parts.append(f"![{alt}]({src})")
+                    if src := img.get("src"):
+                        if self._is_content_image(src):
+                            alt = img.get("alt", src)
+                            result_parts.append(f"![{alt}]({src})")
+                            quote_images.append(
+                                Image.model_validate({
+                                    "name": alt,
+                                    "link": src,
+                                    "data": "",
+                                    "mimetype": "",
+                                })
+                            )
 
                 tweet_text = quote_container.find('div', attrs={'data-testid': 'tweetText'})
                 if tweet_text:
@@ -196,14 +189,59 @@ class XProcessor(HTMLReaderBaseProcessor):
                     if tweet_content:
                         result_parts.append(f"引用内容: {tweet_content}")
             if result_parts:
-                result = "--- 引用的帖子 ---\n" + "\n\n".join(result_parts) + "\n\n--- 引用的帖子 ---\n"
-                return result, quote_images
+                return self._format_quote_block("引用的帖子", result_parts), quote_images
             return "", []
 
     def _get_tweet_node(self, tweet_container: BeautifulSoup | Tag) -> Tag | None:
         if isinstance(tweet_container, Tag) and tweet_container.get("data-testid") == "tweet":
             return tweet_container
         return tweet_container.select_one('[data-testid="tweet"]')
+
+    def _is_content_image(self, src: str) -> bool:
+        return bool(
+            src
+            and "profile_images" not in src
+            and "emoji" not in src
+            and "abs.twimg.com/emoji" not in src
+        )
+
+    def _format_quote_block(self, title: str, parts: list[str]) -> str:
+        lines = [title, "", *parts]
+        return "\n".join(f"> {line}" if line else ">" for line in lines)
+
+    def _is_tweet_action_group(self, group: Tag) -> bool:
+        return bool(
+            group.get("role") == "group"
+            and group.find(attrs={"data-testid": "reply"})
+            and group.find(attrs={"data-testid": "retweet"})
+            and group.find(attrs={"data-testid": "like"})
+        )
+
+    def _find_main_content_cell(self, soup: BeautifulSoup) -> Tag | None:
+        primary_column = soup.select_one('[data-testid="primaryColumn"]')
+        if not primary_column:
+            return None
+
+        for group in primary_column.find_all(attrs={"role": "group"}):
+            if not self._is_tweet_action_group(group):
+                continue
+
+            cell = group.find_parent(attrs={"data-testid": "cellInnerDiv"})
+            if cell:
+                return cell
+
+        return None
+
+    def _cell_has_tweet_content(self, cell: Tag) -> bool:
+        return bool(
+            cell.find(attrs={"data-testid": "tweet"})
+            and (
+                cell.find(attrs={"data-testid": "tweetText"})
+                or cell.find(attrs={"data-testid": "tweetPhoto"})
+                or cell.find(attrs={"data-testid": "twitterArticleReadView"})
+                or cell.find(attrs={"data-testid": "longformRichTextComponent"})
+            )
+        )
 
     def _convert_tweet(self, tweet_container: BeautifulSoup | Tag) -> GeneratedContent:
         quote_info, quote_images = self._extract_quote_info(tweet_container)
@@ -214,7 +252,7 @@ class XProcessor(HTMLReaderBaseProcessor):
         if tweet:
             for img in tweet.find_all("img"):
                 if src := img.get("src"):
-                    if "profile_images" not in src and "emoji" not in src and "abs.twimg.com/emoji" not in src:
+                    if self._is_content_image(src):
                         if src not in quote_images_links:
                             images.append(
                                 Image.model_validate(
@@ -226,7 +264,7 @@ class XProcessor(HTMLReaderBaseProcessor):
                                     }
                                 )
                             )
-                            
+
         markdown: str = "\n\n".join(
             [
                 f"![{image.name or (i + 1)}]({image.link})"
@@ -262,24 +300,24 @@ class XProcessor(HTMLReaderBaseProcessor):
                         for img in imgs:
                             src = img.get("src", "")
                             alt = img.get("alt", "")
-                            if src and "profile_images" not in src and "emoji" not in src and "abs.twimg.com/emoji" not in src:
+                            if self._is_content_image(src):
                                 title_images.append(Image.model_validate({
                                     "name": alt,
                                     "link": src,
                                     "data": "",
                                     "mimetype": ""
                                 }))
-        
+
         content_div = soup.select_one('div[data-testid="longformRichTextComponent"]')
         if not content_div:
             return GeneratedContent(title=title, markdown="", images=title_images or None)
-        
+
         contents_div = content_div.select_one('[data-contents="true"]')
         if contents_div:
             blocks = contents_div.find_all(recursive=False)
         else:
             blocks = content_div.find_all(attrs={"data-block": "true"})
-        
+
         markdown_parts = []
         images = []
 
@@ -315,7 +353,7 @@ class XProcessor(HTMLReaderBaseProcessor):
             elif tag_name == "section":
                 simple_tweet = block.select_one('[data-testid="simpleTweet"]')
                 if simple_tweet:
-                    logger.info("Found simpleTweet in section, calling _extract_article_quote")
+                    logger.debug("Found simpleTweet in section, calling _extract_article_quote")
                     quote_info, quote_images = self._extract_article_quote(block)
                     logger.debug(f"Article quote extraction result: quote_info_length={len(quote_info) if quote_info else 0}, quote_images_count={len(quote_images)}")
                     if quote_info:
@@ -333,12 +371,12 @@ class XProcessor(HTMLReaderBaseProcessor):
                     code_text = code.get_text()
                     markdown_parts.append(f"```{lang}\n{code_text}\n```")
                     continue
-                
+
                 img = block.select_one("img")
                 if img:
                     src = img.get("src", "")
                     alt = img.get("alt", "")
-                    if src and "profile_images" not in src and "emoji" not in src and "abs.twimg.com/emoji" not in src:
+                    if self._is_content_image(src):
                         markdown_parts.append(f"![{alt}]({src})")
                         images.append(Image.model_validate({
                             "name": alt,
@@ -350,8 +388,8 @@ class XProcessor(HTMLReaderBaseProcessor):
         markdown = "\n\n".join(markdown_parts)
         all_images = title_images + images
         return GeneratedContent(title=title, markdown=markdown, images=all_images or None)
-    
-    def _extract_article_quote(self, block:Tag) -> tuple[str, list[Image]]:
+
+    def _extract_article_quote(self, block: Tag) -> tuple[str, list[Image]]:
         logger.debug("Start processing article quote extraction")
         simple_tweet = block.select_one('[data-testid="simpleTweet"]')
         if not simple_tweet:
@@ -380,7 +418,7 @@ class XProcessor(HTMLReaderBaseProcessor):
             for img in simple_tweet.find_all('img'):
                 src = img.get("src", "")
                 alt = img.get("alt", "")
-                if src and "profile_images" not in src and "emoji" not in src and "abs.twimg.com/emoji" not in src:
+                if self._is_content_image(src):
                     quote_parts.append(f"![{alt}]({src})")
 
                     quote_images.append(Image.model_validate({
@@ -388,7 +426,7 @@ class XProcessor(HTMLReaderBaseProcessor):
                         "link": src,
                         "data": "",
                         "mimetype": ""
-                    }))            
+                    }))
         else:
             logger.debug("Detected tweet quote in _extract_article_quote")
             author_div = simple_tweet.select_one('[data-testid="User-Name"]')
@@ -404,11 +442,11 @@ class XProcessor(HTMLReaderBaseProcessor):
                 tweet_content = tweet_text_div.get_text(strip=True)
                 if tweet_content:
                     quote_parts.append(tweet_content)
-            
+
             for img in simple_tweet.find_all("img"):
                 src = img.get("src", "")
                 alt = img.get("alt", "")
-                if src and "profile_images" not in src and "emoji" not in src and "abs.twimg.com/emoji" not in src:
+                if self._is_content_image(src):
                     quote_parts.append(f"![{alt}]({src})")
                     quote_images.append(
                         Image.model_validate({
@@ -422,9 +460,9 @@ class XProcessor(HTMLReaderBaseProcessor):
         if quote_parts:
             logger.debug(f"Returning quote content with {len(quote_parts)} parts")
             if article_cover:
-                return "--- 引用的文章 ---\n" + "\n\n".join(quote_parts) + "\n--- 引用的文章 ---\n",quote_images
+                return self._format_quote_block("引用的文章", quote_parts), quote_images
             else:
-                return "--- 引用的帖子 ---\n" + "\n\n".join(quote_parts) + "\n--- 引用的帖子 ---\n",quote_images
+                return self._format_quote_block("引用的帖子", quote_parts), quote_images
         else:
             logger.warning("Quote parts is empty, returning empty content")
         return "", []
@@ -449,7 +487,7 @@ class XProcessor(HTMLReaderBaseProcessor):
                     if href and link_text:
                         result_parts.append(f"[{link_text}]({href})")
         return "".join(result_parts).strip()
-                
+
     def _parse_article_span(self, span: Tag) -> str:
 
         style = span.get("style", "")
@@ -471,35 +509,36 @@ class XProcessor(HTMLReaderBaseProcessor):
                         inner_text += link_text
                 elif child.name == "br":
                     inner_text += "\n"
-        
+
         if is_bold and inner_text.strip():
             return f"**{inner_text}**"
         return inner_text
 
-    def _clean_comment_section(self,soup):
-        time_elements = soup.find_all('div', class_='r-12kyg2d')
-
-        if len(time_elements) < 2:
+    def _clean_comment_section(self, soup: BeautifulSoup) -> BeautifulSoup:
+        primary_column = soup.select_one('[data-testid="primaryColumn"]')
+        main_cell = self._find_main_content_cell(soup)
+        if not primary_column or not main_cell:
             return soup
-        
-        time_bar = time_elements[1]
-        main_container = time_bar
-        for _ in range(8):
-            main_container = main_container.parent
-            if not main_container:
-                return soup
-        
-        main_tweet_div = None
-        for child in main_container.children:
-            if time_bar in list(child.descendants):
-                main_tweet_div = child
-                break
-        
-        if main_tweet_div:
-            current = main_tweet_div.next_sibling
-            while current:
-                next_sibling = current.next_sibling
-                current.decompose()
-                current = next_sibling
-        
+
+        cells = primary_column.find_all(attrs={"data-testid": "cellInnerDiv"})
+        reached_main = False
+        removing = False
+
+        for cell in cells:
+            if cell == main_cell:
+                reached_main = True
+                continue
+
+            if not reached_main:
+                continue
+
+            if removing:
+                cell.decompose()
+                continue
+
+            if self._cell_has_tweet_content(cell):
+                continue
+
+            removing = True
+            cell.decompose()
         return soup

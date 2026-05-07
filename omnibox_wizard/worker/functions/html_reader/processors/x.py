@@ -200,12 +200,17 @@ class XProcessor(HTMLReaderBaseProcessor):
                 return result, quote_images
             return "", []
 
-    def _convert_tweet(self, tweet_container: BeautifulSoup) -> GeneratedContent:
+    def _get_tweet_node(self, tweet_container: BeautifulSoup | Tag) -> Tag | None:
+        if isinstance(tweet_container, Tag) and tweet_container.get("data-testid") == "tweet":
+            return tweet_container
+        return tweet_container.select_one('[data-testid="tweet"]')
+
+    def _convert_tweet(self, tweet_container: BeautifulSoup | Tag) -> GeneratedContent:
         quote_info, quote_images = self._extract_quote_info(tweet_container)
         content: Tag = tweet_container.select_one("div[data-testid=tweetText]")
         quote_images_links = {img.link for img in quote_images}
         images: list[Image] = []
-        tweet = tweet_container.select_one('[data-testid="tweet"]')
+        tweet = self._get_tweet_node(tweet_container)
         if tweet:
             for img in tweet.find_all("img"):
                 if src := img.get("src"):

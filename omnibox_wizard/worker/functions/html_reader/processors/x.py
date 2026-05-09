@@ -114,7 +114,7 @@ class XProcessor(HTMLReaderBaseProcessor):
         if tweet_text:
             tweet_content = tweet_text.get_text(strip=True)
             if tweet_content:
-                quote_parts.append(f"引用内容: {tweet_content}")
+                quote_parts.append(tweet_content)
 
         for img in card.find_all("img"):
             src = img.get("src", "")
@@ -135,7 +135,7 @@ class XProcessor(HTMLReaderBaseProcessor):
         if not quote_parts:
             return "", []
 
-        return self._format_quote_block("引用的帖子", quote_parts), quote_images
+        return self._format_quote_block("", quote_parts), quote_images
 
     def _extract_article_card_text(self, article_cover: Tag) -> tuple[str, str]:
         article_parent = article_cover.parent
@@ -195,7 +195,7 @@ class XProcessor(HTMLReaderBaseProcessor):
                     break
 
             if not quote_container:
-                logger.warning("Quote container not found")
+                trace.get_current_span().set_attribute("x.quote_container_found", False)
                 return "", []
 
             result_parts = []
@@ -214,9 +214,9 @@ class XProcessor(HTMLReaderBaseProcessor):
                 article_cover
             )
             if article_title:
-                result_parts.append(f"引用文章: {article_title}")
+                result_parts.append(article_title)
             if article_summary:
-                result_parts.append(f"摘要: {article_summary}")
+                result_parts.append(article_summary)
 
             for img in quote_container.find_all("img"):
                 if src := img.get("src"):
@@ -235,9 +235,7 @@ class XProcessor(HTMLReaderBaseProcessor):
                         )
 
             if result_parts:
-                return self._format_quote_block(
-                    "引用的文章", result_parts
-                ), quote_images
+                return self._format_quote_block("", result_parts), quote_images
             return "", []
         else:
             logger.debug("No article cover found, trying tweet quote extraction")
@@ -318,11 +316,9 @@ class XProcessor(HTMLReaderBaseProcessor):
                 if tweet_text:
                     tweet_content = tweet_text.get_text(strip=True)
                     if tweet_content:
-                        result_parts.append(f"引用内容: {tweet_content}")
+                        result_parts.append(tweet_content)
             if result_parts:
-                return self._format_quote_block(
-                    "引用的帖子", result_parts
-                ), quote_images
+                return self._format_quote_block("", result_parts), quote_images
             return "", []
 
     def _get_tweet_node(self, tweet_container: BeautifulSoup | Tag) -> Tag | None:
@@ -362,7 +358,10 @@ class XProcessor(HTMLReaderBaseProcessor):
         )
 
     def _format_quote_block(self, title: str, parts: list[str]) -> str:
-        lines = [title, ""]
+        lines = []
+        if title:
+            lines.extend([title, ""])
+
         for part in parts:
             lines.extend(part.splitlines() or [""])
 
@@ -625,9 +624,9 @@ class XProcessor(HTMLReaderBaseProcessor):
                 article_cover
             )
             if article_title:
-                quote_parts.append(f"引用文章: {article_title}")
+                quote_parts.append(article_title)
             if article_summary:
-                quote_parts.append(f"摘要: {article_summary}")
+                quote_parts.append(article_summary)
 
             for img in simple_tweet.find_all("img"):
                 src = img.get("src", "")
@@ -669,12 +668,9 @@ class XProcessor(HTMLReaderBaseProcessor):
 
         if quote_parts:
             logger.debug(f"Returning quote content with {len(quote_parts)} parts")
-            if article_cover:
-                return self._format_quote_block("引用的文章", quote_parts), quote_images
-            else:
-                return self._format_quote_block("引用的帖子", quote_parts), quote_images
-        else:
-            logger.warning("Quote parts is empty, returning empty content")
+            return self._format_quote_block("", quote_parts), quote_images
+
+        trace.get_current_span().set_attribute("x.quote_parts_empty", True)
         return "", []
 
     def _get_article_block_text(self, block: Tag) -> str:

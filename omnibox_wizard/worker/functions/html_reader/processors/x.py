@@ -122,12 +122,14 @@ class XProcessor(HTMLReaderBaseProcessor):
             if self._is_content_image(src):
                 quote_parts.append(f"![{alt}]({src})")
                 quote_images.append(
-                    Image.model_validate({
-                        "name": alt,
-                        "link": src,
-                        "data": "",
-                        "mimetype": "",
-                    })
+                    Image.model_validate(
+                        {
+                            "name": alt,
+                            "link": src,
+                            "data": "",
+                            "mimetype": "",
+                        }
+                    )
                 )
 
         if not quote_parts:
@@ -176,7 +178,7 @@ class XProcessor(HTMLReaderBaseProcessor):
     def _extract_quote_info(self, soup: BeautifulSoup | Tag) -> tuple[str, list[Image]]:
         logger.debug("Start extracting quote information")
 
-        article_cover = soup.find('div', attrs={'data-testid': 'article-cover-image'})
+        article_cover = soup.find("div", attrs={"data-testid": "article-cover-image"})
         if article_cover:
             logger.debug("Detected article quote (article-cover-image found)")
 
@@ -186,7 +188,7 @@ class XProcessor(HTMLReaderBaseProcessor):
             for _ in range(15):
                 if current and current.parent:
                     current = current.parent
-                    if current.find('div', attrs={'data-testid': 'Tweet-User-Avatar'}):
+                    if current.find("div", attrs={"data-testid": "Tweet-User-Avatar"}):
                         quote_container = current
                         break
                 else:
@@ -198,15 +200,19 @@ class XProcessor(HTMLReaderBaseProcessor):
 
             result_parts = []
             quote_images = []
-            user_name_div = quote_container.find('div', attrs={'data-testid': 'User-Name'})
+            user_name_div = quote_container.find(
+                "div", attrs={"data-testid": "User-Name"}
+            )
             if user_name_div:
                 all_text = user_name_div.get_text()
-                username_match = re.search(r'@[\w]+', all_text)
+                username_match = re.search(r"@[\w]+", all_text)
                 if username_match:
                     username = username_match.group()
                     result_parts.append(username)
 
-            article_title, article_summary = self._extract_article_card_text(article_cover)
+            article_title, article_summary = self._extract_article_card_text(
+                article_cover
+            )
             if article_title:
                 result_parts.append(f"引用文章: {article_title}")
             if article_summary:
@@ -218,16 +224,20 @@ class XProcessor(HTMLReaderBaseProcessor):
                         alt = img.get("alt", src)
                         result_parts.append(f"![{alt}]({src})")
                         quote_images.append(
-                            Image.model_validate({
-                                "name": alt,
-                                "link": src,
-                                "data": "",
-                                "mimetype": "",
-                            })
+                            Image.model_validate(
+                                {
+                                    "name": alt,
+                                    "link": src,
+                                    "data": "",
+                                    "mimetype": "",
+                                }
+                            )
                         )
 
             if result_parts:
-                return self._format_quote_block("引用的文章", result_parts), quote_images
+                return self._format_quote_block(
+                    "引用的文章", result_parts
+                ), quote_images
             return "", []
         else:
             logger.debug("No article cover found, trying tweet quote extraction")
@@ -249,13 +259,15 @@ class XProcessor(HTMLReaderBaseProcessor):
 
             quote_containers = []
 
-            for avatar in soup.find_all('div', attrs={'data-testid': 'Tweet-User-Avatar'}):
+            for avatar in soup.find_all(
+                "div", attrs={"data-testid": "Tweet-User-Avatar"}
+            ):
                 current = avatar.parent
                 for _ in range(10):
                     if not current:
                         break
 
-                    tweet_text = current.find('div', attrs={'data-testid': 'tweetText'})
+                    tweet_text = current.find("div", attrs={"data-testid": "tweetText"})
                     if tweet_text and tweet_text != main_tweet_text:
                         if current not in quote_containers:
                             quote_containers.append(current)
@@ -274,10 +286,12 @@ class XProcessor(HTMLReaderBaseProcessor):
             result_parts = []
             quote_images = []
             for quote_container in quote_containers:
-                user_name_div = quote_container.find('div', attrs={'data-testid': 'User-Name'})
+                user_name_div = quote_container.find(
+                    "div", attrs={"data-testid": "User-Name"}
+                )
                 if user_name_div:
                     all_text = user_name_div.get_text()
-                    username_match = re.search(r'@[\w]+', all_text)
+                    username_match = re.search(r"@[\w]+", all_text)
                     if username_match:
                         username = username_match.group()
                         result_parts.append(username)
@@ -288,25 +302,34 @@ class XProcessor(HTMLReaderBaseProcessor):
                             alt = img.get("alt", src)
                             result_parts.append(f"![{alt}]({src})")
                             quote_images.append(
-                                Image.model_validate({
-                                    "name": alt,
-                                    "link": src,
-                                    "data": "",
-                                    "mimetype": "",
-                                })
+                                Image.model_validate(
+                                    {
+                                        "name": alt,
+                                        "link": src,
+                                        "data": "",
+                                        "mimetype": "",
+                                    }
+                                )
                             )
 
-                tweet_text = quote_container.find('div', attrs={'data-testid': 'tweetText'})
+                tweet_text = quote_container.find(
+                    "div", attrs={"data-testid": "tweetText"}
+                )
                 if tweet_text:
                     tweet_content = tweet_text.get_text(strip=True)
                     if tweet_content:
                         result_parts.append(f"引用内容: {tweet_content}")
             if result_parts:
-                return self._format_quote_block("引用的帖子", result_parts), quote_images
+                return self._format_quote_block(
+                    "引用的帖子", result_parts
+                ), quote_images
             return "", []
 
     def _get_tweet_node(self, tweet_container: BeautifulSoup | Tag) -> Tag | None:
-        if isinstance(tweet_container, Tag) and tweet_container.get("data-testid") == "tweet":
+        if (
+            isinstance(tweet_container, Tag)
+            and tweet_container.get("data-testid") == "tweet"
+        ):
             return tweet_container
         return tweet_container.select_one('[data-testid="tweet"]')
 
@@ -443,7 +466,7 @@ class XProcessor(HTMLReaderBaseProcessor):
                 if "abs.twimg.com/emoji" in (img.get("src", "")):
                     img.replace_with(img.get("alt", ""))
             content_with_br: str = str(content).replace("\n", "<br>\n")
-            content_with_br = content_with_br.replace('href="/','href="https://x.com/')
+            content_with_br = content_with_br.replace('href="/', 'href="https://x.com/')
             markdown = html2text(content_with_br, bodywidth=0) + "\n\n" + markdown
             markdown = "\n".join(map(lambda x: x.strip(), markdown.split("\n")))
         title = next(
@@ -470,23 +493,31 @@ class XProcessor(HTMLReaderBaseProcessor):
         if article_view:
             for child in article_view.children:
                 if isinstance(child, Tag):
-                    title_in_child = child.select_one('[data-testid="twitter-article-title"]')
+                    title_in_child = child.select_one(
+                        '[data-testid="twitter-article-title"]'
+                    )
                     if not title_in_child:
-                        imgs = child.find_all('img')
+                        imgs = child.find_all("img")
                         for img in imgs:
                             src = img.get("src", "")
                             alt = img.get("alt", "")
                             if self._is_content_image(src):
-                                title_images.append(Image.model_validate({
-                                    "name": alt,
-                                    "link": src,
-                                    "data": "",
-                                    "mimetype": ""
-                                }))
+                                title_images.append(
+                                    Image.model_validate(
+                                        {
+                                            "name": alt,
+                                            "link": src,
+                                            "data": "",
+                                            "mimetype": "",
+                                        }
+                                    )
+                                )
 
         content_div = soup.select_one('div[data-testid="longformRichTextComponent"]')
         if not content_div:
-            return GeneratedContent(title=title, markdown="", images=title_images or None)
+            return GeneratedContent(
+                title=title, markdown="", images=title_images or None
+            )
 
         contents_div = content_div.select_one('[data-contents="true"]')
         if contents_div:
@@ -510,7 +541,7 @@ class XProcessor(HTMLReaderBaseProcessor):
                     markdown_parts.append(text)
             elif block.select_one("h2.longform-header-two"):
                 h2_text = block.select_one("h2").get_text(strip=True)
-                markdown_parts.append(f'## {h2_text}')
+                markdown_parts.append(f"## {h2_text}")
             elif tag_name == "blockquote":
                 text = self._get_article_block_text(block)
                 if text:
@@ -529,9 +560,13 @@ class XProcessor(HTMLReaderBaseProcessor):
             elif tag_name == "section":
                 simple_tweet = block.select_one('[data-testid="simpleTweet"]')
                 if simple_tweet:
-                    logger.debug("Found simpleTweet in section, calling _extract_article_quote")
+                    logger.debug(
+                        "Found simpleTweet in section, calling _extract_article_quote"
+                    )
                     quote_info, quote_images = self._extract_article_quote(block)
-                    logger.debug(f"Article quote extraction result: quote_info_length={len(quote_info) if quote_info else 0}, quote_images_count={len(quote_images)}")
+                    logger.debug(
+                        f"Article quote extraction result: quote_info_length={len(quote_info) if quote_info else 0}, quote_images_count={len(quote_images)}"
+                    )
                     if quote_info:
                         markdown_parts.append(quote_info)
                         images.extend(quote_images)
@@ -554,16 +589,17 @@ class XProcessor(HTMLReaderBaseProcessor):
                     alt = img.get("alt", "")
                     if self._is_content_image(src):
                         markdown_parts.append(f"![{alt}]({src})")
-                        images.append(Image.model_validate({
-                            "name": alt,
-                            "link": src,
-                            "data": "",
-                            "mimetype": ""
-                        }))
+                        images.append(
+                            Image.model_validate(
+                                {"name": alt, "link": src, "data": "", "mimetype": ""}
+                            )
+                        )
                         continue
         markdown = "\n\n".join(markdown_parts)
         all_images = title_images + images
-        return GeneratedContent(title=title, markdown=markdown, images=all_images or None)
+        return GeneratedContent(
+            title=title, markdown=markdown, images=all_images or None
+        )
 
     def _extract_article_quote(self, block: Tag) -> tuple[str, list[Image]]:
         logger.debug("Start processing article quote extraction")
@@ -581,34 +617,35 @@ class XProcessor(HTMLReaderBaseProcessor):
             author_div = simple_tweet.select_one('[data-testid="User-Name"]')
             if author_div:
                 author_text = author_div.get_text(strip=True)
-                username_match = re.search(r'@[\w]+', author_text)
+                username_match = re.search(r"@[\w]+", author_text)
                 if username_match:
                     quote_parts.append(username_match.group())
 
-            article_title, article_summary = self._extract_article_card_text(article_cover)
+            article_title, article_summary = self._extract_article_card_text(
+                article_cover
+            )
             if article_title:
                 quote_parts.append(f"引用文章: {article_title}")
             if article_summary:
                 quote_parts.append(f"摘要: {article_summary}")
 
-            for img in simple_tweet.find_all('img'):
+            for img in simple_tweet.find_all("img"):
                 src = img.get("src", "")
                 alt = img.get("alt", "")
                 if self._is_content_image(src):
                     quote_parts.append(f"![{alt}]({src})")
 
-                    quote_images.append(Image.model_validate({
-                        "name": alt,
-                        "link": src,
-                        "data": "",
-                        "mimetype": ""
-                    }))
+                    quote_images.append(
+                        Image.model_validate(
+                            {"name": alt, "link": src, "data": "", "mimetype": ""}
+                        )
+                    )
         else:
             logger.debug("Detected tweet quote in _extract_article_quote")
             author_div = simple_tweet.select_one('[data-testid="User-Name"]')
             if author_div:
                 all_text = author_div.get_text()
-                username_match = re.search(r'@[\w]+', all_text)
+                username_match = re.search(r"@[\w]+", all_text)
                 if username_match:
                     username = username_match.group()
                     quote_parts.append(username)
@@ -625,12 +662,9 @@ class XProcessor(HTMLReaderBaseProcessor):
                 if self._is_content_image(src):
                     quote_parts.append(f"![{alt}]({src})")
                     quote_images.append(
-                        Image.model_validate({
-                            "name": alt,
-                            "link": src,
-                            "data": "",
-                            "mimetype": ""
-                        })
+                        Image.model_validate(
+                            {"name": alt, "link": src, "data": "", "mimetype": ""}
+                        )
                     )
 
         if quote_parts:

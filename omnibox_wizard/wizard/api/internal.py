@@ -19,6 +19,10 @@ from omnibox_wizard.wizard.config import ENV_PREFIX
 from wizard_common.grimoire.config import GrimoireAgentConfig
 from wizard_common.grimoire.entity.chunk import Chunk, ChunkType
 from wizard_common.grimoire.entity.message import Message
+from wizard_common.grimoire.entity.retrieval import (
+    char_range_to_line_range,
+    format_line_range,
+)
 from wizard_common.grimoire.retriever.weaviate_vector_db import WeaviateVectorDB
 from omnibox_wizard.worker.agent.chat_title_generator import (
     ChatTitleGenerator,
@@ -71,20 +75,27 @@ async def upsert_weaviate_resource(request: UpsertWeaviateResourceRequest):
     texts = splitter.split_text(request.content)
     if not texts:
         texts.append("")
-    chunks = [
-        Chunk(
-            title=request.title,
-            text=text,
-            chunk_type=ChunkType.snippet,
-            start_index=request.content.index(text),
-            end_index=request.content.index(text) + len(text),
-            resource_id=request.resource_id,
-            parent_id=request.parent_id,
-            resource_tag_ids=request.resource_tag_ids,
-            resource_tag_names=request.resource_tag_names,
+
+    chunks = []
+    for text in texts:
+        start_index = request.content.index(text)
+        end_index = start_index + len(text)
+        chunks.append(
+            Chunk(
+                title=request.title,
+                text=text,
+                chunk_type=ChunkType.snippet,
+                start_index=start_index,
+                end_index=end_index,
+                line_range=format_line_range(
+                    char_range_to_line_range(request.content, start_index, end_index)
+                ),
+                resource_id=request.resource_id,
+                parent_id=request.parent_id,
+                resource_tag_ids=request.resource_tag_ids,
+                resource_tag_names=request.resource_tag_names,
+            )
         )
-        for text in texts
-    ]
     await vector_db.remove_chunks(request.namespace_id, request.resource_id)
     await vector_db.insert_chunks(request.namespace_id, chunks)
     return {"success": True}

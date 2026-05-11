@@ -7,6 +7,10 @@ from omnibox_wizard.worker.config import WorkerConfig
 from omnibox_wizard.worker.functions.base_function import BaseFunction
 from wizard_common.grimoire.entity.chunk import Chunk, ChunkType
 from wizard_common.grimoire.entity.message import Message
+from wizard_common.grimoire.entity.retrieval import (
+    char_range_to_line_range,
+    format_line_range,
+)
 from wizard_common.grimoire.retriever.weaviate_vector_db import WeaviateVectorDB
 from wizard_common.worker.entity import Task
 
@@ -46,17 +50,23 @@ class UpsertIndex(DeleteIndex):
         if not chunks:
             chunks.append("")
 
-        chunk_list: List[Chunk] = [
-            Chunk(
-                title=title,
-                text=chunk,
-                chunk_type=ChunkType.snippet,
-                start_index=content.index(chunk),
-                end_index=content.index(chunk) + len(chunk),
-                **meta_info,
+        chunk_list: List[Chunk] = []
+        for chunk in chunks:
+            start_index = content.index(chunk)
+            end_index = start_index + len(chunk)
+            chunk_list.append(
+                Chunk(
+                    title=title,
+                    text=chunk,
+                    chunk_type=ChunkType.snippet,
+                    start_index=start_index,
+                    end_index=end_index,
+                    line_range=format_line_range(
+                        char_range_to_line_range(content, start_index, end_index)
+                    ),
+                    **meta_info,
+                )
             )
-            for chunk in chunks
-        ]
         await self.vector_db.insert_chunks(task.namespace_id, chunk_list)
         return {"success": True}
 

@@ -11,6 +11,7 @@ from wizard_common.grimoire.entity.retrieval import (
     make_citation_id,
     make_citation_slug,
 )
+from omnibox_wizard.chunk_offsets import find_chunk_ranges
 
 
 def test_citation_prompt_includes_marker() -> None:
@@ -91,6 +92,19 @@ def test_char_range_to_line_range_converts_document_offsets() -> None:
 
     assert line_range == {"start": 2, "end": 3}
     assert format_line_range(line_range) == "2-3"
+
+
+def test_repeated_chunk_text_maps_to_later_line_ranges() -> None:
+    content = "intro\nsame chunk\nmiddle\nsame chunk\n"
+
+    ranges = find_chunk_ranges(content, ["same chunk", "same chunk"])
+    line_ranges = [
+        format_line_range(char_range_to_line_range(content, start_index, end_index))
+        for start_index, end_index in ranges
+    ]
+
+    assert ranges == [(6, 16), (24, 34)]
+    assert line_ranges == ["2-2", "4-4"]
 
 
 def test_resource_chunk_prompt_includes_line_range_citation_id() -> None:

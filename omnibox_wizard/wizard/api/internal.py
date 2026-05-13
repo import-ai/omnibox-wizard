@@ -6,6 +6,7 @@ from langchain_text_splitters import MarkdownTextSplitter
 
 from common.config_loader import Loader
 from common.trace_info import TraceInfo
+from omnibox_wizard.chunk_offsets import find_chunk_ranges
 from omnibox_wizard.wizard.api.depends import get_trace_info
 from omnibox_wizard.wizard.api.entity import (
     CommonAITextRequest,
@@ -31,7 +32,8 @@ from omnibox_wizard.worker.agent.chat_title_generator import (
 
 dumps = partial(lib_dumps, ensure_ascii=False, separators=(",", ":"))
 internal_router = APIRouter(prefix="/internal/api/v1/wizard")
-splitter = MarkdownTextSplitter(chunk_size=1024, chunk_overlap=128)
+CHUNK_OVERLAP = 128
+splitter = MarkdownTextSplitter(chunk_size=1024, chunk_overlap=CHUNK_OVERLAP)
 vector_db: WeaviateVectorDB
 title_generator: ChatTitleGenerator
 
@@ -77,9 +79,11 @@ async def upsert_weaviate_resource(request: UpsertWeaviateResourceRequest):
         texts.append("")
 
     chunks = []
-    for text in texts:
-        start_index = request.content.index(text)
-        end_index = start_index + len(text)
+    for text, (start_index, end_index) in zip(
+        texts,
+        find_chunk_ranges(request.content, texts, chunk_overlap=CHUNK_OVERLAP),
+        strict=True,
+    ):
         chunks.append(
             Chunk(
                 title=request.title,

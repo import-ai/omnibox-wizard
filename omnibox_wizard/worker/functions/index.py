@@ -3,6 +3,7 @@ from typing import List
 from langchain_text_splitters import MarkdownTextSplitter
 
 from common.trace_info import TraceInfo
+from omnibox_wizard.chunk_offsets import find_chunk_ranges
 from omnibox_wizard.worker.config import WorkerConfig
 from omnibox_wizard.worker.functions.base_function import BaseFunction
 from wizard_common.grimoire.entity.chunk import Chunk, ChunkType
@@ -30,9 +31,10 @@ class DeleteIndex(BaseFunction):
 class UpsertIndex(DeleteIndex):
     def __init__(self, config: WorkerConfig):
         super().__init__(config)
+        self.chunk_overlap = config.task.spliter.chunk_overlap
         self.spliter = MarkdownTextSplitter(
             chunk_size=config.task.spliter.chunk_size,
-            chunk_overlap=config.task.spliter.chunk_overlap,
+            chunk_overlap=self.chunk_overlap,
         )
 
     async def run(self, task: Task, trace_info: TraceInfo) -> dict:
@@ -51,9 +53,11 @@ class UpsertIndex(DeleteIndex):
             chunks.append("")
 
         chunk_list: List[Chunk] = []
-        for chunk in chunks:
-            start_index = content.index(chunk)
-            end_index = start_index + len(chunk)
+        for chunk, (start_index, end_index) in zip(
+            chunks,
+            find_chunk_ranges(content, chunks, chunk_overlap=self.chunk_overlap),
+            strict=True,
+        ):
             chunk_list.append(
                 Chunk(
                     title=title,

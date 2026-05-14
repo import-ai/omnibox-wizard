@@ -3,7 +3,6 @@ from json import dumps as lib_dumps
 
 from fastapi import APIRouter, Depends
 from langchain_text_splitters import MarkdownTextSplitter
-
 from common.config_loader import Loader
 from common.trace_info import TraceInfo
 from omnibox_wizard.wizard.api.depends import get_trace_info
@@ -16,6 +15,9 @@ from omnibox_wizard.wizard.api.entity import (
     UpsertWeaviateResourceRequest,
 )
 from omnibox_wizard.wizard.config import ENV_PREFIX
+from omnibox_wizard.worker.config import WorkerConfig
+from omnibox_wizard.worker.functions.file_reader import Convertor
+from omnibox_wizard.worker.worker import compute_supported_functions
 from wizard_common.grimoire.config import GrimoireAgentConfig
 from wizard_common.grimoire.entity.chunk import Chunk, ChunkType
 from wizard_common.grimoire.entity.message import Message
@@ -32,14 +34,26 @@ vector_db: WeaviateVectorDB
 title_generator: ChatTitleGenerator
 
 
+capabilities: dict = {}
+
+
 async def init(_):
-    global title_generator
-    global vector_db
+    global title_generator, vector_db, capabilities
     loader = Loader(GrimoireAgentConfig, env_prefix=ENV_PREFIX)
     config: GrimoireAgentConfig = loader.load()
 
     title_generator = ChatTitleGenerator(config.grimoire.openai)
     vector_db = WeaviateVectorDB(config.vector)
+
+    task_config = Loader(WorkerConfig, env_prefix=ENV_PREFIX).load().task
+    supported = compute_supported_functions(task_config)
+    capabilities = {"functions": supported}
+    if "file_reader" in supported:
+        capabilities["file_reader"] = {
+            "extensions": Convertor.get_supported_extensions(
+                task_config.docling_base_url, task_config.office_operator_base_url
+            )
+        }
 
 
 @internal_router.post("/title", tags=["LLM"], response_model=TitleResponse)
@@ -98,3 +112,8 @@ async def upsert_weaviate_message(
     message = Message(**request.message.model_dump())
     await vector_db.upsert_message(request.namespace_id, request.user_id, message)
     return {"success": True}
+
+
+@internal_router.get("/functions")
+async def get_functions():
+    return capabilities

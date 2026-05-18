@@ -20,7 +20,7 @@ from omnibox_wizard.worker.agent.chat_title_generator import (
     ChatTitleGenerateOutput,
     ChatTitleGenerator,
 )
-from omnibox_wizard.worker.config import WorkerConfig
+from omnibox_wizard.worker.config import TaskConfig
 from omnibox_wizard.worker.functions.file_reader import Convertor
 from omnibox_wizard.worker.worker import compute_supported_functions
 from wizard_common.grimoire.config import GrimoireAgentConfig
@@ -44,7 +44,7 @@ async def init(_):
     title_generator = ChatTitleGenerator(config.grimoire.openai)
     vector_db = WeaviateVectorDB(config.vector)
 
-    task_config = Loader(WorkerConfig, env_prefix=ENV_PREFIX).load().task
+    task_config = Loader(TaskConfig, env_prefix=f"{ENV_PREFIX}_TASK").load()
     supported = compute_supported_functions(task_config)
     capabilities = {"functions": supported}
     if "file_reader" in supported:

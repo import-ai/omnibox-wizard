@@ -16,13 +16,16 @@ from omnibox_wizard.wizard.api.entity import (
     UpsertWeaviateResourceRequest,
 )
 from omnibox_wizard.wizard.config import ENV_PREFIX
+from omnibox_wizard.worker.agent.chat_title_generator import (
+    ChatTitleGenerateOutput,
+    ChatTitleGenerator,
+)
+from omnibox_wizard.worker.config import TaskConfig
+from omnibox_wizard.worker.functions.file_reader import Convertor
+from omnibox_wizard.worker.worker import compute_supported_functions
 from wizard_common.grimoire.config import GrimoireAgentConfig
 from wizard_common.grimoire.entity.message import Message
 from wizard_common.grimoire.retriever.weaviate_vector_db import WeaviateVectorDB
-from omnibox_wizard.worker.agent.chat_title_generator import (
-    ChatTitleGenerator,
-    ChatTitleGenerateOutput,
-)
 
 dumps = partial(lib_dumps, ensure_ascii=False, separators=(",", ":"))
 internal_router = APIRouter(prefix="/internal/api/v1/wizard")
@@ -30,16 +33,26 @@ CHUNK_SIZE = 1024
 CHUNK_OVERLAP = 128
 vector_db: WeaviateVectorDB
 title_generator: ChatTitleGenerator
+capabilities: dict = {}
 
 
 async def init(_):
-    global title_generator
-    global vector_db
+    global title_generator, vector_db, capabilities
     loader = Loader(GrimoireAgentConfig, env_prefix=ENV_PREFIX)
     config: GrimoireAgentConfig = loader.load()
 
     title_generator = ChatTitleGenerator(config.grimoire.openai)
     vector_db = WeaviateVectorDB(config.vector)
+
+    task_config = Loader(TaskConfig, env_prefix=f"{ENV_PREFIX}_TASK").load()
+    supported = compute_supported_functions(task_config)
+    capabilities = {"functions": supported}
+    if "file_reader" in supported:
+        capabilities["file_reader"] = {
+            "extensions": Convertor.get_supported_extensions(
+                task_config.docling_base_url, task_config.office_operator_base_url
+            )
+        }
 
 
 @internal_router.post("/title", tags=["LLM"], response_model=TitleResponse)
@@ -93,3 +106,8 @@ async def upsert_weaviate_message(
     message = Message(**request.message.model_dump())
     await vector_db.upsert_message(request.namespace_id, request.user_id, message)
     return {"success": True}
+
+
+@internal_router.get("/functions")
+async def get_functions():
+    return capabilities

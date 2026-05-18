@@ -36,6 +36,18 @@ def get_lang_from_user_options(user_options: dict) -> str | None:
 
 
 class Convertor:
+    @staticmethod
+    def get_supported_extensions(
+        docling_base_url: str | None,
+        office_operator_base_url: str | None,
+    ) -> list[str]:
+        extensions = [".md", ".txt"]
+        if docling_base_url:
+            extensions += [".pptx", ".docx"]
+            if office_operator_base_url:
+                extensions += [".ppt", ".doc"]
+        return extensions
+
     def __init__(
         self,
         docling_base_url: str | None = None,
@@ -45,11 +57,9 @@ class Convertor:
         self.office_operator_base_url: str | None = office_operator_base_url
         self.md_reader: MDReader = MDReader()
 
-        self.supported_extensions = [".md", ".txt"]
-        if self.docling_base_url:
-            self.supported_extensions.extend([".pptx", ".docx"])
-            if self.office_operator_base_url:
-                self.supported_extensions.extend([".ppt", ".doc"])
+        self.supported_extensions = self.get_supported_extensions(
+            docling_base_url, office_operator_base_url
+        )
 
     async def convert(
         self, filepath: str, *args, **kwargs

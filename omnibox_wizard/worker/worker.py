@@ -35,6 +35,30 @@ from omnibox_wizard.worker.task_manager import TaskManager
 
 tracer = trace.get_tracer(__name__)
 
+_BASE_FUNCTIONS: frozenset[str] = frozenset({
+    "collect", "collect_url", "web_analysis", "upsert_index", "delete_index",
+    "file_reader", "upsert_message_index", "delete_conversation",
+    "extract_tags", "generate_title",
+})
+
+
+def compute_supported_functions(task_config) -> list[str]:
+    enabled = set(_BASE_FUNCTIONS)
+    if task_config.functions:
+        for func in [f.strip() for f in task_config.functions.split(",")]:
+            op, func_name = func[0], func[1:]
+            assert op in ("+", "-"), f"Invalid function config: {func}"
+            if func_name == "all":
+                if op == "+":
+                    enabled = set(_BASE_FUNCTIONS)
+                else:
+                    enabled = set()
+            if op == "+":
+                enabled.add(func_name)
+            else:
+                enabled.discard(func_name)
+    return sorted(enabled)
+
 
 class Worker:
     def __init__(
@@ -66,22 +90,7 @@ class Worker:
             "generate_title": TitleGenerator(config),
         }
 
-        functions_enabled = set(self.worker_dict.keys())
-        if config.task.functions:
-            functions_config = [f.strip() for f in config.task.functions.split(",")]
-            for func in functions_config:
-                op, func_name = func[0], func[1:]
-                assert op in ("+", "-"), f"Invalid function config: {func}"
-                if func_name == "all":
-                    if op == "+":
-                        functions_enabled = set(self.worker_dict.keys())
-                    else:
-                        functions_enabled = set()
-                if op == "+":
-                    functions_enabled.add(func_name)
-                else:
-                    functions_enabled.discard(func_name)
-        self.supported_functions = list(functions_enabled)
+        self.supported_functions = compute_supported_functions(config.task)
 
         self.logger = get_logger(f"worker_{self.worker_id}")
 

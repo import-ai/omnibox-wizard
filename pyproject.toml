@@ -30,6 +30,8 @@ dependencies = [
     "htmlmin (>=0.1.12,<0.2.0)",
     "aiokafka (>=0.12.0,<0.13.0)",
     "weaviate-client (>=4.20.4,<5.0.0)",
+    "anyascii (>=0.3.3,<0.4.0)",
+    "pypinyin (>=0.55.0,<0.56.0)",
 ]
 
 [dependency-groups]

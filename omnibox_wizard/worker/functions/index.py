@@ -1,11 +1,7 @@
-from typing import List
-
-from langchain_text_splitters import MarkdownTextSplitter
-
 from common.trace_info import TraceInfo
+from omnibox_wizard.indexing import build_resource_chunks
 from omnibox_wizard.worker.config import WorkerConfig
 from omnibox_wizard.worker.functions.base_function import BaseFunction
-from wizard_common.grimoire.entity.chunk import Chunk, ChunkType
 from wizard_common.grimoire.entity.message import Message
 from wizard_common.grimoire.retriever.weaviate_vector_db import WeaviateVectorDB
 from wizard_common.worker.entity import Task
@@ -26,10 +22,8 @@ class DeleteIndex(BaseFunction):
 class UpsertIndex(DeleteIndex):
     def __init__(self, config: WorkerConfig):
         super().__init__(config)
-        self.spliter = MarkdownTextSplitter(
-            chunk_size=config.task.spliter.chunk_size,
-            chunk_overlap=config.task.spliter.chunk_overlap,
-        )
+        self.chunk_size = config.task.spliter.chunk_size
+        self.chunk_overlap = config.task.spliter.chunk_overlap
 
     async def run(self, task: Task, trace_info: TraceInfo) -> dict:
         input_data = task.input
@@ -42,21 +36,13 @@ class UpsertIndex(DeleteIndex):
             return {"success": False, "error": "Both title and content cannot be None"}
 
         meta_info: dict = input_data["meta_info"] | {"namespace_id": task.namespace_id}
-        chunks = self.spliter.split_text(content)
-        if not chunks:
-            chunks.append("")
-
-        chunk_list: List[Chunk] = [
-            Chunk(
-                title=title,
-                text=chunk,
-                chunk_type=ChunkType.snippet,
-                start_index=content.index(chunk),
-                end_index=content.index(chunk) + len(chunk),
-                **meta_info,
-            )
-            for chunk in chunks
-        ]
+        chunk_list = build_resource_chunks(
+            title=title,
+            content=content,
+            metadata=meta_info,
+            chunk_size=self.chunk_size,
+            chunk_overlap=self.chunk_overlap,
+        )
         await self.vector_db.insert_chunks(task.namespace_id, chunk_list)
         return {"success": True}
 

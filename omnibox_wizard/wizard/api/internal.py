@@ -2,10 +2,10 @@ from functools import partial
 from json import dumps as lib_dumps
 
 from fastapi import APIRouter, Depends
-from langchain_text_splitters import MarkdownTextSplitter
 
 from common.config_loader import Loader
 from common.trace_info import TraceInfo
+from omnibox_wizard.indexing import build_resource_chunks
 from omnibox_wizard.wizard.api.depends import get_trace_info
 from omnibox_wizard.wizard.api.entity import (
     CommonAITextRequest,
@@ -17,7 +17,6 @@ from omnibox_wizard.wizard.api.entity import (
 )
 from omnibox_wizard.wizard.config import ENV_PREFIX
 from wizard_common.grimoire.config import GrimoireAgentConfig
-from wizard_common.grimoire.entity.chunk import Chunk, ChunkType
 from wizard_common.grimoire.entity.message import Message
 from wizard_common.grimoire.retriever.weaviate_vector_db import WeaviateVectorDB
 from omnibox_wizard.worker.agent.chat_title_generator import (
@@ -27,7 +26,8 @@ from omnibox_wizard.worker.agent.chat_title_generator import (
 
 dumps = partial(lib_dumps, ensure_ascii=False, separators=(",", ":"))
 internal_router = APIRouter(prefix="/internal/api/v1/wizard")
-splitter = MarkdownTextSplitter(chunk_size=1024, chunk_overlap=128)
+CHUNK_SIZE = 1024
+CHUNK_OVERLAP = 128
 vector_db: WeaviateVectorDB
 title_generator: ChatTitleGenerator
 
@@ -68,23 +68,18 @@ async def search(request: SearchRequest):
 
 @internal_router.post("/upsert_weaviate/resource", tags=[])
 async def upsert_weaviate_resource(request: UpsertWeaviateResourceRequest):
-    texts = splitter.split_text(request.content)
-    if not texts:
-        texts.append("")
-    chunks = [
-        Chunk(
-            title=request.title,
-            text=text,
-            chunk_type=ChunkType.snippet,
-            start_index=request.content.index(text),
-            end_index=request.content.index(text) + len(text),
-            resource_id=request.resource_id,
-            parent_id=request.parent_id,
-            resource_tag_ids=request.resource_tag_ids,
-            resource_tag_names=request.resource_tag_names,
-        )
-        for text in texts
-    ]
+    chunks = build_resource_chunks(
+        title=request.title,
+        content=request.content,
+        metadata={
+            "resource_id": request.resource_id,
+            "parent_id": request.parent_id,
+            "resource_tag_ids": request.resource_tag_ids,
+            "resource_tag_names": request.resource_tag_names,
+        },
+        chunk_size=CHUNK_SIZE,
+        chunk_overlap=CHUNK_OVERLAP,
+    )
     await vector_db.remove_chunks(request.namespace_id, request.resource_id)
     await vector_db.insert_chunks(request.namespace_id, chunks)
     return {"success": True}

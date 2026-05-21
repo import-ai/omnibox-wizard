@@ -17,6 +17,28 @@ from omnibox_wizard.worker.functions.file_readers.office_reader import (
     OfficeOperatorClient,
 )
 
+MAX_FILE_CONTENT_LENGTH = 32768
+
+
+class FileContentTooLongError(Exception):
+    def __init__(self, length: int):
+        self.length = length
+        super().__init__(f"Content too long: {length}")
+
+
+def format_content_too_long_message(length: int, language: str | None) -> str:
+    normalized_language = (language or "zh").replace("_", "-").lower()
+    if normalized_language in {"en", "en-us"}:
+        return (
+            f"The current file content ({length} characters) exceeds the system "
+            f"processing limit ({MAX_FILE_CONTENT_LENGTH:,} characters). Please try "
+            "splitting the document and uploading it again."
+        )
+    return (
+        f"当前文件内容（{length} 字符）超过系统可处理上限"
+        f"（{MAX_FILE_CONTENT_LENGTH} 字符），请尝试拆分文档后重新上传。"
+    )
+
 
 def get_lang_from_user_options(user_options: dict) -> str | None:
     """Map user language option to extract_tags lang format.
@@ -92,8 +114,8 @@ class Convertor:
             markdown = read_text_file(filepath)
         else:
             raise CommonException(400, f"Unsupported type: {ext}")
-        if (length := len(markdown)) > 32 * 1024:
-            raise CommonException(400, f"Content too long: {length}")
+        if (length := len(markdown)) > MAX_FILE_CONTENT_LENGTH:
+            raise FileContentTooLongError(length)
         return markdown, images, metadata
 
 
@@ -179,6 +201,12 @@ class FileReader(BaseFunction):
                 return {
                     "message": "unsupported_type",
                     "mimetype": mimetype,
+                }
+            except FileContentTooLongError as e:
+                return {
+                    "title": title,
+                    "markdown": format_content_too_long_message(e.length, language),
+                    "skip_tasks": True,
                 }
             except CommonException as e:
                 return {

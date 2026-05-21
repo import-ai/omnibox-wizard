@@ -18,12 +18,7 @@ from omnibox_wizard.worker.functions.file_readers.office_reader import (
 )
 
 MAX_FILE_CONTENT_LENGTH = 32768
-
-
-class FileContentTooLongError(Exception):
-    def __init__(self, length: int):
-        self.length = length
-        super().__init__(f"Content too long: {length}")
+FILE_CONTENT_TOO_LONG_CODE = "FILE_CONTENT_TOO_LONG"
 
 
 def format_content_too_long_message(length: int, language: str | None) -> str:
@@ -115,7 +110,10 @@ class Convertor:
         else:
             raise CommonException(400, f"Unsupported type: {ext}")
         if (length := len(markdown)) > MAX_FILE_CONTENT_LENGTH:
-            raise FileContentTooLongError(length)
+            raise CommonException(
+                FILE_CONTENT_TOO_LONG_CODE,
+                format_content_too_long_message(length, kwargs.get("language")),
+            )
         return markdown, images, metadata
 
 
@@ -202,13 +200,9 @@ class FileReader(BaseFunction):
                     "message": "unsupported_type",
                     "mimetype": mimetype,
                 }
-            except FileContentTooLongError as e:
-                return {
-                    "title": title,
-                    "markdown": format_content_too_long_message(e.length, language),
-                    "skip_tasks": True,
-                }
             except CommonException as e:
+                if e.code == FILE_CONTENT_TOO_LONG_CODE:
+                    raise
                 return {
                     "title": title,
                     "markdown": f"`{e.error}`",

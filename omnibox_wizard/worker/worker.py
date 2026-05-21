@@ -237,9 +237,15 @@ class Worker:
         except Exception as e:
             # Handle other exceptions
             task.exception = {
-                "error": CommonException.parse_exception(e),
+                "error": (
+                    e.error
+                    if isinstance(e, CommonException)
+                    else CommonException.parse_exception(e)
+                ),
                 "traceback": traceback.format_exc(),
             }
+            if isinstance(e, CommonException):
+                task.exception["code"] = e.code
             task.status = "error"
             logging_func = trace_info.bind(
                 error=CommonException.parse_exception(e)

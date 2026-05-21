@@ -5,12 +5,12 @@ import tempfile
 import pytest
 from dotenv import load_dotenv
 
+from common.exception import CommonException
 from common.trace_info import TraceInfo
 from common import project_root
 from wizard_common.worker.entity import Task
 from omnibox_wizard.worker.functions.file_reader import (
     Convertor,
-    FileContentTooLongError,
     FileReader,
     MAX_FILE_CONTENT_LENGTH,
     format_content_too_long_message,
@@ -110,10 +110,15 @@ async def test_convertor_rejects_content_above_system_limit(tmp_path):
     filepath = tmp_path / "large.txt"
     filepath.write_text("a" * length)
 
-    with pytest.raises(FileContentTooLongError) as exc:
-        await Convertor().convert(str(filepath))
+    with pytest.raises(CommonException) as exc:
+        await Convertor().convert(str(filepath), language="en-US")
 
-    assert exc.value.length == length
+    assert exc.value.code == "FILE_CONTENT_TOO_LONG"
+    assert exc.value.error == (
+        "The current file content (32769 characters) exceeds the system "
+        "processing limit (32,768 characters). Please try splitting the document "
+        "and uploading it again."
+    )
 
 
 @pytest.mark.parametrize(
@@ -137,7 +142,7 @@ async def test_convertor_rejects_content_above_system_limit(tmp_path):
         ),
     ],
 )
-async def test_file_reader_returns_localized_content_limit_message(
+async def test_file_reader_raises_localized_content_limit_error(
     language: str | None,
     expected: str,
 ):
@@ -145,7 +150,10 @@ async def test_file_reader_returns_localized_content_limit_message(
 
     class TooLongConvertor:
         async def convert(self, *args, **kwargs):
-            raise FileContentTooLongError(length)
+            raise CommonException(
+                "FILE_CONTENT_TOO_LONG",
+                format_content_too_long_message(length, kwargs.get("language")),
+            )
 
     async def download(namespace_id: str, resource_id: str, target: str):
         return None
@@ -171,15 +179,13 @@ async def test_file_reader_returns_localized_content_limit_message(
         input=task_input,
     )
 
-    result = await reader.run(task, None)
+    with pytest.raises(CommonException) as exc:
+        await reader.run(task, None)
 
-    assert result == {
-        "title": "Large file",
-        "markdown": expected,
-        "skip_tasks": True,
-    }
-    assert "Content too long" not in result["markdown"]
-    assert "`" not in result["markdown"]
+    assert exc.value.code == "FILE_CONTENT_TOO_LONG"
+    assert exc.value.error == expected
+    assert "Content too long" not in exc.value.error
+    assert "`" not in exc.value.error
 
 
 def test_format_content_too_long_message_supports_en_and_zh():

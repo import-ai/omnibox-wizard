@@ -36,6 +36,14 @@ def is_tiktok(url: str) -> bool:
     return False
 
 
+def is_ximalaya(url: str) -> bool:
+    domain: str = urlparse(url).netloc
+    for pattern in ["ximalaya.com", "xima.tv"]:
+        if pattern in domain:
+            return True
+    return False
+
+
 class WebAnalysisFunction(BaseFunction):
     def __init__(self, _: WorkerConfig):
         self.video_prefixes: list[str] = list(
@@ -69,6 +77,8 @@ class WebAnalysisFunction(BaseFunction):
                     or "ImgPhotoSlide" in active_html
                 ):
                     return False
+            return True
+        if is_ximalaya(url):
             return True
         for prefix in self.video_prefixes:
             if url.startswith(prefix):

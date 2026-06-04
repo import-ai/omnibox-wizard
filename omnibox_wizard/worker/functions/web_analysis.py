@@ -37,9 +37,9 @@ def is_tiktok(url: str) -> bool:
 
 
 def is_ximalaya(url: str) -> bool:
-    domain: str = urlparse(url).netloc
-    for pattern in ["ximalaya.com", "xima.tv"]:
-        if pattern in domain:
+    host: str = urlparse(url).hostname or ""
+    for domain in ["ximalaya.com", "xima.tv"]:
+        if host == domain or host.endswith(f".{domain}"):
             return True
     return False
 

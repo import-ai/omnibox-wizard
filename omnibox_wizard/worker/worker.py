@@ -2,10 +2,9 @@ import asyncio
 import traceback
 from contextlib import asynccontextmanager
 from datetime import datetime
-from pathlib import Path
 from typing import AsyncGenerator, Callable
 
-from httpx import AsyncClient, AsyncHTTPTransport, HTTPStatusError
+from httpx import AsyncClient, AsyncHTTPTransport
 from opentelemetry import propagate, trace
 from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 from opentelemetry.trace import Status, StatusCode
@@ -107,23 +106,15 @@ class Worker:
             HTTPXClientInstrumentor.instrument_client(client)
             yield client
 
-    async def _start_task(self, task_id: str) -> Task | None:
+    async def poll_task(self) -> Task | None:
         async with self._backend_client() as client:
-            try:
-                response = await client.post(
-                    f"/internal/api/v1/wizard/tasks/{task_id}/start"
-                )
-                response.raise_for_status()
-                return Task.model_validate(response.json())
-            except HTTPStatusError as e:
-                data = e.response.json()
-                if data.get("code") in [
-                    "task_ended",
-                    "task_canceled",
-                    "task_not_found",
-                ]:
-                    return None
-                raise
+            response = await client.post(
+                "/internal/api/v1/wizard/tasks/poll",
+                json={"functions": self.supported_functions},
+            )
+            response.raise_for_status()
+            data = response.json().get("task")
+            return Task.model_validate(data) if data else None
 
     def get_trace_info(self, task: Task) -> TraceInfo:
         return TraceInfo(
@@ -136,47 +127,45 @@ class Worker:
             },
         )
 
-    async def process_message(self, msg: Message):
-        if msg.function not in self.supported_functions:
-            return
-        if msg.function == "file_reader":
-            file_name = msg.meta.get("file_name", "")
-            file_ext = Path(file_name).suffix.lower()
-            if file_ext not in self.file_reader.supported_extensions:
-                return
-
+    async def process_polled_task(self, task: Task):
         if self.health_tracker:
             self.health_tracker.update_worker_status(self.worker_id, "running")
 
-        async with self.rate_limiter.limit(msg):
-            task = await self._start_task(msg.task_id)
-            if task is not None:
-                trace_info: TraceInfo = self.get_trace_info(task)
-                trace_info.info(
-                    {"message": "fetch_task"}
-                    | task.model_dump(include={"created_at", "started_at"})
-                )
-                trace_headers = (
-                    task.payload.get("trace_headers", {}) if task.payload else {}
-                )
-                parent_context = propagate.extract(trace_headers)
-                resource_id: str = task.payload.get("resource_id", None)
+        # The backend rate limiter operates on a Message; build one from the task.
+        rate_limit_msg = Message(
+            task_id=task.id,
+            function=task.function,
+            meta={"file_name": task.input.get("filename", "")},
+        )
+        async with self.rate_limiter.limit(rate_limit_msg):
+            trace_info: TraceInfo = self.get_trace_info(task)
+            trace_info.info(
+                {"message": "fetch_task"}
+                | task.model_dump(include={"created_at", "started_at"})
+            )
+            trace_headers = (
+                task.payload.get("trace_headers", {}) if task.payload else {}
+            )
+            parent_context = propagate.extract(trace_headers)
+            resource_id: str | None = (
+                task.payload.get("resource_id", None) if task.payload else None
+            )
 
-                with tracer.start_as_current_span(
-                    f"worker.process_task.{task.function}",
-                    context=parent_context,
-                    attributes={
-                        "task.id": task.id,
-                        "task.function": task.function,
-                        "task.namespace_id": task.namespace_id,
-                        "task.user_id": task.user_id,
-                        "task.priority": task.priority,
-                        "worker.id": str(self.worker_id),
-                    }
-                    | ({"task.resource_id": resource_id} if resource_id else {}),
-                ):
-                    processed_task: Task = await self.process_task(task, trace_info)
-                    await self.callback_util.send_callback(processed_task)
+            with tracer.start_as_current_span(
+                f"worker.process_task.{task.function}",
+                context=parent_context,
+                attributes={
+                    "task.id": task.id,
+                    "task.function": task.function,
+                    "task.namespace_id": task.namespace_id,
+                    "task.user_id": task.user_id,
+                    "task.priority": task.priority,
+                    "worker.id": str(self.worker_id),
+                }
+                | ({"task.resource_id": resource_id} if resource_id else {}),
+            ):
+                processed_task: Task = await self.process_task(task, trace_info)
+                await self.callback_util.send_callback(processed_task)
 
         if self.health_tracker:
             self.health_tracker.update_worker_status(

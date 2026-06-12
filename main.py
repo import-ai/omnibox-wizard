@@ -2,15 +2,11 @@ import asyncio
 import tomllib
 from argparse import ArgumentParser, Namespace
 
-from aiokafka import AIOKafkaConsumer
-from aiokafka.errors import CommitFailedError, IllegalStateError
-
 from common import project_root
 from common.config_loader import Loader
 from common.logger import get_logger
 from common.tracing import setup_opentelemetry
 from omnibox_wizard.worker.config import ENV_PREFIX, WorkerConfig
-from wizard_common.worker.entity import Message
 from omnibox_wizard.worker.health_server import HealthServer
 from omnibox_wizard.worker.health_tracker import HealthTracker
 from omnibox_wizard.worker.rate_limiter import RateLimiter
@@ -33,53 +29,15 @@ async def run_worker(
     health_tracker: HealthTracker,
     rate_limiter: RateLimiter,
 ):
-    logger = get_logger(f"worker-{id}")
-
-    # Create consumers for each priority level (3 is highest, 1 is lowest)
-    # Also include the original topic for backward compatibility (lowest priority)
-    topics = [
-        f"{config.kafka.topic}-3",
-        f"{config.kafka.topic}-2",
-        f"{config.kafka.topic}-1",
-        config.kafka.topic,  # Original topic for backward compatibility
-    ]
-    consumers = []
-    for topic in topics:
-        consumer = AIOKafkaConsumer(
-            topic,
-            bootstrap_servers=config.kafka.broker,
-            group_id=config.kafka.group,
-            auto_offset_reset="earliest",
-            enable_auto_commit=False,
-            max_poll_interval_ms=config.kafka.max_poll_interval_ms,
-        )
-        await consumer.start()
-        consumers.append(consumer)
-
     worker = Worker(config, id, health_tracker, rate_limiter)
-    try:
-        while True:
-            processed_any = False
-            for consumer in consumers:
-                result = await consumer.getmany(timeout_ms=0, max_records=1)
-                for tp, messages in result.items():
-                    for msg in messages:
-                        message = Message.model_validate_json(msg.value)
-                        await worker.process_message(message)
-                        processed_any = True
-                        try:
-                            await consumer.commit({tp: msg.offset + 1})
-                        except CommitFailedError as e:
-                            logger.warning(f"Commit failed: {e}")
-                        except IllegalStateError as e:
-                            logger.warning(f"Commit failed: {e}")
-                if processed_any:
-                    break
-            if not processed_any:
-                await asyncio.sleep(0.5)
-    finally:
-        for consumer in consumers:
-            await consumer.stop()
+    while True:
+        # Poll the backend for the next task this worker can handle. When there
+        # is nothing to do, wait a second before polling again.
+        task = await worker.poll_task()
+        if task is None:
+            await asyncio.sleep(1)
+            continue
+        await worker.process_polled_task(task)
 
 
 async def run_worker_loop(

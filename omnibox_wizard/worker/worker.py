@@ -36,12 +36,22 @@ tracer = trace.get_tracer(__name__)
 # How often to report a heartbeat to the backend while a task is running.
 HEARTBEAT_INTERVAL_SECONDS = 5
 
-_BASE_FUNCTIONS: frozenset[str] = frozenset({
-    "collect", "collect_url", "web_analysis", "upsert_index", "delete_index",
-    "file_reader_text", "file_reader_ppt", "file_reader_word",
-    "upsert_message_index", "delete_conversation",
-    "extract_tags", "generate_title",
-})
+_BASE_FUNCTIONS: frozenset[str] = frozenset(
+    {
+        "collect",
+        "collect_url",
+        "web_analysis",
+        "upsert_index",
+        "delete_index",
+        "file_reader_text",
+        "file_reader_ppt",
+        "file_reader_word",
+        "upsert_message_index",
+        "delete_conversation",
+        "extract_tags",
+        "generate_title",
+    }
+)
 
 
 def compute_supported_functions(task_config) -> list[str]:
@@ -158,9 +168,7 @@ class Worker:
             {"message": "fetch_task"}
             | task.model_dump(include={"created_at", "started_at"})
         )
-        trace_headers = (
-            task.payload.get("trace_headers", {}) if task.payload else {}
-        )
+        trace_headers = task.payload.get("trace_headers", {}) if task.payload else {}
         parent_context = propagate.extract(trace_headers)
         resource_id: str | None = (
             task.payload.get("resource_id", None) if task.payload else None
@@ -179,13 +187,9 @@ class Worker:
             }
             | ({"task.resource_id": resource_id} if resource_id else {}),
         ):
-            heartbeat_task = asyncio.create_task(
-                self._report_heartbeat(task.id)
-            )
+            heartbeat_task = asyncio.create_task(self._report_heartbeat(task.id))
             try:
-                processed_task: Task = await self.process_task(
-                    task, trace_info
-                )
+                processed_task: Task = await self.process_task(task, trace_info)
                 await self.callback_util.send_callback(processed_task)
             finally:
                 heartbeat_task.cancel()

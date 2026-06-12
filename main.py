@@ -14,9 +14,14 @@ with project_root.open("pyproject.toml", "rb") as f:
     version = tomllib.load(f)["project"]["version"]
 
 # Functions that operate on the vector index (see worker/functions/index.py).
-INDEX_FUNCTIONS: frozenset[str] = frozenset({
-    "upsert_index", "delete_index", "upsert_message_index", "delete_conversation",
-})
+INDEX_FUNCTIONS: frozenset[str] = frozenset(
+    {
+        "upsert_index",
+        "delete_index",
+        "upsert_message_index",
+        "delete_conversation",
+    }
+)
 
 
 async def run_worker(
@@ -78,9 +83,7 @@ async def main():
         if not functions:
             continue
         for _ in range(num):
-            tasks.append(
-                run_worker(config, worker_id, functions, health_tracker)
-            )
+            tasks.append(run_worker(config, worker_id, functions, health_tracker))
             worker_id += 1
 
     # Add health server if enabled

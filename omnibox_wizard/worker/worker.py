@@ -1,6 +1,6 @@
 import asyncio
 import traceback
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from datetime import datetime
 from typing import AsyncGenerator, Callable
 
@@ -33,6 +33,9 @@ from omnibox_wizard.worker.rate_limiter import RateLimiter
 from omnibox_wizard.worker.task_manager import TaskManager
 
 tracer = trace.get_tracer(__name__)
+
+# How often to report a heartbeat to the backend while a task is running.
+HEARTBEAT_INTERVAL_SECONDS = 5
 
 _BASE_FUNCTIONS: frozenset[str] = frozenset({
     "collect", "collect_url", "web_analysis", "upsert_index", "delete_index",
@@ -116,6 +119,22 @@ class Worker:
             data = response.json().get("task")
             return Task.model_validate(data) if data else None
 
+    async def _report_heartbeat(self, task_id: str) -> None:
+        """Periodically tell the backend the task is still being worked on, so
+        it is not treated as stale and re-claimed by another worker."""
+        async with self._backend_client() as client:
+            while True:
+                await asyncio.sleep(HEARTBEAT_INTERVAL_SECONDS)
+                try:
+                    response = await client.post(
+                        f"/internal/api/v1/wizard/tasks/{task_id}/heartbeat"
+                    )
+                    response.raise_for_status()
+                except Exception as e:
+                    self.logger.warning(
+                        f"Failed to report heartbeat for task {task_id}: {e}"
+                    )
+
     def get_trace_info(self, task: Task) -> TraceInfo:
         return TraceInfo(
             task.id,
@@ -164,8 +183,18 @@ class Worker:
                 }
                 | ({"task.resource_id": resource_id} if resource_id else {}),
             ):
-                processed_task: Task = await self.process_task(task, trace_info)
-                await self.callback_util.send_callback(processed_task)
+                heartbeat_task = asyncio.create_task(
+                    self._report_heartbeat(task.id)
+                )
+                try:
+                    processed_task: Task = await self.process_task(
+                        task, trace_info
+                    )
+                    await self.callback_util.send_callback(processed_task)
+                finally:
+                    heartbeat_task.cancel()
+                    with suppress(asyncio.CancelledError):
+                        await heartbeat_task
 
         if self.health_tracker:
             self.health_tracker.update_worker_status(

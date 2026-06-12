@@ -14,7 +14,7 @@ from common.logger import get_logger
 from common.trace_info import TraceInfo
 from omnibox_wizard.worker.callback_util import CallbackUtil
 from omnibox_wizard.worker.config import WorkerConfig
-from wizard_common.worker.entity import Message, Task
+from wizard_common.worker.entity import Task
 from omnibox_wizard.worker.functions.base_function import BaseFunction
 from omnibox_wizard.worker.functions.collect_url import CollectUrlFunction
 from omnibox_wizard.worker.functions.file_reader import FileReader
@@ -29,7 +29,6 @@ from omnibox_wizard.worker.functions.tag_extractor import TagExtractor
 from omnibox_wizard.worker.functions.title_generator import TitleGenerator
 from omnibox_wizard.worker.functions.web_analysis import WebAnalysisFunction
 from omnibox_wizard.worker.health_tracker import HealthTracker
-from omnibox_wizard.worker.rate_limiter import RateLimiter
 from omnibox_wizard.worker.task_manager import TaskManager
 
 tracer = trace.get_tracer(__name__)
@@ -39,7 +38,8 @@ HEARTBEAT_INTERVAL_SECONDS = 5
 
 _BASE_FUNCTIONS: frozenset[str] = frozenset({
     "collect", "collect_url", "web_analysis", "upsert_index", "delete_index",
-    "file_reader", "upsert_message_index", "delete_conversation",
+    "file_reader_text", "file_reader_ppt", "file_reader_word",
+    "upsert_message_index", "delete_conversation",
     "extract_tags", "generate_title",
 })
 
@@ -67,15 +67,14 @@ class Worker:
         self,
         config: WorkerConfig,
         worker_id: int,
-        health_tracker: HealthTracker,
-        rate_limiter: RateLimiter,
+        functions: list[str],
+        health_tracker: HealthTracker | None = None,
     ):
         self.config: WorkerConfig = config
         self.worker_id = worker_id
         self.callback_util = CallbackUtil(config)
         self.health_tracker = health_tracker
         self.task_manager = TaskManager(config)
-        self.rate_limiter = rate_limiter
 
         self.file_reader: FileReader = FileReader(config)
 
@@ -85,14 +84,18 @@ class Worker:
             "web_analysis": WebAnalysisFunction(config),
             "upsert_index": UpsertIndex(config),
             "delete_index": DeleteIndex(config),
-            "file_reader": self.file_reader,
+            # All base file_reader_* kinds share one handler; it dispatches on
+            # the file extension internally.
+            "file_reader_text": self.file_reader,
+            "file_reader_ppt": self.file_reader,
+            "file_reader_word": self.file_reader,
             "upsert_message_index": UpsertMessageIndex(config),
             "delete_conversation": DeleteConversation(config),
             "extract_tags": TagExtractor(config),
             "generate_title": TitleGenerator(config),
         }
 
-        self.supported_functions = compute_supported_functions(config.task)
+        self.supported_functions = functions
 
         self.logger = get_logger(f"worker_{self.worker_id}")
 
@@ -150,51 +153,44 @@ class Worker:
         if self.health_tracker:
             self.health_tracker.update_worker_status(self.worker_id, "running")
 
-        # The backend rate limiter operates on a Message; build one from the task.
-        rate_limit_msg = Message(
-            task_id=task.id,
-            function=task.function,
-            meta={"file_name": task.input.get("filename", "")},
+        trace_info: TraceInfo = self.get_trace_info(task)
+        trace_info.info(
+            {"message": "fetch_task"}
+            | task.model_dump(include={"created_at", "started_at"})
         )
-        async with self.rate_limiter.limit(rate_limit_msg):
-            trace_info: TraceInfo = self.get_trace_info(task)
-            trace_info.info(
-                {"message": "fetch_task"}
-                | task.model_dump(include={"created_at", "started_at"})
-            )
-            trace_headers = (
-                task.payload.get("trace_headers", {}) if task.payload else {}
-            )
-            parent_context = propagate.extract(trace_headers)
-            resource_id: str | None = (
-                task.payload.get("resource_id", None) if task.payload else None
-            )
+        trace_headers = (
+            task.payload.get("trace_headers", {}) if task.payload else {}
+        )
+        parent_context = propagate.extract(trace_headers)
+        resource_id: str | None = (
+            task.payload.get("resource_id", None) if task.payload else None
+        )
 
-            with tracer.start_as_current_span(
-                f"worker.process_task.{task.function}",
-                context=parent_context,
-                attributes={
-                    "task.id": task.id,
-                    "task.function": task.function,
-                    "task.namespace_id": task.namespace_id,
-                    "task.user_id": task.user_id,
-                    "task.priority": task.priority,
-                    "worker.id": str(self.worker_id),
-                }
-                | ({"task.resource_id": resource_id} if resource_id else {}),
-            ):
-                heartbeat_task = asyncio.create_task(
-                    self._report_heartbeat(task.id)
+        with tracer.start_as_current_span(
+            f"worker.process_task.{task.function}",
+            context=parent_context,
+            attributes={
+                "task.id": task.id,
+                "task.function": task.function,
+                "task.namespace_id": task.namespace_id,
+                "task.user_id": task.user_id,
+                "task.priority": task.priority,
+                "worker.id": str(self.worker_id),
+            }
+            | ({"task.resource_id": resource_id} if resource_id else {}),
+        ):
+            heartbeat_task = asyncio.create_task(
+                self._report_heartbeat(task.id)
+            )
+            try:
+                processed_task: Task = await self.process_task(
+                    task, trace_info
                 )
-                try:
-                    processed_task: Task = await self.process_task(
-                        task, trace_info
-                    )
-                    await self.callback_util.send_callback(processed_task)
-                finally:
-                    heartbeat_task.cancel()
-                    with suppress(asyncio.CancelledError):
-                        await heartbeat_task
+                await self.callback_util.send_callback(processed_task)
+            finally:
+                heartbeat_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await heartbeat_task
 
         if self.health_tracker:
             self.health_tracker.update_worker_status(

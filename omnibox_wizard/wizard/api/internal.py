@@ -21,7 +21,6 @@ from omnibox_wizard.worker.agent.chat_title_generator import (
     ChatTitleGenerator,
 )
 from omnibox_wizard.worker.config import TaskConfig
-from omnibox_wizard.worker.functions.file_reader import Convertor
 from omnibox_wizard.worker.worker import compute_supported_functions
 from wizard_common.grimoire.config import GrimoireAgentConfig
 from wizard_common.grimoire.entity.message import Message
@@ -47,12 +46,6 @@ async def init(_):
     task_config = Loader(TaskConfig, env_prefix=f"{ENV_PREFIX}_TASK").load()
     supported = compute_supported_functions(task_config)
     capabilities = {"functions": supported}
-    if "file_reader" in supported:
-        capabilities["file_reader"] = {
-            "extensions": Convertor.get_supported_extensions(
-                task_config.docling_base_url, task_config.office_operator_base_url
-            )
-        }
 
 
 @internal_router.post("/title", tags=["LLM"], response_model=TitleResponse)

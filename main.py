@@ -1,6 +1,5 @@
 import asyncio
 import tomllib
-from argparse import ArgumentParser, Namespace
 
 from common import project_root
 from common.config_loader import Loader
@@ -9,68 +8,80 @@ from common.tracing import setup_opentelemetry
 from omnibox_wizard.worker.config import ENV_PREFIX, WorkerConfig
 from omnibox_wizard.worker.health_server import HealthServer
 from omnibox_wizard.worker.health_tracker import HealthTracker
-from omnibox_wizard.worker.rate_limiter import RateLimiter
-from omnibox_wizard.worker.worker import Worker
+from omnibox_wizard.worker.worker import Worker, compute_supported_functions
 
 with project_root.open("pyproject.toml", "rb") as f:
     version = tomllib.load(f)["project"]["version"]
 
-
-def get_args() -> Namespace:
-    parser = ArgumentParser()
-    parser.add_argument("--workers", type=int, default=1)
-    args = parser.parse_args()
-    return args
+# Functions that operate on the vector index (see worker/functions/index.py).
+INDEX_FUNCTIONS: frozenset[str] = frozenset({
+    "upsert_index", "delete_index", "upsert_message_index", "delete_conversation",
+})
 
 
 async def run_worker(
     config: WorkerConfig,
     id: int,
+    functions: list[str],
     health_tracker: HealthTracker,
-    rate_limiter: RateLimiter,
-):
-    worker = Worker(config, id, health_tracker, rate_limiter)
-    while True:
-        # Poll the backend for the next task this worker can handle. When there
-        # is nothing to do, wait a second before polling again.
-        task = await worker.poll_task()
-        if task is None:
-            await asyncio.sleep(1)
-            continue
-        await worker.process_polled_task(task)
-
-
-async def run_worker_loop(
-    config: WorkerConfig,
-    id: int,
-    health_tracker: HealthTracker,
-    rate_limiter: RateLimiter,
 ):
     logger = get_logger(f"worker-{id}")
+    worker = Worker(config, id, functions, health_tracker)
     while True:
         try:
-            await run_worker(config, id, health_tracker, rate_limiter)
+            # Poll the backend for the next task this worker can handle. When
+            # there is nothing to do, wait a second before polling again.
+            task = await worker.poll_task()
+            if task is None:
+                await asyncio.sleep(1)
+                continue
+            await worker.process_polled_task(task)
         except Exception:
             logger.exception(f"Worker {id} encountered an error")
-        await asyncio.sleep(5)
+            await asyncio.sleep(5)
 
 
 async def main():
     setup_opentelemetry("omnibox-wizard-worker")
 
-    args = get_args()
     logger = get_logger("main")
-    logger.info(f"Starting Wizard {version} with {args.workers} workers")
 
     loader = Loader(WorkerConfig, env_prefix=ENV_PREFIX)
     config = loader.load()
 
-    health_tracker = HealthTracker()
-    rate_limiter = RateLimiter(config.rate)
-    tasks = [
-        run_worker_loop(config, i, health_tracker, rate_limiter)
-        for i in range(args.workers)
+    # Split the supported functions into file_reader_* kinds, index related
+    # functions and everything else, then spawn a dedicated pool of workers for
+    # each group.
+    supported = compute_supported_functions(config.task)
+    file_reader_functions = [f for f in supported if f.startswith("file_reader_")]
+    index_functions = [f for f in supported if f in INDEX_FUNCTIONS]
+    other_functions = [
+        f
+        for f in supported
+        if not f.startswith("file_reader_") and f not in INDEX_FUNCTIONS
     ]
+
+    logger.info(
+        f"Starting Wizard {version} with {config.file_reader_worker_num} file_reader "
+        f"workers, {config.index_worker_num} index workers and "
+        f"{config.other_worker_num} other workers"
+    )
+
+    health_tracker = HealthTracker()
+    tasks = []
+    worker_id = 0
+    for num, functions in (
+        (config.file_reader_worker_num, file_reader_functions),
+        (config.index_worker_num, index_functions),
+        (config.other_worker_num, other_functions),
+    ):
+        if not functions:
+            continue
+        for _ in range(num):
+            tasks.append(
+                run_worker(config, worker_id, functions, health_tracker)
+            )
+            worker_id += 1
 
     # Add health server if enabled
     if config.health.enabled:

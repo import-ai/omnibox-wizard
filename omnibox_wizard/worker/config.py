@@ -73,6 +73,10 @@ class TaskConfig(BaseModel):
     spliter: SpliterConfig = Field(default_factory=SpliterConfig)
     office_operator_base_url: str = Field(default=None)
     docling_base_url: str = Field(default=None)
+    file_content_length_limit: int = Field(
+        default=32768,
+        description="Maximum markdown content length produced by file parsing",
+    )
     timeout: int = Field(default=300, description="Default task timeout in seconds")
     function_timeouts: FunctionTimeoutConfig = Field(
         default_factory=FunctionTimeoutConfig,

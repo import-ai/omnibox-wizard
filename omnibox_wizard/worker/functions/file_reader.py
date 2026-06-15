@@ -17,21 +17,23 @@ from omnibox_wizard.worker.functions.file_readers.office_reader import (
     OfficeOperatorClient,
 )
 
-MAX_FILE_CONTENT_LENGTH = 32768
+DEFAULT_FILE_CONTENT_LENGTH_LIMIT = 32768
 FILE_CONTENT_TOO_LONG_CODE = "FILE_CONTENT_TOO_LONG"
 
 
-def format_content_too_long_message(length: int, language: str | None) -> str:
+def format_content_too_long_message(
+    length: int, limit: int, language: str | None
+) -> str:
     normalized_language = (language or "zh").replace("_", "-").lower()
     if normalized_language in {"en", "en-us"}:
         return (
             f"The current file content ({length} characters) exceeds the system "
-            f"processing limit ({MAX_FILE_CONTENT_LENGTH:,} characters). Please try "
+            f"processing limit ({limit:,} characters). Please try "
             "splitting the document and uploading it again."
         )
     return (
         f"当前文件内容（{length} 字符）超过系统可处理上限"
-        f"（{MAX_FILE_CONTENT_LENGTH} 字符），请尝试拆分文档后重新上传。"
+        f"（{limit} 字符），请尝试拆分文档后重新上传。"
     )
 
 
@@ -69,9 +71,11 @@ class Convertor:
         self,
         docling_base_url: str | None = None,
         office_operator_base_url: str | None = None,
+        file_content_length_limit: int = DEFAULT_FILE_CONTENT_LENGTH_LIMIT,
     ):
         self.docling_base_url: str | None = docling_base_url
         self.office_operator_base_url: str | None = office_operator_base_url
+        self.file_content_length_limit: int = file_content_length_limit
         self.md_reader: MDReader = MDReader()
 
         self.supported_extensions = self.get_supported_extensions(
@@ -109,10 +113,12 @@ class Convertor:
             markdown = read_text_file(filepath)
         else:
             raise CommonException(400, f"Unsupported type: {ext}")
-        if (length := len(markdown)) > MAX_FILE_CONTENT_LENGTH:
+        if (length := len(markdown)) > self.file_content_length_limit:
             raise CommonException(
                 FILE_CONTENT_TOO_LONG_CODE,
-                format_content_too_long_message(length, kwargs.get("language")),
+                format_content_too_long_message(
+                    length, self.file_content_length_limit, kwargs.get("language")
+                ),
             )
         return markdown, images, metadata
 
@@ -124,6 +130,7 @@ class FileReader(BaseFunction):
         self.convertor: Convertor = Convertor(
             office_operator_base_url=config.task.office_operator_base_url,
             docling_base_url=config.task.docling_base_url,
+            file_content_length_limit=config.task.file_content_length_limit,
         )
         self.supported_extensions = self.convertor.supported_extensions
 

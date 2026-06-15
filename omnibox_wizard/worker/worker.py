@@ -1,4 +1,6 @@
 import asyncio
+import os
+import socket
 import traceback
 from contextlib import asynccontextmanager, suppress
 from datetime import datetime
@@ -93,6 +95,10 @@ class Worker:
     ):
         self.config: WorkerConfig = config
         self.worker_id = worker_id
+        # A stable, globally unique id for this worker, computed once at startup.
+        # Combines host and process so tasks can be traced back to the worker
+        # that claimed them, even across multiple replicas.
+        self.worker_uid = f"{socket.gethostname()}-{os.getpid()}-{worker_id}"
         self.callback_util = CallbackUtil(config)
         self.health_tracker = health_tracker
         self.task_manager = TaskManager(config)
@@ -140,7 +146,10 @@ class Worker:
         async with self._backend_client() as client:
             response = await client.post(
                 "/internal/api/v1/wizard/tasks/poll",
-                json={"functions": self.polled_functions},
+                json={
+                    "functions": self.polled_functions,
+                    "worker_id": self.worker_uid,
+                },
             )
             response.raise_for_status()
             data = response.json().get("task")

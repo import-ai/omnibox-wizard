@@ -8,20 +8,15 @@ from common.tracing import setup_opentelemetry
 from omnibox_wizard.worker.config import ENV_PREFIX, WorkerConfig
 from omnibox_wizard.worker.health_server import HealthServer
 from omnibox_wizard.worker.health_tracker import HealthTracker
-from omnibox_wizard.worker.worker import Worker, compute_supported_functions
+from omnibox_wizard.worker.worker import (
+    FILE_READER_FUNCTIONS,
+    INDEX_FUNCTIONS,
+    OTHER_FUNCTIONS,
+    Worker,
+)
 
 with project_root.open("pyproject.toml", "rb") as f:
     version = tomllib.load(f)["project"]["version"]
-
-# Functions that operate on the vector index (see worker/functions/index.py).
-INDEX_FUNCTIONS: frozenset[str] = frozenset(
-    {
-        "upsert_index",
-        "delete_index",
-        "upsert_message_index",
-        "delete_conversation",
-    }
-)
 
 
 async def run_worker(
@@ -54,18 +49,7 @@ async def main():
     loader = Loader(WorkerConfig, env_prefix=ENV_PREFIX)
     config = loader.load()
 
-    # Split the supported functions into file_reader_* kinds, index related
-    # functions and everything else, then spawn a dedicated pool of workers for
-    # each group.
-    supported = compute_supported_functions(config.task)
-    file_reader_functions = [f for f in supported if f.startswith("file_reader_")]
-    index_functions = [f for f in supported if f in INDEX_FUNCTIONS]
-    other_functions = [
-        f
-        for f in supported
-        if not f.startswith("file_reader_") and f not in INDEX_FUNCTIONS
-    ]
-
+    # One worker pool per function group.
     logger.info(
         f"Starting Wizard {version} with {config.file_reader_worker_num} file_reader "
         f"workers, {config.index_worker_num} index workers and "
@@ -75,15 +59,13 @@ async def main():
     health_tracker = HealthTracker()
     tasks = []
     worker_id = 0
-    for num, functions in (
-        (config.file_reader_worker_num, file_reader_functions),
-        (config.index_worker_num, index_functions),
-        (config.other_worker_num, other_functions),
+    for num, group in (
+        (config.file_reader_worker_num, FILE_READER_FUNCTIONS),
+        (config.index_worker_num, INDEX_FUNCTIONS),
+        (config.other_worker_num, OTHER_FUNCTIONS),
     ):
-        if not functions:
-            continue
         for _ in range(num):
-            tasks.append(run_worker(config, worker_id, functions, health_tracker))
+            tasks.append(run_worker(config, worker_id, sorted(group), health_tracker))
             worker_id += 1
 
     # Add health server if enabled

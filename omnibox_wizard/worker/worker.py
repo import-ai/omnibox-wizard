@@ -36,33 +36,44 @@ tracer = trace.get_tracer(__name__)
 # How often to report a heartbeat to the backend while a task is running.
 HEARTBEAT_INTERVAL_SECONDS = 5
 
-_BASE_FUNCTIONS: frozenset[str] = frozenset(
+FILE_READER_FUNCTIONS: frozenset[str] = frozenset(
+    {
+        "file_reader_text",
+        "file_reader_ppt",
+        "file_reader_word",
+    }
+)
+INDEX_FUNCTIONS: frozenset[str] = frozenset(
+    {
+        "upsert_index",
+        "delete_index",
+        "upsert_message_index",
+        "delete_conversation",
+    }
+)
+OTHER_FUNCTIONS: frozenset[str] = frozenset(
     {
         "collect",
         "collect_url",
         "web_analysis",
-        "upsert_index",
-        "delete_index",
-        "file_reader_text",
-        "file_reader_ppt",
-        "file_reader_word",
-        "upsert_message_index",
-        "delete_conversation",
         "extract_tags",
         "generate_title",
     }
 )
+BASE_FUNCTIONS: frozenset[str] = (
+    FILE_READER_FUNCTIONS | INDEX_FUNCTIONS | OTHER_FUNCTIONS
+)
 
 
 def compute_supported_functions(task_config) -> list[str]:
-    enabled = set(_BASE_FUNCTIONS)
+    enabled = set(BASE_FUNCTIONS)
     if task_config.functions:
         for func in [f.strip() for f in task_config.functions.split(",")]:
             op, func_name = func[0], func[1:]
             assert op in ("+", "-"), f"Invalid function config: {func}"
             if func_name == "all":
                 if op == "+":
-                    enabled = set(_BASE_FUNCTIONS)
+                    enabled = set(BASE_FUNCTIONS)
                 else:
                     enabled = set()
             if op == "+":
@@ -105,7 +116,10 @@ class Worker:
             "generate_title": TitleGenerator(config),
         }
 
-        self.supported_functions = functions
+        # Poll for the whole group, including disabled functions, so we can fail
+        # them fast instead of leaving them to pend forever.
+        self.polled_functions = functions
+        self.supported_functions = set(compute_supported_functions(config.task))
 
         self.logger = get_logger(f"worker_{self.worker_id}")
 
@@ -126,7 +140,7 @@ class Worker:
         async with self._backend_client() as client:
             response = await client.post(
                 "/internal/api/v1/wizard/tasks/poll",
-                json={"functions": self.supported_functions},
+                json={"functions": self.polled_functions},
             )
             response.raise_for_status()
             data = response.json().get("task")
@@ -189,7 +203,10 @@ class Worker:
         ):
             heartbeat_task = asyncio.create_task(self._report_heartbeat(task.id))
             try:
-                processed_task: Task = await self.process_task(task, trace_info)
+                if task.function in self.supported_functions:
+                    processed_task: Task = await self.process_task(task, trace_info)
+                else:
+                    processed_task = self.mark_unsupported(task, trace_info)
                 await self.callback_util.send_callback(processed_task)
             finally:
                 heartbeat_task.cancel()
@@ -200,6 +217,23 @@ class Worker:
             self.health_tracker.update_worker_status(
                 self.worker_id, "idle", datetime.now()
             )
+
+    def mark_unsupported(self, task: Task, trace_info: TraceInfo) -> Task:
+        """Fail a task whose function this wizard is not configured to run."""
+        error_msg = f"Function '{task.function}' is not supported"
+        task.exception = {"error": error_msg, "type": "UnsupportedFunctionError"}
+        task.status = "error"
+        task.updated_at = task.ended_at = datetime.now()
+
+        span = trace.get_current_span()
+        span.set_status(Status(StatusCode.ERROR, error_msg))
+        span.set_attribute("error.message", error_msg)
+        span.set_attribute("error.type", "UnsupportedFunctionError")
+
+        trace_info.bind(error=error_msg).warning(
+            task.model_dump(include={"created_at", "started_at", "ended_at"})
+        )
+        return task
 
     async def process_task(self, task: Task, trace_info: TraceInfo) -> Task:
         logging_func: Callable[[dict], None] = trace_info.info

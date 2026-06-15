@@ -36,6 +36,18 @@ def is_tiktok(url: str) -> bool:
     return False
 
 
+def is_ximalaya(url: str) -> bool:
+    host: str = urlparse(url).hostname or ""
+    for domain in ["ximalaya.com", "xima.tv"]:
+        if host == domain or host.endswith(f".{domain}"):
+            return True
+    return False
+
+
+def is_audio(url: str) -> bool:
+    return is_ximalaya(url)
+
+
 class WebAnalysisFunction(BaseFunction):
     def __init__(self, _: WorkerConfig):
         self.video_prefixes: list[str] = list(
@@ -84,17 +96,25 @@ class WebAnalysisFunction(BaseFunction):
 
         span.set_attribute("url", url)
 
-        is_video = self.is_video(url, html)
+        is_audio_content = is_audio(url)
+        is_video = False if is_audio_content else self.is_video(url, html)
+
+        span.set_attribute("is_audio", is_audio_content)
         span.set_attribute("is_video", is_video)
 
+        if is_audio_content:
+            next_function = TaskFunction.GENERATE_AUDIO_NOTE
+        elif is_video:
+            next_function = TaskFunction.GENERATE_VIDEO_NOTE
+        else:
+            next_function = TaskFunction.COLLECT
+
         return {
+            "is_audio": is_audio_content,
             "is_video": is_video,
             "next_tasks": [
                 task.create_next_task(
-                    TaskFunction.GENERATE_VIDEO_NOTE
-                    if is_video
-                    else TaskFunction.COLLECT,
-                    {"url": url, "html": html, "title": title},
+                    next_function, {"url": url, "html": html, "title": title}
                 ).model_dump()
             ],
         }

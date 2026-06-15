@@ -155,21 +155,29 @@ class Worker:
             data = response.json().get("task")
             return Task.model_validate(data) if data else None
 
-    async def _report_heartbeat(self, task_id: str) -> None:
+    async def _report_heartbeat(self, task_id: str, work_task: asyncio.Task) -> None:
         """Periodically tell the backend the task is still being worked on, so
-        it is not treated as stale and re-claimed by another worker."""
+        it is not treated as stale and re-claimed by another worker. If the
+        backend reports we no longer own the task (another worker has claimed
+        it), abort the in-flight work so we don't produce a duplicate result."""
         async with self._backend_client() as client:
             while True:
                 await asyncio.sleep(HEARTBEAT_INTERVAL_SECONDS)
                 try:
                     response = await client.post(
-                        f"/internal/api/v1/wizard/tasks/{task_id}/heartbeat"
+                        f"/internal/api/v1/wizard/tasks/{task_id}/heartbeat",
+                        json={"worker_id": self.worker_uid},
                     )
                     response.raise_for_status()
                 except Exception as e:
                     self.logger.warning(
                         f"Failed to report heartbeat for task {task_id}: {e}"
                     )
+                    continue
+                if response.json().get("owned") is False:
+                    self.logger.warning(f"Lost ownership of task {task_id}; aborting")
+                    work_task.cancel()
+                    return
 
     def get_trace_info(self, task: Task) -> TraceInfo:
         return TraceInfo(
@@ -181,6 +189,11 @@ class Worker:
                 "function": task.function,
             },
         )
+
+    async def _run_task(self, task: Task, trace_info: TraceInfo) -> Task:
+        if task.function in self.supported_functions:
+            return await self.process_task(task, trace_info)
+        return self.mark_unsupported(task, trace_info)
 
     async def process_polled_task(self, task: Task):
         if self.health_tracker:
@@ -210,13 +223,23 @@ class Worker:
             }
             | ({"task.resource_id": resource_id} if resource_id else {}),
         ):
-            heartbeat_task = asyncio.create_task(self._report_heartbeat(task.id))
+            work_task: asyncio.Task = asyncio.ensure_future(
+                self._run_task(task, trace_info)
+            )
+            heartbeat_task = asyncio.create_task(
+                self._report_heartbeat(task.id, work_task)
+            )
             try:
-                if task.function in self.supported_functions:
-                    processed_task: Task = await self.process_task(task, trace_info)
-                else:
-                    processed_task = self.mark_unsupported(task, trace_info)
+                processed_task: Task = await work_task
                 await self.callback_util.send_callback(processed_task)
+            except asyncio.CancelledError:
+                if not work_task.cancelled():
+                    # We were cancelled (e.g. shutdown), not the work itself.
+                    work_task.cancel()
+                    raise
+                trace_info.warning(
+                    {"message": "task_aborted", "reason": "lost_ownership"}
+                )
             finally:
                 heartbeat_task.cancel()
                 with suppress(asyncio.CancelledError):

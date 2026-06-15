@@ -12,13 +12,12 @@ from common import project_root
 from wizard_common.worker.entity import Task
 from omnibox_wizard.worker.functions.file_reader import (
     Convertor,
-    DEFAULT_FILE_CONTENT_LENGTH_LIMIT,
     FileReader,
     format_content_too_long_message,
 )
 from omnibox_wizard.worker.worker import Worker
 from tests.omnibox_wizard.helper.backend_client import BackendClient
-from omnibox_wizard.worker.config import WorkerConfig
+from omnibox_wizard.worker.config import TaskConfig, WorkerConfig
 
 load_dotenv()
 
@@ -84,6 +83,7 @@ async def test_file_reader(worker: Worker, uploaded_file: str):
 @pytest.fixture(scope="function")
 def convertor(remote_worker_config: WorkerConfig) -> Convertor:
     return Convertor(
+        file_content_length_limit=remote_worker_config.task.file_content_length_limit,
         office_operator_base_url=os.environ["OBW_TASK_OFFICE_OPERATOR_BASE_URL"],
         docling_base_url=os.environ["OBW_TASK_DOCLING_BASE_URL"],
     )
@@ -107,12 +107,15 @@ async def test_convertor(convertor: Convertor, filename, trace_info: TraceInfo):
 
 
 async def test_convertor_rejects_content_above_system_limit(tmp_path):
-    length = DEFAULT_FILE_CONTENT_LENGTH_LIMIT + 1
+    limit = TaskConfig().file_content_length_limit
+    length = limit + 1
     filepath = tmp_path / "large.txt"
     filepath.write_text("a" * length)
 
     with pytest.raises(CommonException) as exc:
-        await Convertor().convert(str(filepath), language="en-US")
+        await Convertor(file_content_length_limit=limit).convert(
+            str(filepath), language="en-US"
+        )
 
     assert exc.value.code == "FILE_CONTENT_TOO_LONG"
     assert exc.value.error == (
@@ -147,7 +150,8 @@ async def test_file_reader_raises_localized_content_limit_error(
     language: str | None,
     expected: str,
 ):
-    length = DEFAULT_FILE_CONTENT_LENGTH_LIMIT + 1
+    limit = TaskConfig().file_content_length_limit
+    length = limit + 1
 
     class TooLongConvertor:
         async def convert(self, *args, **kwargs):
@@ -155,7 +159,7 @@ async def test_file_reader_raises_localized_content_limit_error(
                 "FILE_CONTENT_TOO_LONG",
                 format_content_too_long_message(
                     length,
-                    DEFAULT_FILE_CONTENT_LENGTH_LIMIT,
+                    limit,
                     kwargs.get("language"),
                 ),
             )
@@ -194,18 +198,15 @@ async def test_file_reader_raises_localized_content_limit_error(
 
 
 def test_format_content_too_long_message_supports_en_and_zh():
-    length = DEFAULT_FILE_CONTENT_LENGTH_LIMIT + 19
+    limit = TaskConfig().file_content_length_limit
+    length = limit + 19
 
-    assert format_content_too_long_message(
-        length, DEFAULT_FILE_CONTENT_LENGTH_LIMIT, "en"
-    ) == (
+    assert format_content_too_long_message(length, limit, "en") == (
         "The current file content (32787 characters) exceeds the system "
         "processing limit (32,768 characters). Please try splitting the document "
         "and uploading it again."
     )
-    assert format_content_too_long_message(
-        length, DEFAULT_FILE_CONTENT_LENGTH_LIMIT, "zh"
-    ) == (
+    assert format_content_too_long_message(length, limit, "zh") == (
         "当前文件内容（32787 字符）超过系统可处理上限"
         "（32768 字符），请尝试拆分文档后重新上传。"
     )

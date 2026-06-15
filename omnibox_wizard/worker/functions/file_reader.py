@@ -17,7 +17,6 @@ from omnibox_wizard.worker.functions.file_readers.office_reader import (
     OfficeOperatorClient,
 )
 
-DEFAULT_FILE_CONTENT_LENGTH_LIMIT = 32768
 FILE_CONTENT_TOO_LONG_CODE = "FILE_CONTENT_TOO_LONG"
 
 
@@ -69,9 +68,9 @@ class Convertor:
 
     def __init__(
         self,
+        file_content_length_limit: int,
         docling_base_url: str | None = None,
         office_operator_base_url: str | None = None,
-        file_content_length_limit: int = DEFAULT_FILE_CONTENT_LENGTH_LIMIT,
     ):
         self.docling_base_url: str | None = docling_base_url
         self.office_operator_base_url: str | None = office_operator_base_url

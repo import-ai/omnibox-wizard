@@ -99,7 +99,7 @@ class Worker:
         # Combines host and process so tasks can be traced back to the worker
         # that claimed them, even across multiple replicas.
         self.worker_uid = f"{socket.gethostname()}-{os.getpid()}-{worker_id}"
-        self.callback_util = CallbackUtil(config)
+        self.callback_util = CallbackUtil(config, self.worker_uid)
         self.health_tracker = health_tracker
         self.task_manager = TaskManager(config)
 

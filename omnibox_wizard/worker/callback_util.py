@@ -16,8 +16,9 @@ tracer = trace.get_tracer(__name__)
 
 
 class CallbackUtil:
-    def __init__(self, config: WorkerConfig):
+    def __init__(self, config: WorkerConfig, worker_uid: str):
         self.config = config
+        self.worker_uid = worker_uid
         self.payload_size_threshold = config.callback.payload_size_threshold * 1024**2
 
     @asynccontextmanager
@@ -38,6 +39,9 @@ class CallbackUtil:
             mode="json",
             include={"id", "exception", "output", "status"},
         )
+        # Identify the worker so the backend can reject the callback if we no
+        # longer own the task. Rides inside the S3-uploaded payload too.
+        payload["worker_id"] = self.worker_uid
 
         try:
             # Check if payload exceeds threshold
@@ -59,6 +63,7 @@ class CallbackUtil:
                     "/internal/api/v1/wizard/callback",
                     json={
                         "id": payload["id"],
+                        "worker_id": self.worker_uid,
                         "exception": {
                             "message": CommonException.parse_exception(e),
                             "task": {

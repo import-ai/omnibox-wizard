@@ -73,7 +73,7 @@ async def test_file_reader(worker: Worker, uploaded_file: str):
         priority=5,
         namespace_id="test",
         user_id="test",
-        function="file_reader",
+        function="file_reader_text",
         input={"url": uploaded_file},
     )
     processed_task: Task = await worker.process_task(task, worker.get_trace_info(task))
@@ -175,7 +175,7 @@ async def test_file_reader_raises_localized_content_limit_error(
         priority=5,
         namespace_id="test",
         user_id="test",
-        function="file_reader",
+        function="file_reader_text",
         input=task_input,
     )
 

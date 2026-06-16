@@ -12,9 +12,7 @@ def find_chunk_ranges(
 
     for chunk in chunks:
         previous_end = previous_start + previous_length
-        search_start = max(
-            previous_start, previous_end - chunk_overlap
-        )
+        search_start = max(previous_start, previous_end - chunk_overlap)
         if chunk in seen_chunks:
             search_start = previous_end
         elif ranges and search_start == previous_start:

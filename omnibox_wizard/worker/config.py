@@ -26,8 +26,14 @@ class FunctionTimeoutConfig(BaseModel):
     delete_index: int = Field(
         default=60, description="Timeout for delete_index function"
     )
-    file_reader: int = Field(
-        default=600, description="Timeout for file_reader function"
+    file_reader_text: int = Field(
+        default=600, description="Timeout for file_reader_text function"
+    )
+    file_reader_ppt: int = Field(
+        default=600, description="Timeout for file_reader_ppt function"
+    )
+    file_reader_word: int = Field(
+        default=600, description="Timeout for file_reader_word function"
     )
     upsert_message_index: int = Field(
         default=60, description="Timeout for upsert_message_index function"
@@ -68,7 +74,7 @@ class TaskConfig(BaseModel):
     functions: str = Field(
         default=None,
         description="Comma-separated list of functions to enable, started with + or - to add or remove. If None, all functions are enabled.",
-        examples=["-all,+collect,+file_reader", "-collect"],
+        examples=["-all,+collect,+file_reader_text", "-collect"],
     )
     spliter: SpliterConfig = Field(default_factory=SpliterConfig)
     office_operator_base_url: str = Field(default=None)
@@ -96,12 +102,6 @@ class KafkaConfig(BaseModel):
     max_poll_interval_ms: int = Field(default=600000)
 
 
-class RateLimiterConfig(BaseModel):
-    file_reader_doc: int = Field(default=2)
-    file_reader_md: int = Field(default=2)
-    file_reader_txt: int = Field(default=2)
-
-
 class WorkerConfig(BaseModel):
     vector: VectorConfig
     task: TaskConfig = Field(default_factory=TaskConfig)
@@ -110,7 +110,15 @@ class WorkerConfig(BaseModel):
     grimoire: GrimoireConfig = Field(default=None)
     health: HealthConfig = Field(default_factory=HealthConfig)
     kafka: KafkaConfig = Field(default_factory=KafkaConfig)
-    rate: RateLimiterConfig = Field(default_factory=RateLimiterConfig)
+    file_reader_worker_num: int = Field(
+        default=2, description="Number of workers that handle file_reader_* functions"
+    )
+    index_worker_num: int = Field(
+        default=4, description="Number of workers that handle index related functions"
+    )
+    other_worker_num: int = Field(
+        default=2, description="Number of workers that handle all other functions"
+    )
 
 
 ENV_PREFIX: str = "OBW"

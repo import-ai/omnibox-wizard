@@ -15,7 +15,7 @@ async def test_worker_preserves_common_exception_code(trace_info: TraceInfo):
             )
 
     worker = object.__new__(Worker)
-    worker.worker_dict = {"file_reader": TooLongFileReader()}
+    worker.worker_dict = {"file_reader_text": TooLongFileReader()}
     worker.config = SimpleNamespace(
         task=SimpleNamespace(
             function_timeouts=SimpleNamespace(get_timeout=lambda _function: None),
@@ -32,7 +32,7 @@ async def test_worker_preserves_common_exception_code(trace_info: TraceInfo):
         priority=5,
         namespace_id="test",
         user_id="test",
-        function="file_reader",
+        function="file_reader_text",
         input={"language": "en-US"},
     )
 

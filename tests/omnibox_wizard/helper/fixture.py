@@ -15,9 +15,8 @@ from omnibox_wizard.wizard.api.server import app
 from omnibox_wizard.wizard.config import ENV_PREFIX
 from omnibox_wizard.worker.config import WorkerConfig
 from wizard_common.grimoire.config import GrimoireAgentConfig
-from omnibox_wizard.worker.worker import Worker
+from omnibox_wizard.worker.worker import Worker, compute_supported_functions
 from tests.omnibox_wizard.helper.backend_client import BackendClient
-from omnibox_wizard.worker.rate_limiter import RateLimiter
 
 
 logger = get_logger("fixture")
@@ -123,8 +122,8 @@ async def worker(worker_config: WorkerConfig) -> Worker:
     worker = Worker(
         config=worker_config,
         worker_id=0,
+        functions=compute_supported_functions(worker_config.task),
         health_tracker=None,
-        rate_limiter=RateLimiter(worker_config.rate),
     )
     return worker
 

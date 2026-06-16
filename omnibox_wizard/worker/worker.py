@@ -1,11 +1,12 @@
 import asyncio
+import os
+import socket
 import traceback
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from datetime import datetime
-from pathlib import Path
 from typing import AsyncGenerator, Callable
 
-from httpx import AsyncClient, AsyncHTTPTransport, HTTPStatusError
+from httpx import AsyncClient, AsyncHTTPTransport
 from opentelemetry import propagate, trace
 from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 from opentelemetry.trace import Status, StatusCode
@@ -15,7 +16,7 @@ from common.logger import get_logger
 from common.trace_info import TraceInfo
 from omnibox_wizard.worker.callback_util import CallbackUtil
 from omnibox_wizard.worker.config import WorkerConfig
-from wizard_common.worker.entity import Message, Task
+from wizard_common.worker.entity import Task
 from omnibox_wizard.worker.functions.base_function import BaseFunction
 from omnibox_wizard.worker.functions.collect_url import CollectUrlFunction
 from omnibox_wizard.worker.functions.file_reader import FileReader
@@ -30,27 +31,51 @@ from omnibox_wizard.worker.functions.tag_extractor import TagExtractor
 from omnibox_wizard.worker.functions.title_generator import TitleGenerator
 from omnibox_wizard.worker.functions.web_analysis import WebAnalysisFunction
 from omnibox_wizard.worker.health_tracker import HealthTracker
-from omnibox_wizard.worker.rate_limiter import RateLimiter
 from omnibox_wizard.worker.task_manager import TaskManager
 
 tracer = trace.get_tracer(__name__)
 
-_BASE_FUNCTIONS: frozenset[str] = frozenset({
-    "collect", "collect_url", "web_analysis", "upsert_index", "delete_index",
-    "file_reader", "upsert_message_index", "delete_conversation",
-    "extract_tags", "generate_title",
-})
+# How often to report a heartbeat to the backend while a task is running.
+HEARTBEAT_INTERVAL_SECONDS = 5
+
+FILE_READER_FUNCTIONS: frozenset[str] = frozenset(
+    {
+        "file_reader_text",
+        "file_reader_ppt",
+        "file_reader_word",
+    }
+)
+INDEX_FUNCTIONS: frozenset[str] = frozenset(
+    {
+        "upsert_index",
+        "delete_index",
+        "upsert_message_index",
+        "delete_conversation",
+    }
+)
+OTHER_FUNCTIONS: frozenset[str] = frozenset(
+    {
+        "collect",
+        "collect_url",
+        "web_analysis",
+        "extract_tags",
+        "generate_title",
+    }
+)
+BASE_FUNCTIONS: frozenset[str] = (
+    FILE_READER_FUNCTIONS | INDEX_FUNCTIONS | OTHER_FUNCTIONS
+)
 
 
 def compute_supported_functions(task_config) -> list[str]:
-    enabled = set(_BASE_FUNCTIONS)
+    enabled = set(BASE_FUNCTIONS)
     if task_config.functions:
         for func in [f.strip() for f in task_config.functions.split(",")]:
             op, func_name = func[0], func[1:]
             assert op in ("+", "-"), f"Invalid function config: {func}"
             if func_name == "all":
                 if op == "+":
-                    enabled = set(_BASE_FUNCTIONS)
+                    enabled = set(BASE_FUNCTIONS)
                 else:
                     enabled = set()
             if op == "+":
@@ -65,15 +90,18 @@ class Worker:
         self,
         config: WorkerConfig,
         worker_id: int,
-        health_tracker: HealthTracker,
-        rate_limiter: RateLimiter,
+        functions: list[str],
+        health_tracker: HealthTracker | None = None,
     ):
         self.config: WorkerConfig = config
         self.worker_id = worker_id
-        self.callback_util = CallbackUtil(config)
+        # A stable, globally unique id for this worker, computed once at startup.
+        # Combines host and process so tasks can be traced back to the worker
+        # that claimed them, even across multiple replicas.
+        self.worker_uid = f"{socket.gethostname()}-{os.getpid()}-{worker_id}"
+        self.callback_util = CallbackUtil(config, self.worker_uid)
         self.health_tracker = health_tracker
         self.task_manager = TaskManager(config)
-        self.rate_limiter = rate_limiter
 
         self.file_reader: FileReader = FileReader(config)
 
@@ -83,14 +111,21 @@ class Worker:
             "web_analysis": WebAnalysisFunction(config),
             "upsert_index": UpsertIndex(config),
             "delete_index": DeleteIndex(config),
-            "file_reader": self.file_reader,
+            # All base file_reader_* kinds share one handler; it dispatches on
+            # the file extension internally.
+            "file_reader_text": self.file_reader,
+            "file_reader_ppt": self.file_reader,
+            "file_reader_word": self.file_reader,
             "upsert_message_index": UpsertMessageIndex(config),
             "delete_conversation": DeleteConversation(config),
             "extract_tags": TagExtractor(config),
             "generate_title": TitleGenerator(config),
         }
 
-        self.supported_functions = compute_supported_functions(config.task)
+        # Poll for the whole group, including disabled functions, so we can fail
+        # them fast instead of leaving them to pend forever.
+        self.polled_functions = functions
+        self.supported_functions = set(compute_supported_functions(config.task))
 
         self.logger = get_logger(f"worker_{self.worker_id}")
 
@@ -107,23 +142,42 @@ class Worker:
             HTTPXClientInstrumentor.instrument_client(client)
             yield client
 
-    async def _start_task(self, task_id: str) -> Task | None:
+    async def poll_task(self) -> Task | None:
         async with self._backend_client() as client:
-            try:
-                response = await client.post(
-                    f"/internal/api/v1/wizard/tasks/{task_id}/start"
-                )
-                response.raise_for_status()
-                return Task.model_validate(response.json())
-            except HTTPStatusError as e:
-                data = e.response.json()
-                if data.get("code") in [
-                    "task_ended",
-                    "task_canceled",
-                    "task_not_found",
-                ]:
-                    return None
-                raise
+            response = await client.post(
+                "/internal/api/v1/wizard/tasks/poll",
+                json={
+                    "functions": self.polled_functions,
+                    "worker_id": self.worker_uid,
+                },
+            )
+            response.raise_for_status()
+            data = response.json().get("task")
+            return Task.model_validate(data) if data else None
+
+    async def _report_heartbeat(self, task_id: str, work_task: asyncio.Task) -> None:
+        """Periodically tell the backend the task is still being worked on, so
+        it is not treated as stale and re-claimed by another worker. If the
+        backend reports we no longer own the task (another worker has claimed
+        it), abort the in-flight work so we don't produce a duplicate result."""
+        async with self._backend_client() as client:
+            while True:
+                await asyncio.sleep(HEARTBEAT_INTERVAL_SECONDS)
+                try:
+                    response = await client.post(
+                        f"/internal/api/v1/wizard/tasks/{task_id}/heartbeat",
+                        json={"worker_id": self.worker_uid},
+                    )
+                    response.raise_for_status()
+                except Exception as e:
+                    self.logger.warning(
+                        f"Failed to report heartbeat for task {task_id}: {e}"
+                    )
+                    continue
+                if response.json().get("owned") is False:
+                    self.logger.warning(f"Lost ownership of task {task_id}; aborting")
+                    work_task.cancel()
+                    return
 
     def get_trace_info(self, task: Task) -> TraceInfo:
         return TraceInfo(
@@ -136,52 +190,82 @@ class Worker:
             },
         )
 
-    async def process_message(self, msg: Message):
-        if msg.function not in self.supported_functions:
-            return
-        if msg.function == "file_reader":
-            file_name = msg.meta.get("file_name", "")
-            file_ext = Path(file_name).suffix.lower()
-            if file_ext not in self.file_reader.supported_extensions:
-                return
+    async def _run_task(self, task: Task, trace_info: TraceInfo) -> Task:
+        if task.function in self.supported_functions:
+            return await self.process_task(task, trace_info)
+        return self.mark_unsupported(task, trace_info)
 
+    async def process_polled_task(self, task: Task):
         if self.health_tracker:
             self.health_tracker.update_worker_status(self.worker_id, "running")
 
-        async with self.rate_limiter.limit(msg):
-            task = await self._start_task(msg.task_id)
-            if task is not None:
-                trace_info: TraceInfo = self.get_trace_info(task)
-                trace_info.info(
-                    {"message": "fetch_task"}
-                    | task.model_dump(include={"created_at", "started_at"})
-                )
-                trace_headers = (
-                    task.payload.get("trace_headers", {}) if task.payload else {}
-                )
-                parent_context = propagate.extract(trace_headers)
-                resource_id: str = task.payload.get("resource_id", None)
+        trace_info: TraceInfo = self.get_trace_info(task)
+        trace_info.info(
+            {"message": "fetch_task"}
+            | task.model_dump(include={"created_at", "started_at"})
+        )
+        trace_headers = task.payload.get("trace_headers", {}) if task.payload else {}
+        parent_context = propagate.extract(trace_headers)
+        resource_id: str | None = (
+            task.payload.get("resource_id", None) if task.payload else None
+        )
 
-                with tracer.start_as_current_span(
-                    f"worker.process_task.{task.function}",
-                    context=parent_context,
-                    attributes={
-                        "task.id": task.id,
-                        "task.function": task.function,
-                        "task.namespace_id": task.namespace_id,
-                        "task.user_id": task.user_id,
-                        "task.priority": task.priority,
-                        "worker.id": str(self.worker_id),
-                    }
-                    | ({"task.resource_id": resource_id} if resource_id else {}),
-                ):
-                    processed_task: Task = await self.process_task(task, trace_info)
-                    await self.callback_util.send_callback(processed_task)
+        with tracer.start_as_current_span(
+            f"worker.process_task.{task.function}",
+            context=parent_context,
+            attributes={
+                "task.id": task.id,
+                "task.function": task.function,
+                "task.namespace_id": task.namespace_id,
+                "task.user_id": task.user_id,
+                "task.priority": task.priority,
+                "worker.id": str(self.worker_id),
+            }
+            | ({"task.resource_id": resource_id} if resource_id else {}),
+        ):
+            work_task: asyncio.Task = asyncio.ensure_future(
+                self._run_task(task, trace_info)
+            )
+            heartbeat_task = asyncio.create_task(
+                self._report_heartbeat(task.id, work_task)
+            )
+            try:
+                processed_task: Task = await work_task
+                await self.callback_util.send_callback(processed_task)
+            except asyncio.CancelledError:
+                if not work_task.cancelled():
+                    # We were cancelled (e.g. shutdown), not the work itself.
+                    work_task.cancel()
+                    raise
+                trace_info.warning(
+                    {"message": "task_aborted", "reason": "lost_ownership"}
+                )
+            finally:
+                heartbeat_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await heartbeat_task
 
         if self.health_tracker:
             self.health_tracker.update_worker_status(
                 self.worker_id, "idle", datetime.now()
             )
+
+    def mark_unsupported(self, task: Task, trace_info: TraceInfo) -> Task:
+        """Fail a task whose function this wizard is not configured to run."""
+        error_msg = f"Function '{task.function}' is not supported"
+        task.exception = {"error": error_msg, "type": "UnsupportedFunctionError"}
+        task.status = "error"
+        task.updated_at = task.ended_at = datetime.now()
+
+        span = trace.get_current_span()
+        span.set_status(Status(StatusCode.ERROR, error_msg))
+        span.set_attribute("error.message", error_msg)
+        span.set_attribute("error.type", "UnsupportedFunctionError")
+
+        trace_info.bind(error=error_msg).warning(
+            task.model_dump(include={"created_at", "started_at", "ended_at"})
+        )
+        return task
 
     async def process_task(self, task: Task, trace_info: TraceInfo) -> Task:
         logging_func: Callable[[dict], None] = trace_info.info

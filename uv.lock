@@ -8,25 +8,6 @@ resolution-markers = [
 ]
 
 [[package]]
-name = "aiokafka"
-version = "0.12.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "async-timeout" },
-    { name = "packaging" },
-    { name = "typing-extensions" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/65/ca/42a962033e6a7926dcb789168bce81d0181ef4ddabce454d830b7e62370e/aiokafka-0.12.0.tar.gz", hash = "sha256:62423895b866f95b5ed8d88335295a37cc5403af64cb7cb0e234f88adc2dff94", size = 564955, upload-time = "2024-10-26T20:53:11.227Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/53/d4/baf1b2389995c6c312834792329a1993a303ff703ac023250ff977c5923b/aiokafka-0.12.0-cp312-cp312-macosx_10_13_x86_64.whl", hash = "sha256:b01947553ff1120fa1cb1a05f2c3e5aa47a5378c720bafd09e6630ba18af02aa", size = 375031, upload-time = "2024-10-26T20:52:40.104Z" },
-    { url = "https://files.pythonhosted.org/packages/54/ac/653070a4add8beea7aa8209ab396de87c7b4f9628fff15efcdbaea40e973/aiokafka-0.12.0-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:e3c8ec1c0606fa645462c7353dc3e4119cade20c4656efa2031682ffaad361c0", size = 370619, upload-time = "2024-10-26T20:52:41.877Z" },
-    { url = "https://files.pythonhosted.org/packages/80/f2/0ddaaa11876ab78e0f3b30f272c62eea70870e1a52a5afe985c7c1d098e1/aiokafka-0.12.0-cp312-cp312-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:577c1c48b240e9eba57b3d2d806fb3d023a575334fc3953f063179170cc8964f", size = 1192363, upload-time = "2024-10-26T20:52:44.028Z" },
-    { url = "https://files.pythonhosted.org/packages/ae/48/541ccece0e593e24ee371dec0c33c23718bc010b04e998693e4c19091258/aiokafka-0.12.0-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:d7b815b2e5fed9912f1231be6196547a367b9eb3380b487ff5942f0c73a3fb5c", size = 1213231, upload-time = "2024-10-26T20:52:46.028Z" },
-    { url = "https://files.pythonhosted.org/packages/99/3f/75bd0faa77dfecce34dd1c0edd317b608518b096809736f9987dd61f4cec/aiokafka-0.12.0-cp312-cp312-win32.whl", hash = "sha256:5a907abcdf02430df0829ac80f25b8bb849630300fa01365c76e0ae49306f512", size = 347752, upload-time = "2024-10-26T20:52:47.327Z" },
-    { url = "https://files.pythonhosted.org/packages/ef/97/e2513a0c10585e51d4d9b42c9dd5f5ab15dfe150620a4893a2c6c20f0f4a/aiokafka-0.12.0-cp312-cp312-win_amd64.whl", hash = "sha256:fdbd69ec70eea4a8dfaa5c35ff4852e90e1277fcc426b9380f0b499b77f13b16", size = 366068, upload-time = "2024-10-26T20:52:49.132Z" },
-]
-
-[[package]]
 name = "annotated-doc"
 version = "0.0.4"
 source = { registry = "https://pypi.org/simple" }
@@ -73,15 +54,6 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/63/40/f03da1264ae8f7cfdbf9146542e5e7e8100a4c66ab48e791df9a03d3f6c0/asgiref-3.11.1.tar.gz", hash = "sha256:5f184dc43b7e763efe848065441eac62229c9f7b0475f41f80e207a114eda4ce", size = 38550, upload-time = "2026-02-03T13:30:14.33Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/5c/0a/a72d10ed65068e115044937873362e6e32fab1b7dce0046aeb224682c989/asgiref-3.11.1-py3-none-any.whl", hash = "sha256:e8667a091e69529631969fd45dc268fa79b99c92c5fcdda727757e52146ec133", size = 24345, upload-time = "2026-02-03T13:30:13.039Z" },
-]
-
-[[package]]
-name = "async-timeout"
-version = "5.0.1"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/a5/ae/136395dfbfe00dfc94da3f3e136d0b13f394cba8f4841120e34226265780/async_timeout-5.0.1.tar.gz", hash = "sha256:d9321a7a3d5a6a5e187e824d2fa0793ce379a202935782d555d6e9d2735677d3", size = 9274, upload-time = "2024-11-06T16:41:39.6Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/fe/ba/e2081de779ca30d473f21f5b30e0e737c438205440784c7dfc81efc2b029/async_timeout-5.0.1-py3-none-any.whl", hash = "sha256:39e3809566ff85354557ec2398b55e096c8364bacac9405a7a1fa429e77fe76c", size = 6233, upload-time = "2024-11-06T16:41:37.9Z" },
 ]
 
 [[package]]
@@ -337,9 +309,7 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/65/8b/3669ad3b3f247a791b2b4aceb3aa5a31f5f6817bf547e4e1ff712338145a/greenlet-3.4.0-cp312-cp312-macosx_11_0_universal2.whl", hash = "sha256:1a54a921561dd9518d31d2d3db4d7f80e589083063ab4d3e2e950756ef809e1a", size = 286902, upload-time = "2026-04-08T15:52:12.138Z" },
     { url = "https://files.pythonhosted.org/packages/38/3e/3c0e19b82900873e2d8469b590a6c4b3dfd2b316d0591f1c26b38a4879a5/greenlet-3.4.0-cp312-cp312-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:16dec271460a9a2b154e3b1c2fa1050ce6280878430320e85e08c166772e3f97", size = 606099, upload-time = "2026-04-08T16:24:38.408Z" },
     { url = "https://files.pythonhosted.org/packages/b5/33/99fef65e7754fc76a4ed14794074c38c9ed3394a5bd129d7f61b705f3168/greenlet-3.4.0-cp312-cp312-manylinux_2_24_ppc64le.manylinux_2_28_ppc64le.whl", hash = "sha256:90036ce224ed6fe75508c1907a77e4540176dcf0744473627785dd519c6f9996", size = 618837, upload-time = "2026-04-08T16:30:58.298Z" },
-    { url = "https://files.pythonhosted.org/packages/44/57/eae2cac10421feae6c0987e3dc106c6d86262b1cb379e171b017aba893a6/greenlet-3.4.0-cp312-cp312-manylinux_2_24_s390x.manylinux_2_28_s390x.whl", hash = "sha256:6f0def07ec9a71d72315cf26c061aceee53b306c36ed38c35caba952ea1b319d", size = 624901, upload-time = "2026-04-08T16:40:38.981Z" },
     { url = "https://files.pythonhosted.org/packages/36/f7/229f3aed6948faa20e0616a0b8568da22e365ede6a54d7d369058b128afd/greenlet-3.4.0-cp312-cp312-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:a1c4f6b453006efb8310affb2d132832e9bbb4fc01ce6df6b70d810d38f1f6dc", size = 615062, upload-time = "2026-04-08T15:56:33.766Z" },
-    { url = "https://files.pythonhosted.org/packages/6a/8a/0e73c9b94f31d1cc257fe79a0eff621674141cdae7d6d00f40de378a1e42/greenlet-3.4.0-cp312-cp312-manylinux_2_39_riscv64.whl", hash = "sha256:0e1254cf0cbaa17b04320c3a78575f29f3c161ef38f59c977108f19ffddaf077", size = 423927, upload-time = "2026-04-08T16:43:05.293Z" },
     { url = "https://files.pythonhosted.org/packages/08/97/d988180011aa40135c46cd0d0cf01dd97f7162bae14139b4a3ef54889ba5/greenlet-3.4.0-cp312-cp312-musllinux_1_2_aarch64.whl", hash = "sha256:9b2d9a138ffa0e306d0e2b72976d2fb10b97e690d40ab36a472acaab0838e2de", size = 1573511, upload-time = "2026-04-08T16:26:20.058Z" },
     { url = "https://files.pythonhosted.org/packages/d4/0f/a5a26fe152fb3d12e6a474181f6e9848283504d0afd095f353d85726374b/greenlet-3.4.0-cp312-cp312-musllinux_1_2_x86_64.whl", hash = "sha256:8424683caf46eb0eb6f626cb95e008e8cc30d0cb675bdfa48200925c79b38a08", size = 1640396, upload-time = "2026-04-08T15:57:30.88Z" },
     { url = "https://files.pythonhosted.org/packages/42/cf/bb2c32d9a100e36ee9f6e38fad6b1e082b8184010cb06259b49e1266ca01/greenlet-3.4.0-cp312-cp312-win_amd64.whl", hash = "sha256:a0a53fb071531d003b075c444014ff8f8b1a9898d36bb88abd9ac7b3524648a2", size = 238892, upload-time = "2026-04-08T17:03:10.094Z" },
@@ -690,7 +660,6 @@ name = "omnibox-wizard"
 version = "0.1.20"
 source = { editable = "." }
 dependencies = [
-    { name = "aiokafka" },
     { name = "anyascii" },
     { name = "beautifulsoup4" },
     { name = "fastapi" },
@@ -729,7 +698,6 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "aiokafka", specifier = ">=0.12.0,<0.13.0" },
     { name = "anyascii", specifier = ">=0.3.3,<0.4.0" },
     { name = "beautifulsoup4", specifier = ">=4.13.4,<5.0.0" },
     { name = "fastapi", specifier = ">=0.121.0,<0.129.0" },

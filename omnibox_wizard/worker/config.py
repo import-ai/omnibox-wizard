@@ -95,13 +95,6 @@ class HealthConfig(BaseModel):
     port: int = Field(default=8000, description="Port for health check server")
 
 
-class KafkaConfig(BaseModel):
-    broker: str
-    topic: str = Field(default="omnibox-tasks")
-    group: str = Field(default="omnibox-wizard")
-    max_poll_interval_ms: int = Field(default=600000)
-
-
 class WorkerConfig(BaseModel):
     vector: VectorConfig
     task: TaskConfig = Field(default_factory=TaskConfig)
@@ -109,7 +102,6 @@ class WorkerConfig(BaseModel):
     callback: CallbackConfig = Field(default_factory=CallbackConfig)
     grimoire: GrimoireConfig = Field(default=None)
     health: HealthConfig = Field(default_factory=HealthConfig)
-    kafka: KafkaConfig = Field(default_factory=KafkaConfig)
     file_reader_worker_num: int = Field(
         default=2, description="Number of workers that handle file_reader_* functions"
     )

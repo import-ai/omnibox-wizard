@@ -8,7 +8,7 @@ OmniBox Wizard is a Python FastAPI service that provides AI-powered document pro
 
 **Two main services:**
 1. **API Server** (`omnibox_wizard/wizard/api/`) - FastAPI app with `/api/v1/wizard/ask` and `/api/v1/wizard/write` endpoints using Server-Sent Events (SSE) for streaming
-2. **Worker Service** (`main.py`) - Kafka-based consumer processing document tasks (file reading, content extraction, indexing, metadata generation)
+2. **Worker Service** (`main.py`) - Polls the backend for document tasks (file reading, content extraction, indexing, metadata generation)
 
 ## Quick Commands
 
@@ -51,7 +51,7 @@ poetry run pre-commit run --all-files              # Run pre-commit hooks
 
 ### Retrieval System (`omnibox_wizard/wizard/grimoire/retriever/`)
 
-- **MeiliVectorRetriever** (`meili_vector_db.py`) - Vector search via MeiliSearch
+- **WeaviateVectorRetriever** (`weaviate_vector_db.py`) - Vector search via Weaviate
 - **SearXNG** (`searxng.py`) - Web search integration
 - **Reranker** (`reranker.py`) - Post-processing reranking for improved results
 
@@ -63,7 +63,7 @@ Each function extends `BaseFunction` and is registered in `Worker.worker_dict`:
 |----------|---------|
 | `collect` / `HTMLReaderV2` | Advanced HTML content extraction with site-specific processors |
 | `file_reader` / `FileReader` | Multi-format file support (MD, Office, TXT) |
-| `upsert_index` | Vector index upsert to MeiliSearch |
+| `upsert_index` | Vector index upsert to Weaviate |
 | `delete_index` | Delete from vector index |
 | `upsert_message_index` | Index conversation messages |
 | `delete_conversation` | Delete conversation data |
@@ -121,7 +121,6 @@ Distributed tracing is configured via `common/tracing.py`:
 ## Testing
 
 - **Framework**: pytest with `pytest-asyncio`
-- **Testcontainers**: MeiliSearch integration via `testcontainers-compose`
 - **Fixtures**: `tests/omnibox_wizard/helper/fixture.py`
 - **Backend mocking**: `tests/omnibox_wizard/helper/backend_mock.py`
 
@@ -132,11 +131,10 @@ Tests follow the pattern `tests/omnibox_wizard/test_*.py` and `tests/omnibox_wiz
 - **Python**: 3.12+
 - **API**: FastAPI, Uvicorn, Pydantic
 - **AI**: OpenAI API, LangChain (partial)
-- **Search**: MeiliSearch (vector), SearXNG (web)
-- **Messaging**: Kafka (aiokafka)
+- **Search**: Weaviate (vector), SearXNG (web)
 - **Tracing**: OpenTelemetry
 - **Templates**: Jinja2
-- **Testing**: pytest, testcontainers
+- **Testing**: pytest, pytest-asyncio
 - **Linting**: Ruff
 
 ## Git Commit Guidelines

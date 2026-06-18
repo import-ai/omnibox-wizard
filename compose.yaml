@@ -8,8 +8,6 @@ services:
       - "/etc/localtime:/etc/localtime:ro"
     environment:
       ENV: "dev"
-      OBW_VECTOR_HOST: "http://meilisearch:7700"
-      OBW_VECTOR_MEILI_API_KEY: ${OBW_VECTOR_MEILI_API_KEY}
       OBW_BACKEND_BASE_URL: "http://backend:8000"
     ports:
       - "8001:8000"
@@ -21,17 +19,12 @@ services:
       timeout: 3s
       retries: 5
       start_period: 5s
-    depends_on:
-      meilisearch:
-        condition: service_healthy
 
   wizard-worker:
     build: .
     restart: always
     environment:
       ENV: "dev"
-      OBW_VECTOR_HOST: "http://meilisearch:7700"
-      OBW_VECTOR_MEILI_API_KEY: ${OBW_VECTOR_MEILI_API_KEY}
       OBW_BACKEND_BASE_URL: "http://backend:8000"
     volumes:
       - "/etc/localtime:/etc/localtime:ro"
@@ -45,19 +38,3 @@ services:
       timeout: 3s
       retries: 5
       start_period: 5s
-    depends_on:
-      meilisearch:
-        condition: service_healthy
-
-  meilisearch:
-    image: getmeili/meilisearch:v1.14
-    restart: always
-    environment:
-      MEILI_MASTER_KEY: ${OBW_VECTOR_MEILI_API_KEY}
-    healthcheck:
-      test: [ "CMD", "curl", "-I", "http://127.0.0.1:7700/health" ]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-    ports:
-      - "7700:7700"

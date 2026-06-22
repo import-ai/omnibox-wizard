@@ -9,6 +9,10 @@ services:
     environment:
       ENV: "dev"
       OBW_BACKEND_BASE_URL: "http://backend:8000"
+      OBW_VECTOR_WEAVIATE_HOST: "weaviate"
+      OBW_VECTOR_WEAVIATE_PORT: "8080"
+      OBW_VECTOR_WEAVIATE_GRPC_PORT: "50051"
+      OBW_VECTOR_WEAVIATE_API_KEY: ${OBW_VECTOR_WEAVIATE_API_KEY}
     ports:
       - "8001:8000"
     env_file:
@@ -19,6 +23,9 @@ services:
       timeout: 3s
       retries: 5
       start_period: 5s
+    depends_on:
+      weaviate:
+        condition: service_healthy
 
   wizard-worker:
     build: .
@@ -26,6 +33,10 @@ services:
     environment:
       ENV: "dev"
       OBW_BACKEND_BASE_URL: "http://backend:8000"
+      OBW_VECTOR_WEAVIATE_HOST: "weaviate"
+      OBW_VECTOR_WEAVIATE_PORT: "8080"
+      OBW_VECTOR_WEAVIATE_GRPC_PORT: "50051"
+      OBW_VECTOR_WEAVIATE_API_KEY: ${OBW_VECTOR_WEAVIATE_API_KEY}
     volumes:
       - "/etc/localtime:/etc/localtime:ro"
     entrypoint: [ "python", "main.py" ]
@@ -38,3 +49,40 @@ services:
       timeout: 3s
       retries: 5
       start_period: 5s
+    depends_on:
+      weaviate:
+        condition: service_healthy
+
+  weaviate:
+    image: cr.weaviate.io/semitechnologies/weaviate:1.36.0
+    restart: unless-stopped
+    command:
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8080"
+      - --scheme
+      - http
+    ports:
+      - "8080:8080"
+      - "50051:50051"
+    working_dir: "/go/pkg/mod"
+    environment:
+      AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: 'false'
+      AUTHENTICATION_APIKEY_ENABLED: 'true'
+      AUTHENTICATION_APIKEY_ALLOWED_KEYS: ${OBW_VECTOR_WEAVIATE_API_KEY}
+      AUTHENTICATION_APIKEY_USERS: 'omnibox'
+      QUERY_DEFAULTS_LIMIT: "25"
+      AUTOSCHEMA_ENABLED: "false"
+      ENABLE_TOKENIZER_GSE_CH: "true"
+      PERSISTENCE_DATA_PATH: /var/lib/weaviate
+      CLUSTER_HOSTNAME: node-1
+      LOG_LEVEL: debug
+    healthcheck:
+      test: [ "CMD-SHELL", "wget -q -O- http://127.0.0.1:8080/v1/.well-known/ready || exit 1" ]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    volumes:
+      - ./weaviate_data:/var/lib/weaviate

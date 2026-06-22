@@ -167,6 +167,9 @@ tests/omnibox_wizard/resources/files/*
 
 /tmp
 
+# Weaviate persistent data (compose bind mount)
+weaviate_data/
+
 CLAUDE.md
 .serena
 

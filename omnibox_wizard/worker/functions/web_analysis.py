@@ -44,8 +44,18 @@ def is_ximalaya(url: str) -> bool:
     return False
 
 
+def is_xiaoyuzhou(url: str) -> bool:
+    parsed = urlparse(url)
+    host = parsed.hostname or ""
+
+    if host != "xiaoyuzhoufm.com" and not host.endswith(".xiaoyuzhoufm.com"):
+        return False
+
+    return parsed.path.startswith("/episode/")
+
+
 def is_audio(url: str) -> bool:
-    return is_ximalaya(url)
+    return is_ximalaya(url) or is_xiaoyuzhou(url)
 
 
 class WebAnalysisFunction(BaseFunction):

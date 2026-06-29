@@ -42,9 +42,13 @@ class XProcessor(HTMLReaderBaseProcessor):
                     result = self._convert_tweet(soup)
 
         if not self._has_effective_content(result):
-            metadata_result = self._convert_metadata(soup)
-            if metadata_result:
-                result = metadata_result
+            article_card_result = self._convert_article_card_preview(soup)
+            if article_card_result:
+                result = article_card_result
+            else:
+                metadata_result = self._convert_metadata(soup)
+                if metadata_result:
+                    result = metadata_result
 
         if result.images:
             image_links = [(img.link, img.name) for img in result.images]
@@ -409,6 +413,117 @@ class XProcessor(HTMLReaderBaseProcessor):
 
     def _has_effective_content(self, result: GeneratedContent) -> bool:
         return bool((result.markdown or "").strip() or result.images)
+
+    def _convert_article_card_preview(
+        self, soup: BeautifulSoup
+    ) -> GeneratedContent | None:
+        article_link = soup.select_one('a[href^="/i/article/"]')
+        if not article_link:
+            return None
+
+        article_url = self._normalize_x_url(article_link.get("href", ""))
+
+        article_container = article_link.find_parent("article")
+        author_handle = self._extract_author_handle(article_container or soup)
+
+        title = self._extract_article_card_title(article_link)
+        summary = self._extract_article_card_summary(article_link)
+
+        if not title and not summary:
+            return None
+
+        images = self._extract_article_card_images(article_link)
+
+        markdown_parts = []
+        if author_handle:
+            markdown_parts.append(author_handle)
+
+        for image in images:
+            markdown_parts.append(f"![{image.name}]({image.link})")
+
+        if title:
+            markdown_parts.append(f"# {title}")
+
+        if summary:
+            markdown_parts.append(summary)
+
+        if article_url:
+            markdown_parts.append(f"Source: {article_url}")
+
+        markdown = "\n\n".join(markdown_parts).strip()
+
+        return GeneratedContent(
+            title=title or summary,
+            markdown=markdown,
+            images=images or None,
+        )
+
+    def _normalize_x_url(self, href: str) -> str:
+        if not href:
+            return ""
+
+        if href.startswith("http://") or href.startswith("https://"):
+            return href
+
+        if href.startswith("/"):
+            return f"https://x.com{href}"
+
+        return href
+
+    def _extract_author_handle(self, container: BeautifulSoup | Tag) -> str:
+        text = container.get_text(" ", strip=True)
+        username_match = re.search(r"@[\w]+", text)
+        return username_match.group() if username_match else ""
+
+    def _extract_article_card_title(self, article_link: Tag) -> str:
+        title_node = article_link.find(
+            lambda tag: (
+                isinstance(tag, Tag)
+                and tag.name == "div"
+                and (
+                    "text-headline2" in (tag.get("class") or [])
+                    or "font-extrabold" in (tag.get("class") or [])
+                )
+            )
+        )
+
+        return title_node.get_text(" ", strip=True) if title_node else ""
+
+    def _extract_article_card_summary(self, article_link: Tag) -> str:
+        summary_node = article_link.find(
+            lambda tag: (
+                isinstance(tag, Tag)
+                and tag.name == "div"
+                and (
+                    "line-clamp-4" in (tag.get("class") or [])
+                    or "text-body" in (tag.get("class") or [])
+                )
+            )
+        )
+
+        return summary_node.get_text("\n", strip=True) if summary_node else ""
+
+    def _extract_article_card_images(self, article_link: Tag) -> list[Image]:
+        images = []
+
+        for img in article_link.find_all("img"):
+            src = img.get("src", "")
+            if not self._is_content_image(src):
+                continue
+
+            alt = img.get("alt", src)
+            images.append(
+                Image.model_validate(
+                    {
+                        "name": alt,
+                        "link": src,
+                        "data": "",
+                        "mimetype": "",
+                    }
+                )
+            )
+
+        return images
 
     def _convert_metadata(self, soup: BeautifulSoup) -> GeneratedContent | None:
         posting = self._find_social_media_posting(soup)

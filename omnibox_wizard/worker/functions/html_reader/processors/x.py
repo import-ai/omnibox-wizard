@@ -1,6 +1,7 @@
-from urllib.parse import urlparse
-import re
+import json
 import logging
+import re
+from urllib.parse import urlparse
 from bs4 import BeautifulSoup, Tag
 from html2text import html2text
 from opentelemetry import trace
@@ -39,6 +40,11 @@ class XProcessor(HTMLReaderBaseProcessor):
                     result = self._convert_tweet(main_tweet_container)
                 else:
                     result = self._convert_tweet(soup)
+
+        if not self._has_effective_content(result):
+            metadata_result = self._convert_metadata(soup)
+            if metadata_result:
+                result = metadata_result
 
         if result.images:
             image_links = [(img.link, img.name) for img in result.images]
@@ -400,6 +406,101 @@ class XProcessor(HTMLReaderBaseProcessor):
                 or cell.find(attrs={"data-testid": "longformRichTextComponent"})
             )
         )
+
+    def _has_effective_content(self, result: GeneratedContent) -> bool:
+        return bool((result.markdown or "").strip() or result.images)
+
+    def _convert_metadata(self, soup: BeautifulSoup) -> GeneratedContent | None:
+        posting = self._find_social_media_posting(soup)
+        if not posting:
+            return None
+
+        text = (posting.get("articleBody") or "").strip()
+        if not text:
+            return None
+
+        author = posting.get("author") or {}
+        author_handle = author.get("alternateName") or ""
+        author_name = author.get("name") or ""
+
+        image_urls = self._normalize_metadata_images(posting.get("image"))
+
+        markdown_parts = []
+        if author_handle:
+            markdown_parts.append(author_handle)
+        elif author_name:
+            markdown_parts.append(author_name)
+
+        markdown_parts.append(text)
+
+        images = [
+            Image.model_validate(
+                {
+                    "name": image_url,
+                    "link": image_url,
+                    "data": "",
+                    "mimetype": "",
+                }
+            )
+            for image_url in image_urls
+            if self._is_content_image(image_url)
+        ]
+
+        for image in images:
+            markdown_parts.append(f"![{image.name}]({image.link})")
+
+        markdown = "\n\n".join(markdown_parts).strip()
+        title = text.splitlines()[0].strip() if text else None
+
+        return GeneratedContent(title=title, markdown=markdown, images=images or None)
+
+    def _find_social_media_posting(self, soup: BeautifulSoup) -> dict | None:
+        for script in soup.select('script[type="application/ld+json"]'):
+            raw = script.string or script.get_text()
+            if not raw:
+                continue
+
+            try:
+                data = json.loads(raw)
+            except json.JSONDecodeError:
+                continue
+
+            posting = self._search_social_media_posting(data)
+            if posting:
+                return posting
+
+        return None
+
+    def _search_social_media_posting(self, data) -> dict | None:
+        if isinstance(data, dict):
+            if data.get("@type") == "SocialMediaPosting":
+                return data
+
+            for value in data.values():
+                posting = self._search_social_media_posting(value)
+                if posting:
+                    return posting
+
+        if isinstance(data, list):
+            for item in data:
+                posting = self._search_social_media_posting(item)
+                if posting:
+                    return posting
+
+        return None
+
+    def _normalize_metadata_images(self, value) -> list[str]:
+        if isinstance(value, str):
+            return [value]
+
+        if isinstance(value, list):
+            return [item for item in value if isinstance(item, str)]
+
+        if isinstance(value, dict):
+            url = value.get("url")
+            return [url] if isinstance(url, str) else []
+
+        return []
 
     def _convert_tweet_thread(self, tweet_containers: list[Tag]) -> GeneratedContent:
         contents = []

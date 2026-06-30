@@ -16,12 +16,24 @@ logger = logging.getLogger(__name__)
 
 
 class XProcessor(HTMLReaderBaseProcessor):
+    HOSTS = {
+        "x.com",
+        "www.x.com",
+        "twitter.com",
+        "www.twitter.com",
+    }
+
     def hit(self, html: str, url: str) -> bool:
         parsed = urlparse(url)
-        if parsed.netloc == "x.com":
-            if "/status/" in parsed.path:
-                return True
-        return False
+        host = parsed.netloc.lower()
+        if host not in self.HOSTS:
+            return False
+
+        path_parts = [part for part in parsed.path.split("/") if part]
+        return any(
+            part == "status" and path_parts[index + 1].isdigit()
+            for index, part in enumerate(path_parts[:-1])
+        )
 
     @tracer.start_as_current_span("XProcessor.convert")
     async def convert(self, html: str, url: str) -> GeneratedContent:
@@ -527,18 +539,32 @@ class XProcessor(HTMLReaderBaseProcessor):
 
     def _convert_metadata(self, soup: BeautifulSoup) -> GeneratedContent | None:
         posting = self._find_social_media_posting(soup)
-        if not posting:
+
+        text = ""
+        author_handle = ""
+        author_name = ""
+        image_urls = []
+
+        if posting:
+            text = (posting.get("articleBody") or "").strip()
+            author = posting.get("author") or {}
+            author_handle = author.get("alternateName") or ""
+            author_name = author.get("name") or ""
+            image_urls = self._normalize_metadata_images(posting.get("image"))
+
+        if not self._is_effective_metadata_text(text):
+            text = self._meta_property_content(soup, "og:description")
+
+        if not self._is_effective_metadata_text(text):
+            text = self._meta_name_content(soup, "description")
+
+        if not self._is_effective_metadata_text(text):
             return None
 
-        text = (posting.get("articleBody") or "").strip()
-        if not text:
-            return None
-
-        author = posting.get("author") or {}
-        author_handle = author.get("alternateName") or ""
-        author_name = author.get("name") or ""
-
-        image_urls = self._normalize_metadata_images(posting.get("image"))
+        if not image_urls:
+            og_image = self._meta_property_content(soup, "og:image")
+            if og_image:
+                image_urls = [og_image]
 
         markdown_parts = []
         if author_handle:
@@ -568,6 +594,29 @@ class XProcessor(HTMLReaderBaseProcessor):
         title = text.splitlines()[0].strip() if text else None
 
         return GeneratedContent(title=title, markdown=markdown, images=images or None)
+
+    def _is_effective_metadata_text(self, text: str) -> bool:
+        text = (text or "").strip()
+        if len(text) <= 10:
+            return False
+
+        if re.fullmatch(r"https?://\S+", text):
+            return False
+
+        blocked_texts = [
+            "Log in",
+            "Sign in",
+            "New to X?",
+        ]
+        return not any(blocked_text in text for blocked_text in blocked_texts)
+
+    def _meta_property_content(self, soup: BeautifulSoup, property_name: str) -> str:
+        tag = soup.find("meta", attrs={"property": property_name})
+        return (tag.get("content") or "").strip() if tag else ""
+
+    def _meta_name_content(self, soup: BeautifulSoup, name: str) -> str:
+        tag = soup.find("meta", attrs={"name": name})
+        return (tag.get("content") or "").strip() if tag else ""
 
     def _find_social_media_posting(self, soup: BeautifulSoup) -> dict | None:
         for script in soup.select('script[type="application/ld+json"]'):

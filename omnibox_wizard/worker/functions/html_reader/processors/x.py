@@ -554,13 +554,8 @@ class XProcessor(HTMLReaderBaseProcessor):
 
         if not self._is_effective_metadata_text(text):
             text = self._meta_property_content(soup, "og:description")
-
-        if not self._is_effective_metadata_text(text):
-            text = self._meta_name_content(soup, "description")
-
         if not self._is_effective_metadata_text(text):
             return None
-
         if not image_urls:
             og_image = self._meta_property_content(soup, "og:image")
             if og_image:
@@ -607,15 +602,12 @@ class XProcessor(HTMLReaderBaseProcessor):
             "Log in",
             "Sign in",
             "New to X?",
+            "From breaking news and entertainment to sports and politics, get the full story with all the live commentary.",
         ]
         return not any(blocked_text in text for blocked_text in blocked_texts)
 
     def _meta_property_content(self, soup: BeautifulSoup, property_name: str) -> str:
         tag = soup.find("meta", attrs={"property": property_name})
-        return (tag.get("content") or "").strip() if tag else ""
-
-    def _meta_name_content(self, soup: BeautifulSoup, name: str) -> str:
-        tag = soup.find("meta", attrs={"name": name})
         return (tag.get("content") or "").strip() if tag else ""
 
     def _find_social_media_posting(self, soup: BeautifulSoup) -> dict | None:

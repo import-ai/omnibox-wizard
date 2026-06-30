@@ -54,13 +54,17 @@ class XProcessor(HTMLReaderBaseProcessor):
                     result = self._convert_tweet(soup)
 
         if not self._has_effective_content(result):
+            metadata_result = self._convert_metadata(soup)
             article_card_result = self._convert_article_card_preview(soup)
-            if article_card_result:
+
+            if metadata_result and article_card_result:
+                result = self._merge_metadata_with_article_card(
+                    metadata_result, article_card_result
+                )
+            elif metadata_result:
+                result = metadata_result
+            elif article_card_result:
                 result = article_card_result
-            else:
-                metadata_result = self._convert_metadata(soup)
-                if metadata_result:
-                    result = metadata_result
 
         if result.images:
             image_links = [(img.link, img.name) for img in result.images]
@@ -425,6 +429,34 @@ class XProcessor(HTMLReaderBaseProcessor):
 
     def _has_effective_content(self, result: GeneratedContent) -> bool:
         return bool((result.markdown or "").strip() or result.images)
+
+    def _merge_metadata_with_article_card(
+        self, metadata_result: GeneratedContent, article_card_result: GeneratedContent
+    ) -> GeneratedContent:
+        markdown_parts = []
+
+        if metadata_result.markdown:
+            markdown_parts.append(metadata_result.markdown.strip())
+
+        if article_card_result.markdown:
+            markdown_parts.append(article_card_result.markdown.strip())
+
+        images = []
+        seen_images = set()
+
+        for image in (metadata_result.images or []) + (
+            article_card_result.images or []
+        ):
+            if image.link in seen_images:
+                continue
+            seen_images.add(image.link)
+            images.append(image)
+
+        return GeneratedContent(
+            title=metadata_result.title or article_card_result.title,
+            markdown="\n\n".join(markdown_parts),
+            images=images or None,
+        )
 
     def _convert_article_card_preview(
         self, soup: BeautifulSoup

@@ -556,10 +556,13 @@ class XProcessor(HTMLReaderBaseProcessor):
             text = self._meta_property_content(soup, "og:description")
         if not self._is_effective_metadata_text(text):
             return None
+
+        image_urls = self._filter_content_image_urls(image_urls)
         if not image_urls:
             og_image = self._meta_property_content(soup, "og:image")
-            if og_image:
-                image_urls = [og_image]
+            image_urls = self._filter_content_image_urls([og_image])
+        if not image_urls:
+            image_urls = self._extract_body_image_urls_near_text(soup, text)
 
         markdown_parts = []
         if author_handle:
@@ -644,6 +647,71 @@ class XProcessor(HTMLReaderBaseProcessor):
                     return posting
 
         return None
+
+    def _filter_content_image_urls(self, urls: list[str]) -> list[str]:
+        seen = set()
+        result = []
+
+        for url in urls:
+            if not self._is_content_image(url):
+                continue
+            if url in seen:
+                continue
+
+            seen.add(url)
+            result.append(url)
+
+        return result
+
+    def _extract_body_image_urls_near_text(
+        self, soup: BeautifulSoup, text: str
+    ) -> list[str]:
+        anchor = self._find_text_anchor(soup, text)
+        if not anchor:
+            return []
+
+        current = anchor.parent
+        for _ in range(8):
+            if not isinstance(current, Tag):
+                break
+
+            image_urls = self._extract_content_image_urls(current)
+            if image_urls:
+                return image_urls
+
+            current = current.parent
+
+        return []
+
+    def _find_text_anchor(self, soup: BeautifulSoup, text: str):
+        anchor = self._metadata_text_anchor(text)
+        if not anchor:
+            return None
+
+        return soup.find(string=lambda value: value and anchor in value)
+
+    def _metadata_text_anchor(self, text: str) -> str:
+        normalized = " ".join((text or "").split())
+        if len(normalized) < 20:
+            return ""
+
+        return normalized[:80]
+
+    def _extract_content_image_urls(self, container: Tag) -> list[str]:
+        seen = set()
+        image_urls = []
+
+        for img in container.find_all("img"):
+            src = img.get("src", "")
+            if not self._is_content_image(src):
+                continue
+            if src in seen:
+                continue
+
+            seen.add(src)
+            image_urls.append(src)
+
+        return image_urls
 
     def _normalize_metadata_images(self, value) -> list[str]:
         if isinstance(value, str):

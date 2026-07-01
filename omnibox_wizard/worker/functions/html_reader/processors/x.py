@@ -417,10 +417,14 @@ class XProcessor(HTMLReaderBaseProcessor):
         locator_text = self._extract_restricted_locator_text(soup)
         text_result = None
 
+        author_handle = self._extract_restricted_author_handle(soup)
+
         if locator_text:
             text_container = self._find_restricted_text_container(soup, locator_text)
             if text_container:
-                text_result = self._convert_restricted_text_container(text_container)
+                text_result = self._convert_restricted_text_container(
+                    text_container, author_handle
+                )
 
         card_result = self._convert_restricted_article_card(soup)
 
@@ -437,18 +441,31 @@ class XProcessor(HTMLReaderBaseProcessor):
 
     # Converts the matched restricted text container into a GeneratedContent result.
     def _convert_restricted_text_container(
-        self, container: Tag
+        self, container: Tag, author_handle: str
     ) -> GeneratedContent | None:
-        markdown = self._restricted_text_container_to_markdown(container)
-        if not self._is_effective_restricted_text(markdown):
+        body_markdown = self._restricted_text_container_to_markdown(container)
+        if not self._is_effective_restricted_text(body_markdown):
             return None
 
         images = self._extract_restricted_images_near_container(container)
         title = next(
-            (line.strip() for line in markdown.splitlines() if line.strip()), None
+            (line.strip() for line in body_markdown.splitlines() if line.strip()), None
         )
 
-        return GeneratedContent(title=title, markdown=markdown, images=images or None)
+        markdown_parts = []
+        if author_handle:
+            markdown_parts.append(author_handle)
+
+        markdown_parts.append(body_markdown)
+
+        for image in images:
+            markdown_parts.append(f"![{image.name or image.link}]({image.link})")
+
+        return GeneratedContent(
+            title=title,
+            markdown="\n\n".join(markdown_parts),
+            images=images or None,
+        )
 
     # Extracts metadata text used only to locate the main restricted tweet body.
     def _extract_restricted_locator_text(self, soup: BeautifulSoup) -> str:
@@ -463,6 +480,22 @@ class XProcessor(HTMLReaderBaseProcessor):
             return og_description
 
         return ""
+
+    # Extracts the author handle from restricted page metadata.
+    def _extract_restricted_author_handle(self, soup: BeautifulSoup) -> str:
+        posting = self._find_social_media_posting(soup)
+        if not posting:
+            return ""
+
+        author = posting.get("author") or {}
+        if not isinstance(author, dict):
+            return ""
+
+        handle = (author.get("alternateName") or "").strip()
+        if not handle:
+            return ""
+
+        return handle if handle.startswith("@") else f"@{handle}"
 
     # Finds the restricted body container matching the metadata locator text.
     def _find_restricted_text_container(
@@ -573,6 +606,9 @@ class XProcessor(HTMLReaderBaseProcessor):
         image_urls = []
 
         for img in container.find_all("img"):
+            if self._is_inside_restricted_article_card(img):
+                continue
+
             src = img.get("src", "")
             if not self._is_restricted_body_media_image(src):
                 continue
@@ -583,6 +619,14 @@ class XProcessor(HTMLReaderBaseProcessor):
             image_urls.append(src)
 
         return image_urls
+
+    # Checks whether an image belongs to a restricted article preview card.
+    def _is_inside_restricted_article_card(self, tag: Tag) -> bool:
+        return bool(
+            tag.find_parent(
+                "a", href=lambda href: href and href.startswith("/i/article/")
+            )
+        )
 
     # Checks whether an image URL belongs to restricted tweet body media.
     def _is_restricted_body_media_image(self, src: str) -> bool:

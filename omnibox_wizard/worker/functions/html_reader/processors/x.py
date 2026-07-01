@@ -631,6 +631,9 @@ class XProcessor(HTMLReaderBaseProcessor):
             if self._is_inside_restricted_article_card(img):
                 continue
 
+            if self._is_inside_restricted_embedded_post_card(img):
+                continue
+
             src = img.get("src", "")
             if not (
                 self._is_restricted_body_media_image(src)
@@ -644,6 +647,10 @@ class XProcessor(HTMLReaderBaseProcessor):
             image_urls.append(src)
 
         return image_urls
+
+    # Checks whether an image belongs to a restricted embedded post card.
+    def _is_inside_restricted_embedded_post_card(self, tag: Tag) -> bool:
+        return bool(tag.find_parent(self._is_restricted_embedded_post_card))
 
     # Checks whether an image belongs to a restricted article preview card.
     def _is_inside_restricted_article_card(self, tag: Tag) -> bool:

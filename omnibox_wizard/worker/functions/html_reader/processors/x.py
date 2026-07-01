@@ -515,20 +515,29 @@ class XProcessor(HTMLReaderBaseProcessor):
         self, soup: BeautifulSoup, locator_text: str
     ) -> Tag | None:
         anchor = self._normalize_restricted_match_text(locator_text)[:80]
-        if len(anchor) < 20:
+        if len(anchor) < 12:
             return None
 
-        candidates = []
-        for tag in soup.find_all(self._is_restricted_text_container):
-            match_text = self._restricted_container_match_text(tag)
-            if anchor not in match_text:
+        matches = []
+
+        for tag in soup.find_all("div"):
+            if not isinstance(tag, Tag):
                 continue
-            candidates.append(tag)
-        if not candidates:
-            return None
-        return max(
-            candidates, key=lambda tag: len(self._restricted_container_match_text(tag))
-        )
+
+            if not self._is_restricted_text_container(tag):
+                continue
+
+            text = self._restricted_container_match_text(tag)
+            if anchor in text:
+                matches.append(tag)
+
+        if len(matches) == 1:
+            return matches[0]
+
+        if len(anchor) >= 20 and matches:
+            return matches[0]
+
+        return None
 
     # Checks whether a tag looks like a restricted/share tweet text container.
     def _is_restricted_text_container(self, tag: Tag) -> bool:
@@ -814,10 +823,14 @@ class XProcessor(HTMLReaderBaseProcessor):
     # Checks whether a role=link block looks like an embedded post card.
     def _is_restricted_embedded_post_card(self, card: Tag) -> bool:
         classes = card.get("class") or []
+        if card.find("a", href=lambda href: href and href.startswith("/i/article/")):
+            return False
+
         return bool(
             card.get("role") == "link"
             and "rounded-2xl" in classes
             and "border" in classes
+            and self._extract_restricted_embedded_post_source_url(card)
             and self._extract_restricted_embedded_post_handle(card)
             and self._find_restricted_embedded_post_text_container(card)
         )
@@ -859,7 +872,7 @@ class XProcessor(HTMLReaderBaseProcessor):
 
         for img in card.find_all("img"):
             src = img.get("src", "")
-            if "pbs.twimg.com/tweet_video_thumb/" not in src:
+            if not self._is_restricted_embedded_post_media_image(src):
                 continue
             if src in seen:
                 continue
@@ -877,6 +890,13 @@ class XProcessor(HTMLReaderBaseProcessor):
             )
 
         return images
+
+    # Checks whether an image URL belongs to restricted embedded post media.
+    def _is_restricted_embedded_post_media_image(self, src: str) -> bool:
+        return bool(
+            self._is_restricted_body_media_image(src)
+            or "pbs.twimg.com/tweet_video_thumb/" in src
+        )
 
     # Extracts a source URL from a restricted embedded post card when available.
     def _extract_restricted_embedded_post_source_url(self, card: Tag) -> str:

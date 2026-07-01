@@ -706,17 +706,21 @@ class XProcessor(HTMLReaderBaseProcessor):
         if not anchor:
             return ""
 
+        best_text = ""
         current = anchor.parent
+
         for _ in range(4):
             if not isinstance(current, Tag):
                 break
 
             if self._is_restricted_tweet_text_container(current):
-                return current.get_text("\n", strip=True)
+                candidate = current.get_text("\n", strip=True)
+                if len(candidate) > len(best_text):
+                    best_text = candidate
 
             current = current.parent
 
-        return ""
+        return best_text
 
     def _is_restricted_tweet_text_container(self, tag: Tag) -> bool:
         classes = tag.get("class") or []

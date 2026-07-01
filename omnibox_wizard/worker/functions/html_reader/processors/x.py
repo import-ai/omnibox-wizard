@@ -427,17 +427,30 @@ class XProcessor(HTMLReaderBaseProcessor):
                 )
 
         card_result = self._convert_restricted_article_card(soup)
-
-        if text_result and card_result:
-            return self._merge_restricted_results(text_result, card_result)
-
-        if text_result:
-            return text_result
+        link_preview_result = self._convert_restricted_link_preview_card(soup)
+        embedded_post_result = self._convert_restricted_embedded_post_card(soup)
+        result = text_result
 
         if card_result:
-            return card_result
+            result = (
+                self._merge_restricted_results(result, card_result)
+                if result
+                else card_result
+            )
+        if link_preview_result:
+            result = (
+                self._merge_restricted_results(result, link_preview_result)
+                if result
+                else link_preview_result
+            )
+        if embedded_post_result:
+            result = (
+                self._merge_restricted_results(result, embedded_post_result)
+                if result
+                else embedded_post_result
+            )
 
-        return None
+        return result
 
     # Converts the matched restricted text container into a GeneratedContent result.
     def _convert_restricted_text_container(
@@ -610,7 +623,10 @@ class XProcessor(HTMLReaderBaseProcessor):
                 continue
 
             src = img.get("src", "")
-            if not self._is_restricted_body_media_image(src):
+            if not (
+                self._is_restricted_body_media_image(src)
+                or self._is_restricted_video_preview_image(src)
+            ):
                 continue
             if src in seen:
                 continue
@@ -626,6 +642,12 @@ class XProcessor(HTMLReaderBaseProcessor):
             tag.find_parent(
                 "a", href=lambda href: href and href.startswith("/i/article/")
             )
+        )
+
+    # Checks whether an image URL belongs to restricted main tweet video preview media.
+    def _is_restricted_video_preview_image(self, src: str) -> bool:
+        return bool(
+            self._is_content_image(src) and "pbs.twimg.com/amplify_video_thumb/" in src
         )
 
     # Checks whether an image URL belongs to restricted tweet body media.
@@ -708,6 +730,164 @@ class XProcessor(HTMLReaderBaseProcessor):
             markdown="\n\n".join(markdown_parts),
             images=images or None,
         )
+
+    # Parses external link preview cards shown on restricted/share pages.
+    def _convert_restricted_link_preview_card(
+        self, soup: BeautifulSoup
+    ) -> GeneratedContent | None:
+        for link in soup.find_all("a"):
+            href = link.get("href") or ""
+            if not href or href.startswith("/i/article/"):
+                continue
+
+            image = link.find(
+                "img", src=lambda src: src and "pbs.twimg.com/card_img/" in src
+            )
+            if not image:
+                continue
+
+            image_url = image.get("src", "")
+            markdown = "\n\n".join(
+                [
+                    f"![Link preview image]({image_url})",
+                    f"Source: [{href}]({href})",
+                ]
+            )
+
+            return GeneratedContent(
+                title=None,
+                markdown=markdown,
+                images=[
+                    Image.model_validate(
+                        {
+                            "name": "Link preview image",
+                            "link": image_url,
+                            "data": "",
+                            "mimetype": "",
+                        }
+                    )
+                ],
+            )
+
+        return None
+
+    # Parses embedded post cards shown on restricted/share pages.
+    def _convert_restricted_embedded_post_card(
+        self, soup: BeautifulSoup
+    ) -> GeneratedContent | None:
+        for card in soup.find_all(attrs={"role": "link"}):
+            if not self._is_restricted_embedded_post_card(card):
+                continue
+
+            handle = self._extract_restricted_embedded_post_handle(card)
+            text_container = self._find_restricted_embedded_post_text_container(card)
+            if not text_container:
+                continue
+
+            body_markdown = self._restricted_text_container_to_markdown(text_container)
+            if not self._is_effective_restricted_text(body_markdown):
+                continue
+
+            images = self._extract_restricted_embedded_post_images(card)
+            source_url = self._extract_restricted_embedded_post_source_url(card)
+
+            parts = []
+            if handle:
+                parts.append(handle)
+
+            parts.append(body_markdown)
+
+            for image in images:
+                parts.append(f"![{image.name or image.link}]({image.link})")
+
+            if source_url:
+                parts.append(f"Source: [{source_url}]({source_url})")
+
+            return GeneratedContent(
+                title=None,
+                markdown=self._format_quote_block("Quoted post", parts),
+                images=images or None,
+            )
+
+        return None
+
+    # Checks whether a role=link block looks like an embedded post card.
+    def _is_restricted_embedded_post_card(self, card: Tag) -> bool:
+        classes = card.get("class") or []
+        return bool(
+            card.get("role") == "link"
+            and "rounded-2xl" in classes
+            and "border" in classes
+            and self._extract_restricted_embedded_post_handle(card)
+            and self._find_restricted_embedded_post_text_container(card)
+        )
+
+    # Extracts the author handle from a restricted embedded post card.
+    def _extract_restricted_embedded_post_handle(self, card: Tag) -> str:
+        for link in card.find_all("a"):
+            text = link.get_text(" ", strip=True)
+            match = re.search(r"@[\w_]+", text)
+            if match:
+                return match.group()
+
+        return ""
+
+    # Finds the main text container inside a restricted embedded post card.
+    def _find_restricted_embedded_post_text_container(self, card: Tag) -> Tag | None:
+        candidates = []
+
+        for tag in card.find_all(self._is_restricted_text_container):
+            text = self._restricted_container_match_text(tag)
+            if not self._is_effective_restricted_text(text):
+                continue
+            if re.fullmatch(r"@[\w_]+", text):
+                continue
+
+            candidates.append(tag)
+
+        if not candidates:
+            return None
+
+        return max(
+            candidates, key=lambda tag: len(self._restricted_container_match_text(tag))
+        )
+
+    # Extracts GIF/video preview images from a restricted embedded post card.
+    def _extract_restricted_embedded_post_images(self, card: Tag) -> list[Image]:
+        images = []
+        seen = set()
+
+        for img in card.find_all("img"):
+            src = img.get("src", "")
+            if "pbs.twimg.com/tweet_video_thumb/" not in src:
+                continue
+            if src in seen:
+                continue
+
+            seen.add(src)
+            images.append(
+                Image.model_validate(
+                    {
+                        "name": "Post preview image",
+                        "link": src,
+                        "data": "",
+                        "mimetype": "",
+                    }
+                )
+            )
+
+        return images
+
+    # Extracts a source URL from a restricted embedded post card when available.
+    def _extract_restricted_embedded_post_source_url(self, card: Tag) -> str:
+        for link in card.find_all("a"):
+            href = link.get("href") or ""
+            if "/status/" not in href:
+                continue
+
+            return href if href.startswith("http") else f"https://x.com{href}"
+
+        return ""
 
     # Combines restricted tweet body and article card results without duplicate images.
     def _merge_restricted_results(

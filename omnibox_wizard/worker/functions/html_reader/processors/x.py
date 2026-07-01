@@ -589,6 +589,10 @@ class XProcessor(HTMLReaderBaseProcessor):
         if not self._is_effective_metadata_text(text):
             return None
 
+        body_text = self._extract_body_text_by_metadata_anchor(soup, text)
+        if body_text:
+            text = body_text
+
         image_urls = self._filter_content_image_urls(image_urls)
         if not image_urls:
             og_image = self._meta_property_content(soup, "og:image")
@@ -695,6 +699,34 @@ class XProcessor(HTMLReaderBaseProcessor):
 
         return result
 
+    def _extract_body_text_by_metadata_anchor(
+        self, soup: BeautifulSoup, text: str
+    ) -> str:
+        anchor = self._find_text_anchor(soup, text)
+        if not anchor:
+            return ""
+
+        current = anchor.parent
+        for _ in range(4):
+            if not isinstance(current, Tag):
+                break
+
+            if self._is_restricted_tweet_text_container(current):
+                return current.get_text("\n", strip=True)
+
+            current = current.parent
+
+        return ""
+
+    def _is_restricted_tweet_text_container(self, tag: Tag) -> bool:
+        classes = tag.get("class") or []
+        return bool(
+            tag.name in {"div", "span"}
+            and "whitespace-pre-wrap" in classes
+            and "break-words" in classes
+            and "font-normal" in classes
+        )
+
     def _extract_body_image_urls_near_text(
         self, soup: BeautifulSoup, text: str
     ) -> list[str]:
@@ -720,7 +752,22 @@ class XProcessor(HTMLReaderBaseProcessor):
         if not anchor:
             return None
 
-        return soup.find(string=lambda value: value and anchor in value)
+        for node in soup.find_all(
+            string=lambda value: value and anchor in " ".join(value.split())
+        ):
+            parent = node.parent
+            if not isinstance(parent, Tag):
+                continue
+            if parent.name in {"title", "script", "style"}:
+                continue
+            if parent.find_parent("head"):
+                continue
+            if "sr-only" in (parent.get("class") or []):
+                continue
+
+            return node
+
+        return None
 
     def _metadata_text_anchor(self, text: str) -> str:
         normalized = " ".join((text or "").split())

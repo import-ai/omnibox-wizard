@@ -1,9 +1,11 @@
 from urllib.parse import urlparse
 import re
 import logging
+import json
 from bs4 import BeautifulSoup, Tag
 from html2text import html2text
 from opentelemetry import trace
+from html import unescape
 
 from wizard_common.worker.entity import GeneratedContent, Image
 from omnibox_wizard.worker.functions.html_reader.processors.base import (
@@ -39,6 +41,11 @@ class XProcessor(HTMLReaderBaseProcessor):
                     result = self._convert_tweet(main_tweet_container)
                 else:
                     result = self._convert_tweet(soup)
+
+        if not self._has_effective_content(result):
+            restricted_result = self._convert_restricted_tweet(soup)
+            if restricted_result:
+                result = restricted_result
 
         if result.images:
             image_links = [(img.link, img.name) for img in result.images]
@@ -400,6 +407,354 @@ class XProcessor(HTMLReaderBaseProcessor):
                 or cell.find(attrs={"data-testid": "longformRichTextComponent"})
             )
         )
+
+    # Checks whether the existing full-DOM parser produced usable content.
+    def _has_effective_content(self, result: GeneratedContent) -> bool:
+        return bool((result.markdown or "").strip() or result.images)
+
+    # Entry point for restricted/share pages that do not expose full tweet DOM.
+    def _convert_restricted_tweet(self, soup: BeautifulSoup) -> GeneratedContent | None:
+        locator_text = self._extract_restricted_locator_text(soup)
+        text_result = None
+
+        if locator_text:
+            text_container = self._find_restricted_text_container(soup, locator_text)
+            if text_container:
+                text_result = self._convert_restricted_text_container(text_container)
+
+        card_result = self._convert_restricted_article_card(soup)
+
+        if text_result and card_result:
+            return self._merge_restricted_results(text_result, card_result)
+
+        if text_result:
+            return text_result
+
+        if card_result:
+            return card_result
+
+        return None
+
+    # Converts the matched restricted text container into a GeneratedContent result.
+    def _convert_restricted_text_container(
+        self, container: Tag
+    ) -> GeneratedContent | None:
+        markdown = self._restricted_text_container_to_markdown(container)
+        if not self._is_effective_restricted_text(markdown):
+            return None
+
+        images = self._extract_restricted_images_near_container(container)
+        title = next(
+            (line.strip() for line in markdown.splitlines() if line.strip()), None
+        )
+
+        return GeneratedContent(title=title, markdown=markdown, images=images or None)
+
+    # Extracts metadata text used only to locate the main restricted tweet body.
+    def _extract_restricted_locator_text(self, soup: BeautifulSoup) -> str:
+        posting = self._find_social_media_posting(soup)
+        if posting:
+            text = (posting.get("articleBody") or "").strip()
+            if self._is_effective_restricted_text(text):
+                return text
+
+        og_description = self._meta_property_content(soup, "og:description")
+        if self._is_effective_restricted_text(og_description):
+            return og_description
+
+        return ""
+
+    # Finds the restricted body container matching the metadata locator text.
+    def _find_restricted_text_container(
+        self, soup: BeautifulSoup, locator_text: str
+    ) -> Tag | None:
+        anchor = self._normalize_restricted_match_text(locator_text)[:80]
+        if len(anchor) < 20:
+            return None
+
+        candidates = []
+        for tag in soup.find_all(self._is_restricted_text_container):
+            match_text = self._restricted_container_match_text(tag)
+            if anchor not in match_text:
+                continue
+            candidates.append(tag)
+        if not candidates:
+            return None
+        return max(
+            candidates, key=lambda tag: len(self._restricted_container_match_text(tag))
+        )
+
+    # Checks whether a tag looks like a restricted/share tweet text container.
+    def _is_restricted_text_container(self, tag: Tag) -> bool:
+        classes = tag.get("class") or []
+        return bool(
+            tag.name in {"div", "span"}
+            and "whitespace-pre-wrap" in classes
+            and "break-words" in classes
+            and "font-normal" in classes
+        )
+
+    # Builds comparable plain text from a restricted text container.
+    def _restricted_container_match_text(self, tag: Tag) -> str:
+        parts = []
+
+        for child in tag.children:
+            if isinstance(child, str):
+                parts.append(child)
+                continue
+            if not isinstance(child, Tag):
+                continue
+            parts.append(child.get_text("", strip=False))
+
+        return self._normalize_restricted_match_text("".join(parts))
+
+    # Converts a restricted text container into Markdown while preserving links.
+    def _restricted_text_container_to_markdown(self, tag: Tag) -> str:
+        parts = []
+
+        for child in tag.children:
+            if isinstance(child, str):
+                parts.append(child)
+                continue
+
+            if not isinstance(child, Tag):
+                continue
+
+            if child.name == "a":
+                label = child.get_text("", strip=True)
+                href = child.get("href") or ""
+                if label and href:
+                    parts.append(f"[{label}]({href})")
+                else:
+                    parts.append(label)
+                continue
+
+            for img in child.find_all("img"):
+                if "abs.twimg.com/emoji" in (img.get("src", "")):
+                    img.replace_with(img.get("alt", ""))
+
+            parts.append(child.get_text("", strip=False))
+
+        markdown = "".join(parts)
+        markdown = markdown.replace('href="/', 'href="https://x.com/')
+        markdown = re.sub(r"\n{3,}", "\n\n", markdown)
+        return markdown.strip()
+
+    # Extracts content images near the matched restricted body container.
+    def _extract_restricted_images_near_container(self, container: Tag) -> list[Image]:
+        best_image_urls = []
+        current = container
+
+        for _ in range(8):
+            if not isinstance(current, Tag):
+                break
+
+            image_urls = self._extract_restricted_content_image_urls(current)
+            if len(image_urls) > len(best_image_urls):
+                best_image_urls = image_urls
+
+            current = current.parent
+
+        return [
+            Image.model_validate(
+                {
+                    "name": url,
+                    "link": url,
+                    "data": "",
+                    "mimetype": "",
+                }
+            )
+            for url in best_image_urls
+        ]
+
+    # Collects unique non-profile image URLs from a restricted body subtree.
+    def _extract_restricted_content_image_urls(self, container: Tag) -> list[str]:
+        seen = set()
+        image_urls = []
+
+        for img in container.find_all("img"):
+            src = img.get("src", "")
+            if not self._is_restricted_body_media_image(src):
+                continue
+            if src in seen:
+                continue
+
+            seen.add(src)
+            image_urls.append(src)
+
+        return image_urls
+
+    # Checks whether an image URL belongs to restricted tweet body media.
+    def _is_restricted_body_media_image(self, src: str) -> bool:
+        return bool(self._is_content_image(src) and "pbs.twimg.com/media/" in src)
+
+    # Parses article preview cards shown on restricted/share pages.
+    def _convert_restricted_article_card(
+        self, soup: BeautifulSoup
+    ) -> GeneratedContent | None:
+        article_link = soup.select_one('a[href^="/i/article/"]')
+        if not article_link:
+            return None
+
+        article_url = article_link.get("href") or ""
+        if article_url.startswith("/"):
+            article_url = f"https://x.com{article_url}"
+
+        card = article_link
+        title = ""
+        summary = ""
+        image_url = ""
+
+        for img in card.find_all("img"):
+            src = img.get("src", "")
+            if self._is_content_image(src):
+                image_url = src
+                break
+
+        title_tag = card.find(
+            lambda tag: (
+                isinstance(tag, Tag)
+                and tag.name == "div"
+                and "text-headline2" in (tag.get("class") or [])
+            )
+        )
+        if title_tag:
+            title = title_tag.get_text("\n", strip=True)
+
+        summary_tag = card.find(
+            lambda tag: (
+                isinstance(tag, Tag)
+                and tag.name == "div"
+                and "line-clamp-4" in (tag.get("class") or [])
+            )
+        )
+        if summary_tag:
+            summary = summary_tag.get_text("\n", strip=True)
+
+        if not title and not summary and not image_url:
+            return None
+
+        markdown_parts = []
+        images = []
+
+        if image_url:
+            images.append(
+                Image.model_validate(
+                    {
+                        "name": "Article cover image",
+                        "link": image_url,
+                        "data": "",
+                        "mimetype": "",
+                    }
+                )
+            )
+            markdown_parts.append(f"![Article cover image]({image_url})")
+
+        if title:
+            markdown_parts.append(f"# {title}")
+
+        if summary:
+            markdown_parts.append(summary)
+
+        if article_url:
+            markdown_parts.append(f"Source: {article_url}")
+
+        return GeneratedContent(
+            title=title or None,
+            markdown="\n\n".join(markdown_parts),
+            images=images or None,
+        )
+
+    # Combines restricted tweet body and article card results without duplicate images.
+    def _merge_restricted_results(
+        self, text_result: GeneratedContent, card_result: GeneratedContent
+    ) -> GeneratedContent:
+        markdown_parts = []
+
+        if text_result.markdown:
+            markdown_parts.append(text_result.markdown.strip())
+
+        if card_result.markdown:
+            markdown_parts.append(card_result.markdown.strip())
+
+        images = []
+        seen_images = set()
+
+        for image in (text_result.images or []) + (card_result.images or []):
+            if image.link in seen_images:
+                continue
+
+            seen_images.add(image.link)
+            images.append(image)
+
+        return GeneratedContent(
+            title=text_result.title or card_result.title,
+            markdown="\n\n".join(markdown_parts),
+            images=images or None,
+        )
+
+    # Finds SocialMediaPosting metadata from X JSON-LD scripts.
+    def _find_social_media_posting(self, soup: BeautifulSoup) -> dict | None:
+        for script in soup.select('script[type="application/ld+json"]'):
+            raw = script.string or script.get_text()
+            if not raw:
+                continue
+
+            try:
+                data = json.loads(raw)
+            except json.JSONDecodeError:
+                continue
+
+            posting = self._search_social_media_posting(data)
+            if posting:
+                return posting
+
+        return None
+
+    # Recursively searches nested JSON-LD values for SocialMediaPosting.
+    def _search_social_media_posting(self, value) -> dict | None:
+        if not isinstance(value, dict | list):
+            return None
+
+        if isinstance(value, dict):
+            if value.get("@type") == "SocialMediaPosting":
+                return value
+            for item in value.values():
+                found = self._search_social_media_posting(item)
+                if found:
+                    return found
+            return None
+        for item in value:
+            found = self._search_social_media_posting(item)
+            if found:
+                return found
+        return None
+
+    # Filters metadata text that is too weak or belongs to the X app shell.
+    def _is_effective_restricted_text(self, text: str) -> bool:
+        text = (text or "").strip()
+        if len(text) <= 10:
+            return False
+
+        if re.fullmatch(r"https?://\S+", text):
+            return False
+
+        blocked_texts = [
+            "Log in",
+            "Sign in",
+            "New to X?",
+            "From breaking news and entertainment to sports and politics, get the full story with all the live commentary.",
+        ]
+        return not any(blocked_text in text for blocked_text in blocked_texts)
+
+    # Reads a meta[property=...] content value from restricted/share pages.
+    def _meta_property_content(self, soup: BeautifulSoup, property_name: str) -> str:
+        tag = soup.find("meta", attrs={"property": property_name})
+        return (tag.get("content") or "").strip() if tag else ""
+
+    # Normalizes text for comparing metadata locators with restricted body content.
+    def _normalize_restricted_match_text(self, text: str) -> str:
+        return " ".join(unescape(text or "").split())
 
     def _convert_tweet_thread(self, tweet_containers: list[Tag]) -> GeneratedContent:
         contents = []

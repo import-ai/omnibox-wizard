@@ -714,13 +714,39 @@ class XProcessor(HTMLReaderBaseProcessor):
                 break
 
             if self._is_restricted_tweet_text_container(current):
-                candidate = current.get_text("\n", strip=True)
+                candidate = self._restricted_text_container_to_markdown(current)
                 if len(candidate) > len(best_text):
                     best_text = candidate
 
             current = current.parent
 
         return best_text
+
+    def _restricted_text_container_to_markdown(self, tag: Tag) -> str:
+        parts = []
+
+        for child in tag.children:
+            if isinstance(child, str):
+                parts.append(child)
+                continue
+
+            if not isinstance(child, Tag):
+                continue
+
+            if child.name == "a":
+                label = child.get_text("", strip=True)
+                href = child.get("href") or ""
+                if label and href:
+                    parts.append(f"[{label}]({href})")
+                else:
+                    parts.append(label)
+                continue
+
+            parts.append(child.get_text("", strip=False))
+
+        markdown = "".join(parts)
+        markdown = re.sub(r"\n{3,}", "\n\n", markdown)
+        return markdown.strip()
 
     def _is_restricted_tweet_text_container(self, tag: Tag) -> bool:
         classes = tag.get("class") or []

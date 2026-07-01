@@ -597,8 +597,9 @@ class XProcessor(HTMLReaderBaseProcessor):
         if not image_urls:
             og_image = self._meta_property_content(soup, "og:image")
             image_urls = self._filter_content_image_urls([og_image])
-        if not image_urls:
-            image_urls = self._extract_body_image_urls_near_text(soup, text)
+        body_image_urls = self._extract_body_image_urls_near_text(soup, text)
+        if len(body_image_urls) > len(image_urls):
+            image_urls = body_image_urls
 
         markdown_parts = []
         if author_handle:
@@ -764,18 +765,20 @@ class XProcessor(HTMLReaderBaseProcessor):
         if not anchor:
             return []
 
+        best_image_urls = []
         current = anchor.parent
+
         for _ in range(8):
             if not isinstance(current, Tag):
                 break
 
             image_urls = self._extract_content_image_urls(current)
-            if image_urls:
-                return image_urls
+            if len(image_urls) > len(best_image_urls):
+                best_image_urls = image_urls
 
             current = current.parent
 
-        return []
+        return best_image_urls
 
     def _find_text_anchor(self, soup: BeautifulSoup, text: str):
         anchor = self._metadata_text_anchor(text)

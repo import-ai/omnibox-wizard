@@ -419,17 +419,22 @@ class XProcessor(HTMLReaderBaseProcessor):
 
         author_handle = self._extract_restricted_author_handle(soup)
 
-        if locator_text:
-            text_container = self._find_restricted_text_container(soup, locator_text)
-            if text_container:
-                text_result = self._convert_restricted_text_container(
-                    text_container, author_handle
-                )
+        text_container = self._select_restricted_text_container(soup, locator_text)
+        if text_container:
+            text_result = self._convert_restricted_text_container(
+                text_container, author_handle
+            )
+
+        media_result = (
+            self._convert_restricted_body_media(soup, author_handle)
+            if not text_result
+            else None
+        )
 
         card_result = self._convert_restricted_article_card(soup)
         link_preview_result = self._convert_restricted_link_preview_card(soup)
         embedded_post_result = self._convert_restricted_embedded_post_card(soup)
-        result = text_result
+        result = text_result or media_result
 
         if card_result:
             result = (
@@ -480,6 +485,39 @@ class XProcessor(HTMLReaderBaseProcessor):
             images=images or None,
         )
 
+    # Converts restricted body media into content when no text body is available.
+    def _convert_restricted_body_media(
+        self, soup: BeautifulSoup, author_handle: str
+    ) -> GeneratedContent | None:
+        image_urls = self._extract_restricted_content_image_urls(soup)
+        if not image_urls:
+            return None
+
+        images = [
+            Image.model_validate(
+                {
+                    "name": url,
+                    "link": url,
+                    "data": "",
+                    "mimetype": "",
+                }
+            )
+            for url in image_urls
+        ]
+
+        markdown_parts = []
+        if author_handle:
+            markdown_parts.append(author_handle)
+
+        for image in images:
+            markdown_parts.append(f"![{image.name or image.link}]({image.link})")
+
+        return GeneratedContent(
+            title=author_handle or None,
+            markdown="\n\n".join(markdown_parts),
+            images=images,
+        )
+
     # Extracts metadata text used only to locate the main restricted tweet body.
     def _extract_restricted_locator_text(self, soup: BeautifulSoup) -> str:
         posting = self._find_social_media_posting(soup)
@@ -509,6 +547,112 @@ class XProcessor(HTMLReaderBaseProcessor):
             return ""
 
         return handle if handle.startswith("@") else f"@{handle}"
+
+    # Selects the best restricted main tweet text container from body candidates.
+    def _select_restricted_text_container(
+        self, soup: BeautifulSoup, locator_text: str
+    ) -> Tag | None:
+        candidates = self._restricted_text_container_candidates(soup)
+        if not candidates:
+            return None
+
+        anchors = self._restricted_locator_anchors(locator_text)
+
+        scored = [
+            (self._score_restricted_text_container(candidate, anchors), candidate)
+            for candidate in candidates
+        ]
+        scored = [(score, candidate) for score, candidate in scored if score > 0]
+        if not scored:
+            return None
+
+        scored.sort(
+            key=lambda item: (
+                item[0],
+                len(self._restricted_container_match_text(item[1])),
+            ),
+            reverse=True,
+        )
+        return scored[0][1]
+
+    # Collects restricted body text candidates outside cards and app-shell noise.
+    def _restricted_text_container_candidates(self, soup: BeautifulSoup) -> list[Tag]:
+        candidates = []
+
+        for tag in soup.find_all("div"):
+            if not isinstance(tag, Tag):
+                continue
+
+            if not self._is_restricted_text_container(tag):
+                continue
+
+            if self._is_inside_restricted_article_card(tag):
+                continue
+
+            if self._is_inside_restricted_embedded_post_card(tag):
+                continue
+
+            text = self._restricted_container_match_text(tag)
+            if not self._is_effective_restricted_text(text):
+                continue
+
+            candidates.append(tag)
+
+        return candidates
+
+    # Scores how likely a restricted text container is the main tweet body.
+    def _score_restricted_text_container(
+        self, candidate: Tag, anchors: list[str]
+    ) -> int:
+        text = self._restricted_container_match_text(candidate)
+        if not self._is_effective_restricted_text(text):
+            return 0
+
+        score = 1
+
+        for anchor in anchors:
+            if anchor in text:
+                score += 100 if len(anchor) >= 20 else 60
+                continue
+
+            overlap = self._restricted_text_overlap_score(anchor, text)
+            if overlap >= 6:
+                score += min(overlap * 4, 40)
+
+        score += min(len(text) // 80, 8)
+        return score
+
+    # Builds locator anchors that can match restricted body text variants.
+    def _restricted_locator_anchors(self, locator_text: str) -> list[str]:
+        normalized = self._normalize_restricted_match_text(locator_text)
+        variants = [normalized]
+
+        without_leading_mentions = re.sub(r"^(?:@\w+\s+)+", "", normalized).strip()
+        if without_leading_mentions and without_leading_mentions != normalized:
+            variants.append(without_leading_mentions)
+
+        anchors = []
+        seen = set()
+
+        for variant in variants:
+            anchor = variant[:80]
+            if len(anchor) < 12 or anchor in seen:
+                continue
+
+            seen.add(anchor)
+            anchors.append(anchor)
+
+        return anchors
+
+    # Measures useful word/token overlap between a locator anchor and body text.
+    def _restricted_text_overlap_score(self, anchor: str, text: str) -> int:
+        anchor_tokens = set(re.findall(r"[\w@]+", anchor.lower()))
+        text_tokens = set(re.findall(r"[\w@]+", text.lower()))
+
+        if not anchor_tokens or not text_tokens:
+            return 0
+
+        return len(anchor_tokens & text_tokens)
 
     # Finds the restricted body container matching the metadata locator text.
     def _find_restricted_text_container(
@@ -994,6 +1138,7 @@ class XProcessor(HTMLReaderBaseProcessor):
             "Log in",
             "Sign in",
             "New to X?",
+            "People on X are the first to know.",
             "From breaking news and entertainment to sports and politics, get the full story with all the live commentary.",
         ]
         return not any(blocked_text in text for blocked_text in blocked_texts)

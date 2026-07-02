@@ -778,6 +778,9 @@ class XProcessor(HTMLReaderBaseProcessor):
             if self._is_inside_restricted_embedded_post_card(img):
                 continue
 
+            if self._is_inside_restricted_link_preview_card(img):
+                continue
+
             src = img.get("src", "")
             if not (
                 self._is_restricted_body_media_image(src)
@@ -796,6 +799,10 @@ class XProcessor(HTMLReaderBaseProcessor):
     def _is_inside_restricted_embedded_post_card(self, tag: Tag) -> bool:
         return bool(tag.find_parent(self._is_restricted_embedded_post_card))
 
+    # Checks whether an image belongs to a restricted external link preview card.
+    def _is_inside_restricted_link_preview_card(self, tag: Tag) -> bool:
+        return bool(tag.find_parent(self._is_restricted_link_preview_card))
+
     # Checks whether an image belongs to a restricted article preview card.
     def _is_inside_restricted_article_card(self, tag: Tag) -> bool:
         return bool(
@@ -803,6 +810,17 @@ class XProcessor(HTMLReaderBaseProcessor):
                 "a", href=lambda href: href and href.startswith("/i/article/")
             )
         )
+
+    # Checks whether a tag belongs to a restricted external link preview card.
+    def _is_restricted_link_preview_card(self, tag: Tag) -> bool:
+        if not isinstance(tag, Tag):
+            return False
+
+        for link in tag.find_all("a"):
+            if self._is_restricted_link_preview_source(link):
+                return True
+
+        return False
 
     # Checks whether an image URL belongs to restricted main tweet video preview media.
     def _is_restricted_video_preview_image(self, src: str) -> bool:
@@ -891,18 +909,60 @@ class XProcessor(HTMLReaderBaseProcessor):
             images=images or None,
         )
 
+    # Checks whether a URL points back to X rather than an external target.
+    def _is_x_internal_url(self, href: str) -> bool:
+        return bool(
+            href.startswith("/")
+            or href.startswith("https://x.com/")
+            or href.startswith("https://twitter.com/")
+        )
+
+    # Checks whether a link is the "From domain" source line of an external preview.
+    def _is_restricted_link_preview_source(self, link: Tag) -> bool:
+        href = link.get("href") or ""
+        text = link.get_text(" ", strip=True)
+
+        return bool(
+            link.name == "a"
+            and href
+            and not self._is_x_internal_url(href)
+            and re.fullmatch(r"From\s+\S+", text)
+        )
+
+    # Finds the primary preview link paired with a restricted external source link.
+    def _find_restricted_link_preview_primary_link(
+        self, source_link: Tag
+    ) -> Tag | None:
+        href = source_link.get("href") or ""
+
+        for sibling in source_link.find_previous_siblings("a"):
+            sibling_href = sibling.get("href") or ""
+            if sibling_href == href:
+                return sibling
+
+        return None
+
+    # Checks whether an image URL belongs to a restricted external link preview.
+    def _is_restricted_link_preview_image(self, src: str) -> bool:
+        return bool(
+            self._is_content_image(src)
+            and ("pbs.twimg.com/card_img/" in src or "pbs.twimg.com/media/" in src)
+        )
+
     # Parses external link preview cards shown on restricted/share pages.
     def _convert_restricted_link_preview_card(
         self, soup: BeautifulSoup
     ) -> GeneratedContent | None:
-        for link in soup.find_all("a"):
-            href = link.get("href") or ""
-            if not href or href.startswith("/i/article/"):
+        for source_link in soup.find_all("a"):
+            if not self._is_restricted_link_preview_source(source_link):
                 continue
 
-            image = link.find(
-                "img", src=lambda src: src and "pbs.twimg.com/card_img/" in src
-            )
+            href = source_link.get("href") or ""
+            primary_link = self._find_restricted_link_preview_primary_link(source_link)
+            if not primary_link:
+                continue
+
+            image = primary_link.find("img", src=self._is_restricted_link_preview_image)
             if not image:
                 continue
 

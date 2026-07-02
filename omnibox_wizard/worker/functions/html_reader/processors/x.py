@@ -1,9 +1,11 @@
 from urllib.parse import urlparse
 import re
 import logging
+import json
 from bs4 import BeautifulSoup, Tag
 from html2text import html2text
 from opentelemetry import trace
+from html import unescape
 
 from wizard_common.worker.entity import GeneratedContent, Image
 from omnibox_wizard.worker.functions.html_reader.processors.base import (
@@ -39,6 +41,11 @@ class XProcessor(HTMLReaderBaseProcessor):
                     result = self._convert_tweet(main_tweet_container)
                 else:
                     result = self._convert_tweet(soup)
+
+        if not self._has_effective_content(result):
+            restricted_result = self._convert_restricted_tweet(soup)
+            if restricted_result:
+                result = restricted_result
 
         if result.images:
             image_links = [(img.link, img.name) for img in result.images]
@@ -400,6 +407,830 @@ class XProcessor(HTMLReaderBaseProcessor):
                 or cell.find(attrs={"data-testid": "longformRichTextComponent"})
             )
         )
+
+    # Checks whether the existing full-DOM parser produced usable content.
+    def _has_effective_content(self, result: GeneratedContent) -> bool:
+        return bool((result.markdown or "").strip() or result.images)
+
+    # Entry point for restricted/share pages that do not expose full tweet DOM.
+    def _convert_restricted_tweet(self, soup: BeautifulSoup) -> GeneratedContent | None:
+        locator_text = self._extract_restricted_locator_text(soup)
+        text_result = None
+
+        author_handle = self._extract_restricted_author_handle(soup)
+
+        text_container = self._select_restricted_text_container(soup, locator_text)
+        if text_container:
+            text_result = self._convert_restricted_text_container(
+                text_container, author_handle
+            )
+
+        media_result = (
+            self._convert_restricted_body_media(soup, author_handle)
+            if not text_result
+            else None
+        )
+
+        card_result = self._convert_restricted_article_card(soup)
+        link_preview_result = self._convert_restricted_link_preview_card(soup)
+        embedded_post_result = self._convert_restricted_embedded_post_card(soup)
+        result = text_result or media_result
+
+        if card_result:
+            result = (
+                self._merge_restricted_results(result, card_result)
+                if result
+                else card_result
+            )
+        if link_preview_result:
+            result = (
+                self._merge_restricted_results(result, link_preview_result)
+                if result
+                else link_preview_result
+            )
+        if embedded_post_result:
+            result = (
+                self._merge_restricted_results(result, embedded_post_result)
+                if result
+                else embedded_post_result
+            )
+
+        return result
+
+    # Converts the matched restricted text container into a GeneratedContent result.
+    def _convert_restricted_text_container(
+        self, container: Tag, author_handle: str
+    ) -> GeneratedContent | None:
+        body_markdown = self._restricted_text_container_to_markdown(container)
+        if not self._is_effective_restricted_text(body_markdown):
+            return None
+
+        images = self._extract_restricted_images_near_container(container)
+        title = next(
+            (line.strip() for line in body_markdown.splitlines() if line.strip()), None
+        )
+
+        markdown_parts = []
+        if author_handle:
+            markdown_parts.append(author_handle)
+
+        markdown_parts.append(body_markdown)
+
+        for image in images:
+            markdown_parts.append(f"![{image.name or image.link}]({image.link})")
+
+        return GeneratedContent(
+            title=title,
+            markdown="\n\n".join(markdown_parts),
+            images=images or None,
+        )
+
+    # Converts restricted body media into content when no text body is available.
+    def _convert_restricted_body_media(
+        self, soup: BeautifulSoup, author_handle: str
+    ) -> GeneratedContent | None:
+        image_urls = self._extract_restricted_content_image_urls(soup)
+        if not image_urls:
+            return None
+
+        images = [
+            Image.model_validate(
+                {
+                    "name": url,
+                    "link": url,
+                    "data": "",
+                    "mimetype": "",
+                }
+            )
+            for url in image_urls
+        ]
+
+        markdown_parts = []
+        if author_handle:
+            markdown_parts.append(author_handle)
+
+        for image in images:
+            markdown_parts.append(f"![{image.name or image.link}]({image.link})")
+
+        return GeneratedContent(
+            title=author_handle or None,
+            markdown="\n\n".join(markdown_parts),
+            images=images,
+        )
+
+    # Extracts metadata text used only to locate the main restricted tweet body.
+    def _extract_restricted_locator_text(self, soup: BeautifulSoup) -> str:
+        posting = self._find_social_media_posting(soup)
+        if posting:
+            text = (posting.get("articleBody") or "").strip()
+            if self._is_effective_restricted_text(text):
+                return text
+
+        og_description = self._meta_property_content(soup, "og:description")
+        if self._is_effective_restricted_text(og_description):
+            return og_description
+
+        return ""
+
+    # Extracts the author handle from restricted page metadata.
+    def _extract_restricted_author_handle(self, soup: BeautifulSoup) -> str:
+        posting = self._find_social_media_posting(soup)
+        if not posting:
+            return ""
+
+        author = posting.get("author") or {}
+        if not isinstance(author, dict):
+            return ""
+
+        handle = (author.get("alternateName") or "").strip()
+        if not handle:
+            return ""
+
+        return handle if handle.startswith("@") else f"@{handle}"
+
+    # Selects the best restricted main tweet text container from body candidates.
+    def _select_restricted_text_container(
+        self, soup: BeautifulSoup, locator_text: str
+    ) -> Tag | None:
+        candidates = self._restricted_text_container_candidates(soup)
+        if not candidates:
+            return None
+
+        anchors = self._restricted_locator_anchors(locator_text)
+
+        scored = [
+            (self._score_restricted_text_container(candidate, anchors), candidate)
+            for candidate in candidates
+        ]
+        scored = [(score, candidate) for score, candidate in scored if score > 0]
+        if not scored:
+            return None
+
+        scored.sort(
+            key=lambda item: (
+                item[0],
+                len(self._restricted_container_match_text(item[1])),
+            ),
+            reverse=True,
+        )
+        return scored[0][1]
+
+    # Collects restricted body text candidates outside cards and app-shell noise.
+    def _restricted_text_container_candidates(self, soup: BeautifulSoup) -> list[Tag]:
+        candidates = []
+
+        for tag in soup.find_all("div"):
+            if not isinstance(tag, Tag):
+                continue
+
+            if not self._is_restricted_text_container(tag):
+                continue
+
+            if self._is_inside_restricted_article_card(tag):
+                continue
+
+            if self._is_inside_restricted_embedded_post_card(tag):
+                continue
+
+            text = self._restricted_container_match_text(tag)
+            if not self._is_effective_restricted_text(text):
+                continue
+
+            candidates.append(tag)
+
+        return candidates
+
+    # Scores how likely a restricted text container is the main tweet body.
+    def _score_restricted_text_container(
+        self, candidate: Tag, anchors: list[str]
+    ) -> int:
+        text = self._restricted_container_match_text(candidate)
+        if not self._is_effective_restricted_text(text):
+            return 0
+
+        score = 1
+
+        for anchor in anchors:
+            if anchor in text:
+                score += 100 if len(anchor) >= 20 else 60
+                continue
+
+            overlap = self._restricted_text_overlap_score(anchor, text)
+            if overlap >= 6:
+                score += min(overlap * 4, 40)
+
+        score += min(len(text) // 80, 8)
+        return score
+
+    # Builds locator anchors that can match restricted body text variants.
+    def _restricted_locator_anchors(self, locator_text: str) -> list[str]:
+        normalized = self._normalize_restricted_match_text(locator_text)
+        variants = [normalized]
+
+        without_leading_mentions = re.sub(r"^(?:@\w+\s+)+", "", normalized).strip()
+        if without_leading_mentions and without_leading_mentions != normalized:
+            variants.append(without_leading_mentions)
+
+        anchors = []
+        seen = set()
+
+        for variant in variants:
+            anchor = variant[:80]
+            if len(anchor) < 12 or anchor in seen:
+                continue
+
+            seen.add(anchor)
+            anchors.append(anchor)
+
+        return anchors
+
+    # Measures useful word/token overlap between a locator anchor and body text.
+    def _restricted_text_overlap_score(self, anchor: str, text: str) -> int:
+        anchor_tokens = set(re.findall(r"[\w@]+", anchor.lower()))
+        text_tokens = set(re.findall(r"[\w@]+", text.lower()))
+
+        if not anchor_tokens or not text_tokens:
+            return 0
+
+        return len(anchor_tokens & text_tokens)
+
+    # Finds the restricted body container matching the metadata locator text.
+    def _find_restricted_text_container(
+        self, soup: BeautifulSoup, locator_text: str
+    ) -> Tag | None:
+        anchor = self._normalize_restricted_match_text(locator_text)[:80]
+        if len(anchor) < 12:
+            return None
+
+        matches = []
+
+        for tag in soup.find_all("div"):
+            if not isinstance(tag, Tag):
+                continue
+
+            if not self._is_restricted_text_container(tag):
+                continue
+
+            text = self._restricted_container_match_text(tag)
+            if anchor in text:
+                matches.append(tag)
+
+        if len(matches) == 1:
+            return matches[0]
+
+        if len(anchor) >= 20 and matches:
+            return matches[0]
+
+        return None
+
+    # Checks whether a tag looks like a restricted/share tweet text container.
+    def _is_restricted_text_container(self, tag: Tag) -> bool:
+        classes = tag.get("class") or []
+        return bool(
+            tag.name in {"div", "span"}
+            and "whitespace-pre-wrap" in classes
+            and "break-words" in classes
+            and "font-normal" in classes
+        )
+
+    # Builds comparable plain text from a restricted text container.
+    def _restricted_container_match_text(self, tag: Tag) -> str:
+        parts = []
+
+        for child in tag.children:
+            if isinstance(child, str):
+                parts.append(child)
+                continue
+            if not isinstance(child, Tag):
+                continue
+            parts.append(child.get_text("", strip=False))
+
+        return self._normalize_restricted_match_text("".join(parts))
+
+    # Converts a restricted text container into Markdown while preserving links.
+    def _restricted_text_container_to_markdown(self, tag: Tag) -> str:
+        parts = []
+
+        for child in tag.children:
+            if isinstance(child, str):
+                parts.append(child)
+                continue
+
+            if not isinstance(child, Tag):
+                continue
+
+            if child.name == "a":
+                label = child.get_text("", strip=True)
+                href = self._absolute_x_url(child.get("href") or "")
+                if label and href:
+                    parts.append(f"[{label}]({href})")
+                else:
+                    parts.append(label)
+                continue
+
+            for img in child.find_all("img"):
+                if "abs.twimg.com/emoji" in (img.get("src", "")):
+                    img.replace_with(img.get("alt", ""))
+
+            parts.append(child.get_text("", strip=False))
+
+        markdown = "".join(parts)
+        markdown = re.sub(r"\n{3,}", "\n\n", markdown)
+        return markdown.strip()
+
+    # Extracts content images near the matched restricted body container.
+    def _extract_restricted_images_near_container(self, container: Tag) -> list[Image]:
+        best_image_urls = []
+        current = container
+
+        for _ in range(8):
+            if not isinstance(current, Tag):
+                break
+
+            image_urls = self._extract_restricted_content_image_urls(current)
+            if len(image_urls) > len(best_image_urls):
+                best_image_urls = image_urls
+
+            current = current.parent
+
+        return [
+            Image.model_validate(
+                {
+                    "name": url,
+                    "link": url,
+                    "data": "",
+                    "mimetype": "",
+                }
+            )
+            for url in best_image_urls
+        ]
+
+    # Collects unique non-profile image URLs from a restricted body subtree.
+    def _extract_restricted_content_image_urls(self, container: Tag) -> list[str]:
+        seen = set()
+        image_urls = []
+
+        for img in container.find_all("img"):
+            if self._is_inside_restricted_article_card(img):
+                continue
+
+            if self._is_inside_restricted_embedded_post_card(img):
+                continue
+
+            if self._is_inside_restricted_link_preview_card(img):
+                continue
+
+            src = img.get("src", "")
+            if not (
+                self._is_restricted_body_media_image(src)
+                or self._is_restricted_video_preview_image(src)
+            ):
+                continue
+            if src in seen:
+                continue
+
+            seen.add(src)
+            image_urls.append(src)
+
+        return image_urls
+
+    # Checks whether an image belongs to a restricted embedded post card.
+    def _is_inside_restricted_embedded_post_card(self, tag: Tag) -> bool:
+        return bool(tag.find_parent(self._is_restricted_embedded_post_card))
+
+    # Checks whether an image belongs to a restricted external link preview card.
+    def _is_inside_restricted_link_preview_card(self, tag: Tag) -> bool:
+        primary_link = tag.find_parent("a")
+        if not isinstance(primary_link, Tag):
+            return False
+        return self._is_restricted_link_preview_primary_link(primary_link)
+
+    # Checks whether an image belongs to a restricted article preview card.
+    def _is_inside_restricted_article_card(self, tag: Tag) -> bool:
+        return bool(
+            tag.find_parent(
+                "a", href=lambda href: href and href.startswith("/i/article/")
+            )
+        )
+
+    # Checks whether an image URL belongs to restricted main tweet video preview media.
+    def _is_restricted_video_preview_image(self, src: str) -> bool:
+        return bool(
+            self._is_content_image(src) and "pbs.twimg.com/amplify_video_thumb/" in src
+        )
+
+    # Checks whether an image URL belongs to restricted tweet body media.
+    def _is_restricted_body_media_image(self, src: str) -> bool:
+        return bool(self._is_content_image(src) and "pbs.twimg.com/media/" in src)
+
+    # Parses article preview cards shown on restricted/share pages.
+    def _convert_restricted_article_card(
+        self, soup: BeautifulSoup
+    ) -> GeneratedContent | None:
+        article_link = soup.select_one('a[href^="/i/article/"]')
+        if not article_link:
+            return None
+
+        article_url = article_link.get("href") or ""
+        if article_url.startswith("/"):
+            article_url = f"https://x.com{article_url}"
+
+        card = article_link
+        title = ""
+        summary = ""
+        image_url = ""
+
+        for img in card.find_all("img"):
+            src = img.get("src", "")
+            if self._is_content_image(src):
+                image_url = src
+                break
+
+        title_tag = card.find(
+            lambda tag: (
+                isinstance(tag, Tag)
+                and tag.name == "div"
+                and "text-headline2" in (tag.get("class") or [])
+            )
+        )
+        if title_tag:
+            title = title_tag.get_text("\n", strip=True)
+
+        summary_tag = card.find(
+            lambda tag: (
+                isinstance(tag, Tag)
+                and tag.name == "div"
+                and "line-clamp-4" in (tag.get("class") or [])
+            )
+        )
+        if summary_tag:
+            summary = summary_tag.get_text("\n", strip=True)
+
+        if not title and not summary and not image_url:
+            return None
+
+        markdown_parts = []
+        images = []
+
+        if image_url:
+            images.append(
+                Image.model_validate(
+                    {
+                        "name": "Article cover image",
+                        "link": image_url,
+                        "data": "",
+                        "mimetype": "",
+                    }
+                )
+            )
+            markdown_parts.append(f"![Article cover image]({image_url})")
+
+        if title:
+            markdown_parts.append(f"# {title}")
+
+        if summary:
+            markdown_parts.append(summary)
+
+        if article_url:
+            markdown_parts.append(f"Source: {article_url}")
+
+        return GeneratedContent(
+            title=title or None,
+            markdown="\n\n".join(markdown_parts),
+            images=images or None,
+        )
+
+    # Checks whether a URL points back to X rather than an external target.
+    def _is_x_internal_url(self, href: str) -> bool:
+        return bool(
+            href.startswith("/")
+            or href.startswith("https://x.com/")
+            or href.startswith("https://twitter.com/")
+        )
+
+    # Converts X relative links to absolute URLs for Markdown output.
+    def _absolute_x_url(self, href: str) -> str:
+        if href.startswith("/"):
+            return f"https://x.com{href}"
+        return href
+
+    # Checks whether a link is the "From domain" source line of an external preview.
+    def _is_restricted_link_preview_source(self, link: Tag) -> bool:
+        href = link.get("href") or ""
+        text = link.get_text(" ", strip=True)
+
+        return bool(
+            link.name == "a"
+            and href
+            and not self._is_x_internal_url(href)
+            and re.fullmatch(r"From\s+\S+", text)
+        )
+
+    # Finds the primary preview link paired with a restricted external source link.
+    def _find_restricted_link_preview_primary_link(
+        self, source_link: Tag
+    ) -> Tag | None:
+        href = source_link.get("href") or ""
+
+        for sibling in source_link.find_previous_siblings("a"):
+            sibling_href = sibling.get("href") or ""
+            if sibling_href == href:
+                return sibling
+
+        return None
+
+    # Checks whether an image URL belongs to a restricted external link preview.
+    def _is_restricted_link_preview_image(self, src: str) -> bool:
+        return bool(
+            self._is_content_image(src)
+            and ("pbs.twimg.com/card_img/" in src or "pbs.twimg.com/media/" in src)
+        )
+
+    # Parses external link preview cards shown on restricted/share pages.
+    def _convert_restricted_link_preview_card(
+        self, soup: BeautifulSoup
+    ) -> GeneratedContent | None:
+        for source_link in soup.find_all("a"):
+            if not self._is_restricted_link_preview_source(source_link):
+                continue
+
+            href = source_link.get("href") or ""
+            primary_link = self._find_restricted_link_preview_primary_link(source_link)
+            if not primary_link:
+                continue
+
+            image = primary_link.find("img", src=self._is_restricted_link_preview_image)
+            if not image:
+                continue
+
+            image_url = image.get("src", "")
+            markdown = "\n\n".join(
+                [
+                    f"![Link preview image]({image_url})",
+                    f"Source: [{href}]({href})",
+                ]
+            )
+
+            return GeneratedContent(
+                title=None,
+                markdown=markdown,
+                images=[
+                    Image.model_validate(
+                        {
+                            "name": "Link preview image",
+                            "link": image_url,
+                            "data": "",
+                            "mimetype": "",
+                        }
+                    )
+                ],
+            )
+
+        return None
+
+    # Parses embedded post cards shown on restricted/share pages.
+    def _convert_restricted_embedded_post_card(
+        self, soup: BeautifulSoup
+    ) -> GeneratedContent | None:
+        for card in soup.find_all(attrs={"role": "link"}):
+            if not self._is_restricted_embedded_post_card(card):
+                continue
+
+            handle = self._extract_restricted_embedded_post_handle(card)
+            text_container = self._find_restricted_embedded_post_text_container(card)
+            if not text_container:
+                continue
+
+            body_markdown = self._restricted_text_container_to_markdown(text_container)
+            if not self._is_effective_restricted_text(body_markdown):
+                continue
+
+            images = self._extract_restricted_embedded_post_images(card)
+            source_url = self._extract_restricted_embedded_post_source_url(card)
+
+            parts = []
+            if handle:
+                parts.append(handle)
+
+            parts.append(body_markdown)
+
+            for image in images:
+                parts.append(f"![{image.name or image.link}]({image.link})")
+
+            if source_url:
+                parts.append(f"Source: [{source_url}]({source_url})")
+
+            return GeneratedContent(
+                title=None,
+                markdown=self._format_quote_block("Quoted post", parts),
+                images=images or None,
+            )
+
+        return None
+
+    # Checks whether a role=link block looks like an embedded post card.
+    def _is_restricted_embedded_post_card(self, card: Tag) -> bool:
+        classes = card.get("class") or []
+        if card.find("a", href=lambda href: href and href.startswith("/i/article/")):
+            return False
+
+        return bool(
+            card.get("role") == "link"
+            and "rounded-2xl" in classes
+            and "border" in classes
+            and self._extract_restricted_embedded_post_source_url(card)
+            and self._extract_restricted_embedded_post_handle(card)
+            and self._find_restricted_embedded_post_text_container(card)
+        )
+
+    # Checks whether an anchor is the primary visual link of an external preview card.
+    def _is_restricted_link_preview_primary_link(self, link: Tag) -> bool:
+        href = link.get("href") or ""
+        if not href or self._is_x_internal_url(href):
+            return False
+
+        if not link.find("img", src=self._is_restricted_link_preview_image):
+            return False
+
+        parent = link.parent
+        if not isinstance(parent, Tag):
+            return False
+
+        for sibling in link.find_next_siblings("a"):
+            sibling_href = sibling.get("href") or ""
+            if sibling_href != href:
+                continue
+
+            if self._is_restricted_link_preview_source(sibling):
+                return True
+
+        return False
+
+    # Extracts the author handle from a restricted embedded post card.
+    def _extract_restricted_embedded_post_handle(self, card: Tag) -> str:
+        for link in card.find_all("a"):
+            text = link.get_text(" ", strip=True)
+            match = re.search(r"@[\w_]+", text)
+            if match:
+                return match.group()
+
+        return ""
+
+    # Finds the main text container inside a restricted embedded post card.
+    def _find_restricted_embedded_post_text_container(self, card: Tag) -> Tag | None:
+        candidates = []
+
+        for tag in card.find_all(self._is_restricted_text_container):
+            text = self._restricted_container_match_text(tag)
+            if not self._is_effective_restricted_text(text):
+                continue
+            if re.fullmatch(r"@[\w_]+", text):
+                continue
+
+            candidates.append(tag)
+
+        if not candidates:
+            return None
+
+        return max(
+            candidates, key=lambda tag: len(self._restricted_container_match_text(tag))
+        )
+
+    # Extracts GIF/video preview images from a restricted embedded post card.
+    def _extract_restricted_embedded_post_images(self, card: Tag) -> list[Image]:
+        images = []
+        seen = set()
+
+        for img in card.find_all("img"):
+            src = img.get("src", "")
+            if not self._is_restricted_embedded_post_media_image(src):
+                continue
+            if src in seen:
+                continue
+
+            seen.add(src)
+            images.append(
+                Image.model_validate(
+                    {
+                        "name": "Post preview image",
+                        "link": src,
+                        "data": "",
+                        "mimetype": "",
+                    }
+                )
+            )
+
+        return images
+
+    # Checks whether an image URL belongs to restricted embedded post media.
+    def _is_restricted_embedded_post_media_image(self, src: str) -> bool:
+        return bool(
+            self._is_restricted_body_media_image(src)
+            or "pbs.twimg.com/tweet_video_thumb/" in src
+        )
+
+    # Extracts a source URL from a restricted embedded post card when available.
+    def _extract_restricted_embedded_post_source_url(self, card: Tag) -> str:
+        for link in card.find_all("a"):
+            href = link.get("href") or ""
+            if "/status/" not in href:
+                continue
+
+            return href if href.startswith("http") else f"https://x.com{href}"
+
+        return ""
+
+    # Combines restricted tweet body and article card results without duplicate images.
+    def _merge_restricted_results(
+        self, text_result: GeneratedContent, card_result: GeneratedContent
+    ) -> GeneratedContent:
+        markdown_parts = []
+
+        if text_result.markdown:
+            markdown_parts.append(text_result.markdown.strip())
+
+        if card_result.markdown:
+            markdown_parts.append(card_result.markdown.strip())
+
+        images = []
+        seen_images = set()
+
+        for image in (text_result.images or []) + (card_result.images or []):
+            if image.link in seen_images:
+                continue
+
+            seen_images.add(image.link)
+            images.append(image)
+
+        return GeneratedContent(
+            title=text_result.title or card_result.title,
+            markdown="\n\n".join(markdown_parts),
+            images=images or None,
+        )
+
+    # Finds SocialMediaPosting metadata from X JSON-LD scripts.
+    def _find_social_media_posting(self, soup: BeautifulSoup) -> dict | None:
+        for script in soup.select('script[type="application/ld+json"]'):
+            raw = script.string or script.get_text()
+            if not raw:
+                continue
+
+            try:
+                data = json.loads(raw)
+            except json.JSONDecodeError:
+                continue
+
+            posting = self._search_social_media_posting(data)
+            if posting:
+                return posting
+
+        return None
+
+    # Recursively searches nested JSON-LD values for SocialMediaPosting.
+    def _search_social_media_posting(self, value) -> dict | None:
+        if not isinstance(value, dict | list):
+            return None
+
+        if isinstance(value, dict):
+            if value.get("@type") == "SocialMediaPosting":
+                return value
+            for item in value.values():
+                found = self._search_social_media_posting(item)
+                if found:
+                    return found
+            return None
+        for item in value:
+            found = self._search_social_media_posting(item)
+            if found:
+                return found
+        return None
+
+    # Filters metadata text that is too weak or belongs to the X app shell.
+    def _is_effective_restricted_text(self, text: str) -> bool:
+        text = (text or "").strip()
+        if len(text) <= 10:
+            return False
+
+        if re.fullmatch(r"https?://\S+", text):
+            return False
+
+        blocked_texts = [
+            "Log in",
+            "Sign in",
+            "New to X?",
+            "People on X are the first to know.",
+            "From breaking news and entertainment to sports and politics, get the full story with all the live commentary.",
+        ]
+        return not any(blocked_text in text for blocked_text in blocked_texts)
+
+    # Reads a meta[property=...] content value from restricted/share pages.
+    def _meta_property_content(self, soup: BeautifulSoup, property_name: str) -> str:
+        tag = soup.find("meta", attrs={"property": property_name})
+        return (tag.get("content") or "").strip() if tag else ""
+
+    # Normalizes text for comparing metadata locators with restricted body content.
+    def _normalize_restricted_match_text(self, text: str) -> str:
+        return " ".join(unescape(text or "").split())
 
     def _convert_tweet_thread(self, tweet_containers: list[Tag]) -> GeneratedContent:
         contents = []

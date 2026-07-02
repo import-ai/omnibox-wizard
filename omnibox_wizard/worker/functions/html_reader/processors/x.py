@@ -721,7 +721,7 @@ class XProcessor(HTMLReaderBaseProcessor):
 
             if child.name == "a":
                 label = child.get_text("", strip=True)
-                href = child.get("href") or ""
+                href = self._absolute_x_url(child.get("href") or "")
                 if label and href:
                     parts.append(f"[{label}]({href})")
                 else:
@@ -735,7 +735,6 @@ class XProcessor(HTMLReaderBaseProcessor):
             parts.append(child.get_text("", strip=False))
 
         markdown = "".join(parts)
-        markdown = markdown.replace('href="/', 'href="https://x.com/')
         markdown = re.sub(r"\n{3,}", "\n\n", markdown)
         return markdown.strip()
 
@@ -801,7 +800,10 @@ class XProcessor(HTMLReaderBaseProcessor):
 
     # Checks whether an image belongs to a restricted external link preview card.
     def _is_inside_restricted_link_preview_card(self, tag: Tag) -> bool:
-        return bool(tag.find_parent(self._is_restricted_link_preview_card))
+        primary_link = tag.find_parent("a")
+        if not isinstance(primary_link, Tag):
+            return False
+        return self._is_restricted_link_preview_primary_link(primary_link)
 
     # Checks whether an image belongs to a restricted article preview card.
     def _is_inside_restricted_article_card(self, tag: Tag) -> bool:
@@ -810,17 +812,6 @@ class XProcessor(HTMLReaderBaseProcessor):
                 "a", href=lambda href: href and href.startswith("/i/article/")
             )
         )
-
-    # Checks whether a tag belongs to a restricted external link preview card.
-    def _is_restricted_link_preview_card(self, tag: Tag) -> bool:
-        if not isinstance(tag, Tag):
-            return False
-
-        for link in tag.find_all("a"):
-            if self._is_restricted_link_preview_source(link):
-                return True
-
-        return False
 
     # Checks whether an image URL belongs to restricted main tweet video preview media.
     def _is_restricted_video_preview_image(self, src: str) -> bool:
@@ -916,6 +907,12 @@ class XProcessor(HTMLReaderBaseProcessor):
             or href.startswith("https://x.com/")
             or href.startswith("https://twitter.com/")
         )
+
+    # Converts X relative links to absolute URLs for Markdown output.
+    def _absolute_x_url(self, href: str) -> str:
+        if href.startswith("/"):
+            return f"https://x.com{href}"
+        return href
 
     # Checks whether a link is the "From domain" source line of an external preview.
     def _is_restricted_link_preview_source(self, link: Tag) -> bool:
@@ -1045,6 +1042,29 @@ class XProcessor(HTMLReaderBaseProcessor):
             and self._extract_restricted_embedded_post_handle(card)
             and self._find_restricted_embedded_post_text_container(card)
         )
+
+    # Checks whether an anchor is the primary visual link of an external preview card.
+    def _is_restricted_link_preview_primary_link(self, link: Tag) -> bool:
+        href = link.get("href") or ""
+        if not href or self._is_x_internal_url(href):
+            return False
+
+        if not link.find("img", src=self._is_restricted_link_preview_image):
+            return False
+
+        parent = link.parent
+        if not isinstance(parent, Tag):
+            return False
+
+        for sibling in link.find_next_siblings("a"):
+            sibling_href = sibling.get("href") or ""
+            if sibling_href != href:
+                continue
+
+            if self._is_restricted_link_preview_source(sibling):
+                return True
+
+        return False
 
     # Extracts the author handle from a restricted embedded post card.
     def _extract_restricted_embedded_post_handle(self, card: Tag) -> str:

@@ -1,6 +1,6 @@
-# DEVELOPER.md
+# AGENTS.md
 
-This file provides guidance to developers when working with code in this repository.
+This file provides guidance to coding agents when working with code in this repository.
 
 ## Project Overview
 
@@ -14,28 +14,28 @@ OmniBox Wizard is a Python FastAPI service that provides AI-powered document pro
 
 ```bash
 # Install dependencies
-poetry install
+uv sync
 
 # Development API server (port 8001)
-poetry run python -m uvicorn omnibox_wizard.wizard.api.server:app --reload --port 8001
+uv run uvicorn omnibox_wizard.wizard.api.server:app --port 8001 --reload --env-file .env
 
 # Worker service (with 1 worker)
-poetry run python main.py --workers 1
+uv run python main.py --workers 1
 
 # Production Docker build
 docker build -t omnibox-wizard .
 
 # Testing
-poetry run pytest                                    # Run all tests
-poetry run pytest tests/omnibox_wizard/test_x.py    # Run specific test file
-poetry run pytest -k "test_name"                    # Run tests matching pattern
-poetry run pytest -v                                # Verbose output
-poetry run pytest -s                                # Show print output
+uv run pytest                                    # Run all tests
+uv run pytest tests/omnibox_wizard/test_x.py    # Run specific test file
+uv run pytest -k "test_name"                    # Run tests matching pattern
+uv run pytest -v                                # Verbose output
+uv run pytest -s                                # Show print output
 
 # Linting and formatting
-poetry run ruff check --fix                         # Lint and auto-fix
-poetry run ruff format                              # Format code
-poetry run pre-commit run --all-files              # Run pre-commit hooks
+uv run ruff check --fix                         # Lint and auto-fix
+uv run ruff format                              # Format code
+uv run pre-commit run --all-files               # Run pre-commit hooks
 ```
 
 ## Architecture
@@ -129,6 +129,7 @@ Tests follow the pattern `tests/omnibox_wizard/test_*.py` and `tests/omnibox_wiz
 ## Tech Stack
 
 - **Python**: 3.12+
+- **Package manager**: uv
 - **API**: FastAPI, Uvicorn, Pydantic
 - **AI**: OpenAI API, LangChain (partial)
 - **Search**: Weaviate (vector), SearXNG (web)

@@ -1,6 +1,6 @@
-# DEVELOPER.md
+# AGENTS.md
 
-This file provides guidance to developers when working with code in this repository.
+This file provides guidance to coding agents when working with code in this repository.
 
 ## Project Overview
 
@@ -13,47 +13,57 @@ OmniBox Wizard is a Python FastAPI service that provides AI-powered document pro
 ## Quick Commands
 
 ```bash
+# Initialize shared modules after a fresh clone
+git submodule update --init --recursive
+
 # Install dependencies
-poetry install
+uv sync
+
+# Create local env file
+cp example.env .env
 
 # Development API server (port 8001)
-poetry run python -m uvicorn omnibox_wizard.wizard.api.server:app --reload --port 8001
+uv run uvicorn omnibox_wizard.wizard.api.server:app --port 8001 --reload --env-file .env
 
-# Worker service (with 1 worker)
-poetry run python main.py --workers 1
+# Worker service
+uv run python main.py
 
 # Production Docker build
 docker build -t omnibox-wizard .
 
 # Testing
-poetry run pytest                                    # Run all tests
-poetry run pytest tests/omnibox_wizard/test_x.py    # Run specific test file
-poetry run pytest -k "test_name"                    # Run tests matching pattern
-poetry run pytest -v                                # Verbose output
-poetry run pytest -s                                # Show print output
+uv run pytest                                    # Run all tests
+uv run pytest tests/omnibox_wizard/test_x.py    # Run specific test file
+uv run pytest -k "test_name"                    # Run tests matching pattern
+uv run pytest -v                                # Verbose output
+uv run pytest -s                                # Show print output
 
 # Linting and formatting
-poetry run ruff check --fix                         # Lint and auto-fix
-poetry run ruff format                              # Format code
-poetry run pre-commit run --all-files              # Run pre-commit hooks
+uv run ruff check --fix                         # Lint and auto-fix
+uv run ruff format                              # Format code
+uv run pre-commit run --all-files               # Run pre-commit hooks
 ```
+
+`compose.yaml` defines `wizard`, `wizard-worker`, and `weaviate`. The backend service is expected separately unless `OBW_BACKEND_BASE_URL` is overridden.
 
 ## Architecture
 
-### Agent System (`omnibox_wizard/wizard/grimoire/`)
+### Agent System
 
-- **Agent** (`agent/agent.py`) - Base class for AI agents using OpenAI API
+- **API glue** (`omnibox_wizard/wizard/api/`) - FastAPI routers and startup wiring
+- **Agent implementations** (`wizard_common.grimoire.agent`) - Shared Ask/Write agents imported from the `wizard_common` submodule/package
+- **Agent** - Base class for AI agents using OpenAI API
   - Handles streaming responses, tool calling (custom and standard), thinking mode
   - `UserQueryPreprocessor` transforms user queries with tool/resource context
-- **Ask** (`agent/ask.py`) - Question answering agent
-- **Write** (`agent/write.py`) - Content writing agent
-- **ToolExecutor** (`agent/tool_executor.py`) - Executes tool calls from LLM responses
+- **Ask** - Question answering agent exposed at `/api/v1/wizard/ask`
+- **Write** - Content writing agent exposed at `/api/v1/wizard/write`
+- **Internal API** (`omnibox_wizard/wizard/api/internal.py`) - Search, title generation, Weaviate upsert, and capability endpoints
 
-### Retrieval System (`omnibox_wizard/wizard/grimoire/retriever/`)
+### Retrieval System
 
-- **WeaviateVectorRetriever** (`weaviate_vector_db.py`) - Vector search via Weaviate
-- **SearXNG** (`searxng.py`) - Web search integration
-- **Reranker** (`reranker.py`) - Post-processing reranking for improved results
+- **WeaviateVectorDB** (`wizard_common.grimoire.retriever.weaviate_vector_db`) - Vector search and writes via Weaviate
+- **Index chunking** (`omnibox_wizard/indexing.py`, `omnibox_wizard/chunk_offsets.py`) - Resource/message chunk construction before vector writes
+- **SearXNG/Reranker** - Shared grimoire tooling configured through `OBW_TOOLS_*`
 
 ### Worker Functions (`omnibox_wizard/worker/functions/`)
 
@@ -62,7 +72,9 @@ Each function extends `BaseFunction` and is registered in `Worker.worker_dict`:
 | Function | Purpose |
 |----------|---------|
 | `collect` / `HTMLReaderV2` | Advanced HTML content extraction with site-specific processors |
-| `file_reader` / `FileReader` | Multi-format file support (MD, Office, TXT) |
+| `collect_url` / `CollectUrlFunction` | Fetch URL HTML locally or through `OBW_TASK_SCRAPE_BASE_URL` |
+| `web_analysis` / `WebAnalysisFunction` | Route URLs toward collect, video note, or audio note tasks |
+| `file_reader_text` / `file_reader_ppt` / `file_reader_word` | Shared `FileReader` for multi-format file support |
 | `upsert_index` | Vector index upsert to Weaviate |
 | `delete_index` | Delete from vector index |
 | `upsert_message_index` | Index conversation messages |
@@ -78,7 +90,7 @@ The `HTMLReaderV2` uses a modular processor/selector pattern:
 
 ## Configuration
 
-All environment variables use the `OBW_` prefix. The `Loader` class in `common/config_loader.py` handles loading configs from environment.
+All environment variables use the `OBW_` prefix. The `Loader` class from the `common` submodule/package handles loading configs from environment. Use `example.env` as the local starting point.
 
 Key config modules:
 - `WorkerConfig` (`worker/config.py`) - Worker service configuration
@@ -92,11 +104,21 @@ Configure enabled worker functions via `OBW_TASK_FUNCTIONS`:
 OBW_TASK_FUNCTIONS=+all
 
 # Enable only specific functions
-OBW_TASK_FUNCTIONS=-all,+collect,+file_reader
+OBW_TASK_FUNCTIONS=-all,+collect,+file_reader_text
 
 # Disable specific functions
 OBW_TASK_FUNCTIONS=-collect
 ```
+
+### Worker Counts
+
+`main.py` starts one worker pool per function group. Tune counts with `OBW_FILE_READER_WORKER_NUM`, `OBW_INDEX_WORKER_NUM`, and `OBW_OTHER_WORKER_NUM`.
+
+### Health Checks
+
+- API server: `GET /api/v1/health`
+- Worker health server: `GET /health` on `OBW_HEALTH_PORT` (default `8000`) when `OBW_HEALTH_ENABLED` is true
+- Internal function capabilities: `GET /internal/api/v1/wizard/functions`
 
 ### Timeouts
 
@@ -105,11 +127,12 @@ Configure per-function timeouts via `FunctionTimeoutConfig` in `worker/config.py
 ## Prompt Templates
 
 Jinja2 templates in `omnibox_wizard/resources/prompt_templates/`:
-- `ask.j2` / `write.j2` - System prompts for agents
-- `tools.j2` - Tool descriptions
-- Includes support via `{% include %}` directive
+- `chat_title.j2` - Chat title generation
+- `tags_extract.j2` - Tag extraction
+- `html_title_extract.j2` - HTML title extraction
+- `html_content_extract.j2` - HTML content extraction
 
-The `TemplateParser` (`common/template_parser.py`) handles rendering.
+The `TemplateParser` from the `common` submodule/package handles rendering.
 
 ## OpenTelemetry
 
@@ -129,6 +152,7 @@ Tests follow the pattern `tests/omnibox_wizard/test_*.py` and `tests/omnibox_wiz
 ## Tech Stack
 
 - **Python**: 3.12+
+- **Package manager**: uv
 - **API**: FastAPI, Uvicorn, Pydantic
 - **AI**: OpenAI API, LangChain (partial)
 - **Search**: Weaviate (vector), SearXNG (web)
@@ -156,6 +180,7 @@ Tests follow the pattern `tests/omnibox_wizard/test_*.py` and `tests/omnibox_wiz
 
 **Rules**:
 
+- Branch names must start with a conventional type prefix, e.g. `feat/`, `fix/`, `chore/`, `docs/`, `refactor/`, `test/`, or `build/`.
 - Scope is required (e.g., `auth`, `resources`, `user`)
 - Description in sentence case with capital first letter
 - Use present tense action verbs (Add, Fix, Support, Update, Replace, Optimize)
@@ -173,5 +198,5 @@ refactor(tasks): Add timeout status handling
 
 **Do NOT include**:
 
-- "Generated with Claude Code" or similar attribution
-- "Co-Authored-By: Claude" or any Claude co-author tags
+- "Generated with xxx" or similar attribution
+- "Co-Authored-By: xxx" or any co-author tags

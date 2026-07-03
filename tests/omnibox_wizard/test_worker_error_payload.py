@@ -23,9 +23,7 @@ async def test_worker_preserves_common_exception_code(trace_info: TraceInfo):
         )
     )
     worker.task_manager = SimpleNamespace(
-        run_with_timeout_and_cancellation=lambda task, router, trace_info: router(
-            task, trace_info
-        )
+        run_with_timeout=lambda task, router, trace_info: router(task, trace_info)
     )
     task = Task(
         id="test",

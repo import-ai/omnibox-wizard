@@ -8,6 +8,10 @@ from common.tracing import setup_opentelemetry
 from omnibox_wizard.worker.config import ENV_PREFIX, WorkerConfig
 from omnibox_wizard.worker.health_server import HealthServer
 from omnibox_wizard.worker.health_tracker import HealthTracker
+from omnibox_wizard.worker.heartbeat_process import (
+    HEARTBEAT_INTERVAL_SECONDS,
+    HeartbeatReporter,
+)
 from omnibox_wizard.worker.worker import (
     FILE_READER_FUNCTIONS,
     INDEX_FUNCTIONS,
@@ -24,9 +28,10 @@ async def run_worker(
     id: int,
     functions: list[str],
     health_tracker: HealthTracker,
+    heartbeat_reporter: HeartbeatReporter,
 ):
     logger = get_logger(f"worker-{id}")
-    worker = Worker(config, id, functions, health_tracker)
+    worker = Worker(config, id, functions, heartbeat_reporter, health_tracker)
     while True:
         try:
             # Poll the backend for the next task this worker can handle. When
@@ -57,6 +62,16 @@ async def main():
     )
 
     health_tracker = HealthTracker()
+
+    # One shared subprocess reports heartbeats for every worker, so reporting is
+    # immune to this event loop being starved by long-running task processing.
+    heartbeat_reporter = HeartbeatReporter(
+        config.backend.base_url,
+        HEARTBEAT_INTERVAL_SECONDS,
+        asyncio.get_running_loop(),
+    )
+    heartbeat_reporter.start()
+
     tasks = []
     worker_id = 0
     for num, group in (
@@ -65,7 +80,15 @@ async def main():
         (config.other_worker_num, OTHER_FUNCTIONS),
     ):
         for _ in range(num):
-            tasks.append(run_worker(config, worker_id, sorted(group), health_tracker))
+            tasks.append(
+                run_worker(
+                    config,
+                    worker_id,
+                    sorted(group),
+                    health_tracker,
+                    heartbeat_reporter,
+                )
+            )
             worker_id += 1
 
     # Add health server if enabled
@@ -74,7 +97,10 @@ async def main():
         logger.info(f"Starting health check server on port {config.health.port}")
         tasks.append(health_server.start())
 
-    await asyncio.gather(*tasks)
+    try:
+        await asyncio.gather(*tasks)
+    finally:
+        heartbeat_reporter.stop()
 
 
 if __name__ == "__main__":

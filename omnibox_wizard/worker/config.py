@@ -88,9 +88,6 @@ class TaskConfig(BaseModel):
         default_factory=FunctionTimeoutConfig,
         description="Function-specific timeout overrides",
     )
-    cancellation_check_interval: int = Field(
-        default=3, description="Interval in seconds to check for task cancellation"
-    )
     scrape_base_url: str | None = Field(default=None)
 
 

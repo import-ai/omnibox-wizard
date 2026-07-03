@@ -180,6 +180,7 @@ Tests follow the pattern `tests/omnibox_wizard/test_*.py` and `tests/omnibox_wiz
 
 **Rules**:
 
+- Branch names must start with a conventional type prefix, e.g. `feat/`, `fix/`, `chore/`, `docs/`, `refactor/`, `test/`, or `build/`.
 - Scope is required (e.g., `auth`, `resources`, `user`)
 - Description in sentence case with capital first letter
 - Use present tense action verbs (Add, Fix, Support, Update, Replace, Optimize)
@@ -197,5 +198,5 @@ refactor(tasks): Add timeout status handling
 
 **Do NOT include**:
 
-- "Generated with Claude Code" or similar attribution
-- "Co-Authored-By: Claude" or any Claude co-author tags
+- "Generated with xxx" or similar attribution
+- "Co-Authored-By: xxx" or any co-author tags

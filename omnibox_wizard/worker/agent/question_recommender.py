@@ -38,7 +38,7 @@ class RecentResource(BaseModel):
     )
 
 
-class QuestionRecommendInput(BaseModel):
+class QuestionRecommendContext(BaseModel):
     recent_resources: list[RecentResource] = Field(
         default_factory=list,
         description="The user's recently updated resources.",
@@ -49,6 +49,9 @@ class QuestionRecommendInput(BaseModel):
     recent_questions: list[str] = Field(
         default_factory=list, description="Questions the user asked recently."
     )
+
+
+class QuestionRecommendInput(QuestionRecommendContext):
     max_questions: int = Field(
         default=3, description="Maximum number of questions to generate."
     )

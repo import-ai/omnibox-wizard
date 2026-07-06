@@ -3,7 +3,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from omnibox_wizard.worker.agent.question_recommender import (
-    RecentResource,
+    QuestionRecommendContext,
     RecommendedQuestion,
 )
 from wizard_common.grimoire.entity.index_record import IndexRecord, IndexRecordType
@@ -64,24 +64,10 @@ class UpsertWeaviateMessageRequest(BaseModel):
     message: UpsertWeaviateMessage
 
 
-class RecommendQuestionsContext(BaseModel):
-    recent_resources: list[RecentResource] = Field(
-        default_factory=list, description="recently updated resources"
-    )
-    recent_tags: list[str] = Field(
-        default_factory=list, description="names of recently used tags"
-    )
-    recent_questions: list[str] = Field(
-        default_factory=list, description="recently asked questions"
-    )
-
-
 class RecommendQuestionsRequest(BaseModel):
     namespace_id: str = Field(description="namespace id")
     user_id: str = Field(description="user id")
-    context: RecommendQuestionsContext = Field(
-        default_factory=RecommendQuestionsContext
-    )
+    context: QuestionRecommendContext = Field(default_factory=QuestionRecommendContext)
     max_questions: int = Field(
         default=3, ge=1, le=10, description="maximum number of questions"
     )

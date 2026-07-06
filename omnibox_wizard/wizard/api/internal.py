@@ -24,6 +24,7 @@ from omnibox_wizard.worker.agent.chat_title_generator import (
 )
 from omnibox_wizard.worker.agent.question_recommender import (
     QuestionRecommender,
+    QuestionRecommendInput,
     QuestionRecommendOutput,
 )
 from omnibox_wizard.worker.config import TaskConfig
@@ -75,12 +76,10 @@ async def recommend_questions(
     trace_info: TraceInfo = Depends(get_trace_info),
 ):
     output: QuestionRecommendOutput = await question_recommender.ainvoke(
-        {
-            "recent_resources": request.context.recent_resources,
-            "recent_tags": request.context.recent_tags,
-            "recent_questions": request.context.recent_questions,
-            "max_questions": request.max_questions,
-        },
+        QuestionRecommendInput(
+            **request.context.model_dump(),
+            max_questions=request.max_questions,
+        ),
         trace_info=trace_info,
     )
     return RecommendQuestionsResponse(

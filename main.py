@@ -63,8 +63,6 @@ async def main():
 
     health_tracker = HealthTracker()
 
-    # One shared subprocess reports heartbeats for every worker, so reporting is
-    # immune to this event loop being starved by long-running task processing.
     heartbeat_reporter = HeartbeatReporter(
         config.backend.base_url,
         HEARTBEAT_INTERVAL_SECONDS,

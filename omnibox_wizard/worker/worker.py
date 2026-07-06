@@ -207,10 +207,6 @@ class Worker:
                 processed_task: Task = await self._run_task(task, trace_info)
                 await self.callback_util.send_callback(processed_task)
 
-            # The shared heartbeat subprocess reports on a fixed cadence immune
-            # to this loop being starved by long work. If the backend says we
-            # no longer own the task, the reporter cancels the work and raises
-            # LostOwnershipError; other cancellations (shutdown) pass through.
             try:
                 await self.heartbeat_reporter.run_owned(
                     task.id, self.worker_uid, process_and_callback()
@@ -247,7 +243,6 @@ class Worker:
         span = trace.get_current_span()
 
         try:
-            # Use TaskManager to run with timeout support
             output = await self.task_manager.run_with_timeout(
                 task, self.worker_router, trace_info
             )

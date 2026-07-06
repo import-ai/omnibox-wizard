@@ -11,8 +11,6 @@ tracer = trace.get_tracer(__name__)
 
 
 class TaskManager:
-    """Manages task lifecycle including timeout handling."""
-
     def __init__(self, config: WorkerConfig):
         self.config = config
 
@@ -23,7 +21,6 @@ class TaskManager:
         execution_func: Callable[[Task, TraceInfo], Any],
         trace_info: TraceInfo,
     ) -> Any:
-        """Run a task with timeout support."""
         span = trace.get_current_span()
 
         # Get function-specific timeout if configured, otherwise use global timeout

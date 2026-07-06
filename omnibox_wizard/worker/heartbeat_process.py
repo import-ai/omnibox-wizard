@@ -43,7 +43,6 @@ from common.logger import get_logger
 Command = tuple[str, str, str]  # ("register" | "deregister", task_id, worker_uid)
 Event = tuple[str, str, str]  # ("lost_ownership", task_id, worker_uid)
 
-# How often to report a heartbeat to the backend while a task is running.
 HEARTBEAT_INTERVAL_SECONDS = 5
 
 # Per-request timeout for heartbeat POSTs. The backend re-claims a task when it
@@ -52,11 +51,8 @@ HEARTBEAT_INTERVAL_SECONDS = 5
 # the other tasks' beats past that threshold.
 HEARTBEAT_REQUEST_TIMEOUT_SECONDS = 5
 
-# How often the parent's drain thread checks that the child is still alive.
 _CHILD_CHECK_INTERVAL_SECONDS = 5
 
-# Sentinel placed on a queue to tell the receiving loop to exit. Each queue only
-# ever carries its own message tuples, so ``None`` is unambiguous as a stop mark.
 _STOP = None
 
 T = TypeVar("T")
@@ -66,7 +62,7 @@ T = TypeVar("T")
 class _InFlight:
     """Parent-side record of a task currently inside ``run_owned()``."""
 
-    task: asyncio.Task  # the dedicated work task, so we can cancel it
+    task: asyncio.Task
     worker_uid: str  # so we can re-register with a restarted child
     lost: bool = False  # cancel was reporter-initiated (vs. e.g. shutdown)
 
@@ -87,14 +83,7 @@ def heartbeat_worker_main(
     event_q: "Queue[Event | None]",
 ) -> None:
     """Entry point for the heartbeat child process (must be importable at module
-    level so it is picklable under the ``spawn`` start method).
-
-    Commands received on ``command_q``:
-      ``("register", task_id, worker_uid)`` / ``("deregister", task_id, worker_uid)``
-      / ``None`` (stop)
-    Events emitted on ``event_q``:
-      ``("lost_ownership", task_id, worker_uid)``
-    """
+    level so it is picklable under the ``spawn`` start method)."""
     logger = get_logger("heartbeat_process")
     active: dict[str, str] = {}
 
@@ -129,7 +118,6 @@ def heartbeat_worker_main(
                         event_q.put(("lost_ownership", task_id, worker_uid))
                 continue
 
-            # Wait for the next command, but no longer than the next beat is due.
             try:
                 cmd = command_q.get(timeout=next_beat - now)
             except _queue.Empty:
@@ -255,8 +243,6 @@ class HeartbeatReporter:
                 entry.lost = True
                 work_task = entry.task
             try:
-                # The cancel targets exactly the work task; if it already
-                # finished by the time this runs, cancelling it is a no-op.
                 self._loop.call_soon_threadsafe(work_task.cancel)
             except RuntimeError:
                 # Loop already closed (shutdown); nothing left to cancel.

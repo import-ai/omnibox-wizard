@@ -408,7 +408,9 @@ class TestRecommendQuestionsAPI:
                         }
                     ],
                     "recent_tags": ["技术"],
-                    "recent_questions": [],
+                    "recent_questions": [
+                        {"question": "RAG 和微调有什么区别？", "is_recommended": True}
+                    ],
                 },
                 "max_questions": 3,
             },
@@ -435,8 +437,28 @@ class TestRecommendQuestionsAPI:
         assert resource.created_at == "2026-07-01T00:00:00.000Z"
         assert resource.updated_at == "2026-07-05T12:00:00.000Z"
         assert input_arg.recent_tags == ["技术"]
-        assert input_arg.recent_questions == []
+        assert len(input_arg.recent_questions) == 1
+        assert input_arg.recent_questions[0].question == "RAG 和微调有什么区别？"
+        assert input_arg.recent_questions[0].is_recommended is True
         assert input_arg.max_questions == 3
+
+    async def test_recommend_questions_accepts_legacy_string_questions(
+        self, client, mock_question_recommender
+    ):
+        response = client.post(
+            "/internal/api/v1/wizard/recommend_questions",
+            json={
+                "namespace_id": "ns_1",
+                "user_id": "user_1",
+                "context": {"recent_questions": ["old style question"]},
+            },
+        )
+
+        assert response.status_code == 200
+        input_arg = mock_question_recommender.ainvoke.call_args.args[0]
+        assert len(input_arg.recent_questions) == 1
+        assert input_arg.recent_questions[0].question == "old style question"
+        assert input_arg.recent_questions[0].is_recommended is False
 
     async def test_recommend_questions_missing_required_fields(
         self, client, mock_question_recommender

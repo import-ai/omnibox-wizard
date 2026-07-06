@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from omnibox_wizard.worker.agent.base import BaseAgent
 
@@ -38,6 +38,14 @@ class RecentResource(BaseModel):
     )
 
 
+class RecentQuestion(BaseModel):
+    question: str = Field(description="The question the user asked.")
+    is_recommended: bool = Field(
+        default=False,
+        description="Whether the conversation was started from a previously recommended question.",
+    )
+
+
 class QuestionRecommendContext(BaseModel):
     recent_resources: list[RecentResource] = Field(
         default_factory=list,
@@ -46,9 +54,16 @@ class QuestionRecommendContext(BaseModel):
     recent_tags: list[str] = Field(
         default_factory=list, description="Names of recently used tags."
     )
-    recent_questions: list[str] = Field(
+    recent_questions: list[RecentQuestion] = Field(
         default_factory=list, description="Questions the user asked recently."
     )
+
+    @field_validator("recent_questions", mode="before")
+    @classmethod
+    def _coerce_recent_questions(cls, v):
+        if isinstance(v, list):
+            return [{"question": item} if isinstance(item, str) else item for item in v]
+        return v
 
 
 class QuestionRecommendInput(QuestionRecommendContext):
@@ -86,7 +101,17 @@ examples = [
                 },
             ],
             "recent_tags": ["技术", "笔记"],
-            "recent_questions": ["RAG 和微调有什么区别？"],
+            "recent_questions": [
+                {"question": "RAG 和微调有什么区别？", "is_recommended": False},
+                {
+                    "question": "帮我总结一下 LLM 入门指南的核心内容",
+                    "is_recommended": True,
+                },
+                {
+                    "question": "帮我总结一下 AI 知识库搭建方案的要点",
+                    "is_recommended": True,
+                },
+            ],
             "max_questions": 2,
         },
         {
@@ -97,9 +122,9 @@ examples = [
                     "reason": "用户近期有多个 AI 知识库相关资源",
                 },
                 {
-                    "question": "帮我总结一下 RAG 实践笔记的要点",
-                    "intent": "summarize",
-                    "reason": "用户最近更新了 RAG 实践笔记，并询问过 RAG 相关问题",
+                    "question": "RAG 落地时分块和召回策略应该怎么选？",
+                    "intent": "qa",
+                    "reason": "用户主动询问过 RAG 与微调的区别，且最近更新了 RAG 实践笔记，适合追问；总结类推荐已被多次采纳，转而推荐问答类问题",
                 },
             ]
         },

@@ -9,6 +9,8 @@ from omnibox_wizard.indexing import build_resource_chunks
 from omnibox_wizard.wizard.api.depends import get_trace_info
 from omnibox_wizard.wizard.api.entity import (
     CommonAITextRequest,
+    RecommendQuestionsRequest,
+    RecommendQuestionsResponse,
     SearchRequest,
     SearchResponse,
     TitleResponse,
@@ -19,6 +21,10 @@ from omnibox_wizard.wizard.config import ENV_PREFIX
 from omnibox_wizard.worker.agent.chat_title_generator import (
     ChatTitleGenerateOutput,
     ChatTitleGenerator,
+)
+from omnibox_wizard.worker.agent.question_recommender import (
+    QuestionRecommender,
+    QuestionRecommendOutput,
 )
 from omnibox_wizard.worker.config import TaskConfig
 from omnibox_wizard.worker.worker import compute_supported_functions
@@ -32,15 +38,17 @@ CHUNK_SIZE = 1024
 CHUNK_OVERLAP = 128
 vector_db: WeaviateVectorDB
 title_generator: ChatTitleGenerator
+question_recommender: QuestionRecommender
 capabilities: dict = {}
 
 
 async def init(_):
-    global title_generator, vector_db, capabilities
+    global title_generator, question_recommender, vector_db, capabilities
     loader = Loader(GrimoireAgentConfig, env_prefix=ENV_PREFIX)
     config: GrimoireAgentConfig = loader.load()
 
     title_generator = ChatTitleGenerator(config.grimoire.openai)
+    question_recommender = QuestionRecommender(config.grimoire.openai)
     vector_db = WeaviateVectorDB(config.vector)
 
     task_config = Loader(TaskConfig, env_prefix=f"{ENV_PREFIX}_TASK").load()
@@ -57,6 +65,27 @@ async def title(request: CommonAITextRequest):
         }
     )
     return TitleResponse(title=output.title)
+
+
+@internal_router.post(
+    "/recommend_questions", tags=["LLM"], response_model=RecommendQuestionsResponse
+)
+async def recommend_questions(
+    request: RecommendQuestionsRequest,
+    trace_info: TraceInfo = Depends(get_trace_info),
+):
+    output: QuestionRecommendOutput = await question_recommender.ainvoke(
+        {
+            "recent_resources": request.context.recent_resources,
+            "recent_tags": request.context.recent_tags,
+            "recent_questions": request.context.recent_questions,
+            "max_questions": request.max_questions,
+        },
+        trace_info=trace_info,
+    )
+    return RecommendQuestionsResponse(
+        questions=output.questions[: request.max_questions]
+    )
 
 
 @internal_router.post("/search", tags=[], response_model=SearchResponse)

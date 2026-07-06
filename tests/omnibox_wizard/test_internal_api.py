@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from fastapi.testclient import TestClient
 from fastapi import FastAPI
 from wizard_common.grimoire.entity.chunk import Chunk
@@ -360,3 +360,114 @@ class TestWeaviateUpsertAPI:
         assert response.status_code == 200
         assert response.json() == {"success": True}
         mock_weaviate_vector_db.upsert_message.assert_called_once()
+
+
+class TestRecommendQuestionsAPI:
+    """Test cases for /recommend_questions endpoint"""
+
+    @pytest.fixture
+    def mock_question_recommender(self, monkeypatch):
+        from omnibox_wizard.wizard.api import internal
+        from omnibox_wizard.worker.agent.question_recommender import (
+            QuestionRecommendOutput,
+            RecommendedQuestion,
+        )
+
+        mock_agent = MagicMock()
+        mock_agent.ainvoke = AsyncMock(
+            return_value=QuestionRecommendOutput(
+                questions=[
+                    RecommendedQuestion(
+                        question="帮我把 AI 知识库相关资源都打上 AI 知识库标签",
+                        intent="tag_operation",
+                        reason="用户近期有多个 AI 知识库相关资源",
+                    ),
+                ]
+            )
+        )
+        # The module-level global is annotation-only before init() runs.
+        monkeypatch.setattr(internal, "question_recommender", mock_agent, raising=False)
+        return mock_agent
+
+    async def test_recommend_questions(self, client, mock_question_recommender):
+        response = client.post(
+            "/internal/api/v1/wizard/recommend_questions",
+            json={
+                "namespace_id": "ns_1",
+                "user_id": "user_1",
+                "context": {
+                    "recent_resources": ["AI 知识库搭建方案"],
+                    "recent_tags": ["技术"],
+                    "recent_questions": [],
+                },
+                "max_questions": 3,
+            },
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["questions"]) == 1
+        assert (
+            data["questions"][0]["question"]
+            == "帮我把 AI 知识库相关资源都打上 AI 知识库标签"
+        )
+        assert data["questions"][0]["intent"] == "tag_operation"
+        assert data["questions"][0]["reason"] == "用户近期有多个 AI 知识库相关资源"
+        mock_question_recommender.ainvoke.assert_awaited_once()
+        context_arg = mock_question_recommender.ainvoke.call_args.args[0]
+        assert context_arg["recent_resources"] == ["AI 知识库搭建方案"]
+        assert context_arg["recent_tags"] == ["技术"]
+        assert context_arg["recent_questions"] == []
+        assert context_arg["max_questions"] == 3
+
+    async def test_recommend_questions_missing_required_fields(
+        self, client, mock_question_recommender
+    ):
+        response = client.post(
+            "/internal/api/v1/wizard/recommend_questions",
+            json={"context": {"recent_resources": []}},
+        )
+        assert response.status_code == 422
+
+    async def test_recommend_questions_defaults(
+        self, client, mock_question_recommender
+    ):
+        response = client.post(
+            "/internal/api/v1/wizard/recommend_questions",
+            json={"namespace_id": "ns_1", "user_id": "user_1"},
+        )
+
+        assert response.status_code == 200
+        context_arg = mock_question_recommender.ainvoke.call_args.args[0]
+        assert context_arg["recent_resources"] == []
+        assert context_arg["recent_tags"] == []
+        assert context_arg["recent_questions"] == []
+        assert context_arg["max_questions"] == 3
+
+    async def test_recommend_questions_truncates_to_max(
+        self, client, mock_question_recommender
+    ):
+        from omnibox_wizard.worker.agent.question_recommender import (
+            QuestionRecommendOutput,
+            RecommendedQuestion,
+        )
+
+        mock_question_recommender.ainvoke = AsyncMock(
+            return_value=QuestionRecommendOutput(
+                questions=[
+                    RecommendedQuestion(
+                        question=f"question {i}", intent="qa", reason=f"reason {i}"
+                    )
+                    for i in range(5)
+                ]
+            )
+        )
+
+        response = client.post(
+            "/internal/api/v1/wizard/recommend_questions",
+            json={"namespace_id": "ns_1", "user_id": "user_1", "max_questions": 2},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["questions"]) == 2

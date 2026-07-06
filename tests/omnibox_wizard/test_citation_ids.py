@@ -52,7 +52,8 @@ def test_citation_slug_uses_two_to_three_meaningful_words() -> None:
         )
         == "openai-api-pricing"
     )
-    assert make_citation_slug("Untitled.md", "") == "source"
+    assert make_citation_slug("Untitled.md", "") == "untitled-md"
+    assert make_citation_slug("123", "4") == "source"
     assert make_citation_slug("手冲咖啡", "水温建议控制在 90 度") == "shou-chong-ka"
     assert (
         make_citation_slug("测试一下啊超长的文本", "The old clock tower stood silent.")
@@ -126,6 +127,6 @@ def test_resource_chunk_prompt_includes_line_range_citation_id() -> None:
 
     prompt = retrieval.to_prompt()
 
-    assert retrieval.id == "C1-clock-tower-old-L2-3"
+    assert retrieval.id == "C1-clock-tower-the-L2-3"
     assert 'line_range="2-3"' in prompt
-    assert 'cite_marker="[[1]](C1-clock-tower-old-L2-3)"' in prompt
+    assert 'cite_marker="[[1]](C1-clock-tower-the-L2-3)"' in prompt

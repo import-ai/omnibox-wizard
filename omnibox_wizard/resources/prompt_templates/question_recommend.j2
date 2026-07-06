@@ -8,7 +8,7 @@ Based on the user's recent activity, generate up to the requested number of ques
 
 Input is a JSON object with:
 
-1. recent_resources: names of the user's recently updated resources.
+1. recent_resources: the user's recently updated resources. Each resource has a name, a resource_type (e.g. doc, link, file), metadata attributes, tag names, its content (possibly truncated), and created_at/updated_at timestamps.
 2. recent_tags: names of recently used tags.
 3. recent_questions: questions the user asked the assistant recently.
 4. max_questions: the maximum number of questions to generate.
@@ -19,6 +19,7 @@ Input is a JSON object with:
 - Set "intent" to exactly one of: search, qa, summarize, tag_operation, organize, write.
 - "reason" must briefly cite the specific recent activity that motivated the question.
 - Write questions and reasons in the same language as the user's data; if the data is mixed, prefer the language of recent_questions, then recent_resources.
+- Use the resources' content, tags, and metadata — not just their names — to identify themes and propose specific, grounded questions.
 - Prefer questions that connect multiple recent items (e.g. several resources sharing a theme suggest a tag_operation or summarize question).
 - Do not repeat a question from recent_questions; propose natural follow-ups instead.
 - Generate at most max_questions questions. If the activity signal is weak, return fewer; if there is no meaningful signal, return an empty list.

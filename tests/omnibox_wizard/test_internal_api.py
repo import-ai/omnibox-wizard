@@ -396,7 +396,17 @@ class TestRecommendQuestionsAPI:
                 "namespace_id": "ns_1",
                 "user_id": "user_1",
                 "context": {
-                    "recent_resources": ["AI 知识库搭建方案"],
+                    "recent_resources": [
+                        {
+                            "name": "AI 知识库搭建方案",
+                            "resource_type": "doc",
+                            "metadata": {"source": "web"},
+                            "tags": ["技术"],
+                            "content": "本文介绍如何从零搭建团队 AI 知识库……",
+                            "created_at": "2026-07-01T00:00:00.000Z",
+                            "updated_at": "2026-07-05T12:00:00.000Z",
+                        }
+                    ],
                     "recent_tags": ["技术"],
                     "recent_questions": [],
                 },
@@ -415,7 +425,15 @@ class TestRecommendQuestionsAPI:
         assert data["questions"][0]["reason"] == "用户近期有多个 AI 知识库相关资源"
         mock_question_recommender.ainvoke.assert_awaited_once()
         context_arg = mock_question_recommender.ainvoke.call_args.args[0]
-        assert context_arg["recent_resources"] == ["AI 知识库搭建方案"]
+        assert len(context_arg["recent_resources"]) == 1
+        resource = context_arg["recent_resources"][0]
+        assert resource.name == "AI 知识库搭建方案"
+        assert resource.resource_type == "doc"
+        assert resource.metadata == {"source": "web"}
+        assert resource.tags == ["技术"]
+        assert resource.content == "本文介绍如何从零搭建团队 AI 知识库……"
+        assert resource.created_at == "2026-07-01T00:00:00.000Z"
+        assert resource.updated_at == "2026-07-05T12:00:00.000Z"
         assert context_arg["recent_tags"] == ["技术"]
         assert context_arg["recent_questions"] == []
         assert context_arg["max_questions"] == 3

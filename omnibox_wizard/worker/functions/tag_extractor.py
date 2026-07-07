@@ -22,8 +22,8 @@ class TagExtractor(BaseFunction):
     async def run(self, task: Task, trace_info: TraceInfo) -> dict:
         span = trace.get_current_span()
         input_dict = task.input
-        title: str = input_dict["title"]
-        content: str = input_dict["content"]
+        title: str = input_dict.get("title", "")
+        content: str = input_dict.get("content", "")
         lang: str | None = input_dict.get("lang", None)
 
         if not (content or title):

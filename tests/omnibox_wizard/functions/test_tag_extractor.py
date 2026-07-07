@@ -1,109 +1,67 @@
 import pytest
 
-from wizard_common.worker.entity import Task
+from omnibox_wizard.worker.agent.html_tags_extractor import TagsExtractOutput
 from omnibox_wizard.worker.functions.tag_extractor import TagExtractor
+from wizard_common.worker.entity import Task
 
 
-@pytest.mark.asyncio
-async def test_tag_extractor_success(worker_config, trace_info):
-    """Test successful tag extraction"""
-    tag_extractor = TagExtractor(worker_config)
+class FakeTagsExtractor:
+    def __init__(self):
+        self.input = None
 
-    task = Task(
+    async def ainvoke(self, input_dict):
+        self.input = input_dict
+        return TagsExtractOutput(tags=["test"])
+
+
+def make_task(input_dict):
+    return Task(
         id="test_task",
         priority=1,
         namespace_id="test_namespace",
         user_id="test_user",
         function="extract_tags",
-        input={
-            "text": "This is a sample text about machine learning and artificial intelligence."
-        },
+        input=input_dict,
     )
 
-    result = await tag_extractor.run(task, trace_info)
 
-    assert "tags" in result
-    assert isinstance(result["tags"], list)
-    # Tags should be extracted from the input text
-    assert len(result["tags"]) >= 0
+def make_tag_extractor():
+    tag_extractor = TagExtractor.__new__(TagExtractor)
+    fake_extractor = FakeTagsExtractor()
+    tag_extractor.tag_extractor = fake_extractor
+    return tag_extractor, fake_extractor
 
 
 @pytest.mark.asyncio
-async def test_tag_extractor_empty_text(worker_config, trace_info):
-    """Test tag extraction with empty text"""
-    tag_extractor = TagExtractor(worker_config)
+async def test_tag_extractor_handles_missing_title(trace_info):
+    tag_extractor, fake_extractor = make_tag_extractor()
 
-    task = Task(
-        id="test_task",
-        priority=1,
-        namespace_id="test_namespace",
-        user_id="test_user",
-        function="extract_tags",
-        input={"text": ""},
-    )
+    result = await tag_extractor.run(make_task({"content": "123"}), trace_info)
 
-    with pytest.raises(ValueError, match="Text input is required for tag extraction"):
-        await tag_extractor.run(task, trace_info)
+    assert result == {"tags": ["test"]}
+    assert fake_extractor.input == {"title": "", "snippet": "123", "lang": None}
 
 
 @pytest.mark.asyncio
-async def test_tag_extractor_no_text_input(worker_config, trace_info):
-    """Test tag extraction without text input"""
-    tag_extractor = TagExtractor(worker_config)
+async def test_tag_extractor_passes_title_content_and_lang(trace_info):
+    tag_extractor, fake_extractor = make_tag_extractor()
 
-    task = Task(
-        id="test_task",
-        priority=1,
-        namespace_id="test_namespace",
-        user_id="test_user",
-        function="extract_tags",
-        input={},
+    result = await tag_extractor.run(
+        make_task({"title": "Title", "content": " Content ", "lang": "English"}),
+        trace_info,
     )
 
-    with pytest.raises(ValueError, match="Text input is required for tag extraction"):
-        await tag_extractor.run(task, trace_info)
+    assert result == {"tags": ["test"]}
+    assert fake_extractor.input == {
+        "title": "Title",
+        "snippet": "Content",
+        "lang": "English",
+    }
 
 
 @pytest.mark.asyncio
-async def test_tag_extractor_with_long_text(worker_config, trace_info):
-    """Test tag extraction with long text"""
-    tag_extractor = TagExtractor(worker_config)
-    long_text = "This is a very long text about various topics. " * 100
+async def test_tag_extractor_requires_content_or_title(trace_info):
+    tag_extractor, _ = make_tag_extractor()
 
-    task = Task(
-        id="test_task",
-        priority=1,
-        namespace_id="test_namespace",
-        user_id="test_user",
-        function="extract_tags",
-        input={"text": long_text},
-    )
-
-    result = await tag_extractor.run(task, trace_info)
-
-    assert "tags" in result
-    assert isinstance(result["tags"], list)
-    # Should be able to handle long text
-    assert len(result["tags"]) >= 0
-
-
-@pytest.mark.asyncio
-async def test_tag_extractor_short_text(worker_config, trace_info):
-    """Test tag extraction with short text"""
-    tag_extractor = TagExtractor(worker_config)
-
-    task = Task(
-        id="test_task",
-        priority=1,
-        namespace_id="test_namespace",
-        user_id="test_user",
-        function="extract_tags",
-        input={"text": "Python programming"},
-    )
-
-    result = await tag_extractor.run(task, trace_info)
-
-    assert "tags" in result
-    assert isinstance(result["tags"], list)
-    # Should extract relevant tags from short text
-    assert len(result["tags"]) >= 0
+    with pytest.raises(ValueError, match="content or title is required"):
+        await tag_extractor.run(make_task({}), trace_info)

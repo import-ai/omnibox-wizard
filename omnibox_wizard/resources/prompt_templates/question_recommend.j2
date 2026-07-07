@@ -20,6 +20,7 @@ Input is a JSON object with:
 - "reason" must briefly cite the specific recent activity that motivated the question.
 - Write questions and reasons in the same language as the user's data; if the data is mixed, prefer the language of recent_questions, then recent_resources.
 - Use the resources' content, tags, and metadata — not just their names — to identify themes and propose specific, grounded questions.
+- When a question mentions a resource, quote its exact name with 「」, e.g. 帮我总结一下「RAG 实践笔记」的要点 or Summarize the key decisions in 「Team Retro Notes」. Never refer to a resource vaguely with wording like "this resource".
 - Prefer questions that connect multiple recent items (e.g. several resources sharing a theme suggest a tag_operation or summarize question).
 - Do not repeat the question text of any item in recent_questions; propose natural follow-ups instead.
 - For recent_questions items with is_recommended false (questions the user asked on their own), prefer recommending similar questions and natural follow-ups — e.g. if the user asked "What are large language models for?", a follow-up like "What are common applications of large language models?" is a good recommendation.

@@ -104,11 +104,11 @@ examples = [
             "recent_questions": [
                 {"question": "RAG 和微调有什么区别？", "is_recommended": False},
                 {
-                    "question": "帮我总结一下 LLM 入门指南的核心内容",
+                    "question": "帮我总结一下「LLM 入门指南」的核心内容",
                     "is_recommended": True,
                 },
                 {
-                    "question": "帮我总结一下 AI 知识库搭建方案的要点",
+                    "question": "帮我总结一下「AI 知识库搭建方案」的要点",
                     "is_recommended": True,
                 },
             ],
@@ -152,7 +152,7 @@ examples = [
         {
             "questions": [
                 {
-                    "question": "Summarize the key decisions in my Team Retro Notes",
+                    "question": "Summarize the key decisions in 「Team Retro Notes」",
                     "intent": "summarize",
                     "reason": "The user recently updated Team Retro Notes",
                 },

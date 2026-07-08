@@ -117,14 +117,14 @@ examples = [
         {
             "questions": [
                 {
-                    "question": "帮我把 AI 知识库相关资源都打上 AI 知识库标签",
+                    "question": "帮我给「RAG 实践笔记」和「AI 知识库搭建方案」添加 AI 知识库标签",
                     "intent": "tag_operation",
-                    "reason": "用户近期有多个 AI 知识库相关资源",
+                    "reason": "用户近期更新了「RAG 实践笔记」和「AI 知识库搭建方案」，内容都与 AI 知识库相关",
                 },
                 {
                     "question": "RAG 落地时分块和召回策略应该怎么选？",
                     "intent": "qa",
-                    "reason": "用户主动询问过 RAG 与微调的区别，且最近更新了 RAG 实践笔记，适合追问；总结类推荐已被多次采纳，转而推荐问答类问题",
+                    "reason": "用户主动询问过 RAG 与微调的区别，且最近更新了「RAG 实践笔记」，适合追问；总结类推荐已被多次采纳，转而推荐问答类问题",
                 },
             ]
         },
@@ -154,7 +154,7 @@ examples = [
                 {
                     "question": "Summarize the key decisions in 「Team Retro Notes」",
                     "intent": "summarize",
-                    "reason": "The user recently updated Team Retro Notes",
+                    "reason": "The user recently updated 「Team Retro Notes」",
                 },
             ]
         },

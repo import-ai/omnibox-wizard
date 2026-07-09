@@ -46,6 +46,10 @@ uv run pre-commit run --all-files               # Run pre-commit hooks
 
 `compose.yaml` defines `wizard`, `wizard-worker`, and `weaviate`. The backend service is expected separately unless `OBW_BACKEND_BASE_URL` is overridden.
 
+## Git Submodules
+
+- Do not manually edit `.gitmodules`. Use Git submodule commands/config, and revert accidental `.gitmodules` edits before committing.
+
 ## Architecture
 
 ### Agent System

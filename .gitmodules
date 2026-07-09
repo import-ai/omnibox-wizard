@@ -4,4 +4,3 @@
 [submodule "wizard_common"]
 	path = wizard_common
 	url = https://github.com/import-ai/wizard-common.git
-	branch = main

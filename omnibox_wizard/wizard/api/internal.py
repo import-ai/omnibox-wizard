@@ -43,6 +43,40 @@ question_recommender: QuestionRecommender
 capabilities: dict = {}
 
 
+def _filter_question_references(
+    output: QuestionRecommendOutput,
+    request: RecommendQuestionsRequest,
+) -> QuestionRecommendOutput:
+    valid_resource_ids = {
+        resource.id for resource in request.context.recent_resources if resource.id
+    }
+    resource_tags = [
+        tag for resource in request.context.recent_resources for tag in resource.tags
+    ]
+    valid_tag_ids = {
+        tag.id for tag in request.context.recent_tags + resource_tags if tag.id
+    }
+    valid_conversation_ids = {
+        question.conversation_id
+        for question in request.context.recent_questions
+        if question.conversation_id
+    }
+
+    for question in output.questions:
+        question.resource_ids = [
+            value for value in question.resource_ids if value in valid_resource_ids
+        ]
+        question.tag_ids = [
+            value for value in question.tag_ids if value in valid_tag_ids
+        ]
+        question.conversation_ids = [
+            value
+            for value in question.conversation_ids
+            if value in valid_conversation_ids
+        ]
+    return output
+
+
 async def init(_):
     global title_generator, question_recommender, vector_db, capabilities
     loader = Loader(GrimoireAgentConfig, env_prefix=ENV_PREFIX)
@@ -82,6 +116,7 @@ async def recommend_questions(
         ),
         trace_info=trace_info,
     )
+    output = _filter_question_references(output, request)
     return RecommendQuestionsResponse(
         questions=output.questions[: request.max_questions]
     )

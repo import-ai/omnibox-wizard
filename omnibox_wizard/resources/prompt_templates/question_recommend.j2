@@ -17,4 +17,5 @@ Given recent_resources, recent_tags, recent_questions, and max_questions, genera
 - Question: prefer natural follow-ups and cross-resource questions. Do not repeat recent_questions.
 - Question: if users asked their own questions, recommend similar follow-ups.
 - Reason: keep reasons in the user's language and briefly cite the motivating activity.
+- References: for each question, include resource_ids, tag_ids, and conversation_ids arrays containing only IDs present in recent_resources, recent_tags, resource tags, or recent_questions. Include every referenced item and leave arrays empty when none apply.
 - Return fewer than max_questions if signal is weak, or an empty list if there is no meaningful signal.

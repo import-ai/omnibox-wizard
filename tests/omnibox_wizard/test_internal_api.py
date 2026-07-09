@@ -381,6 +381,9 @@ class TestRecommendQuestionsAPI:
                         question="帮我把 AI 知识库相关资源都打上 AI 知识库标签",
                         intent="tag_operation",
                         reason="用户近期有多个 AI 知识库相关资源",
+                        resource_ids=["res_1", "unknown_resource"],
+                        tag_ids=["tag_1", "unknown_tag"],
+                        conversation_ids=["conv_1", "unknown_conversation"],
                     ),
                 ]
             )
@@ -398,18 +401,23 @@ class TestRecommendQuestionsAPI:
                 "context": {
                     "recent_resources": [
                         {
+                            "id": "res_1",
                             "name": "AI 知识库搭建方案",
                             "resource_type": "doc",
                             "metadata": {"source": "web"},
-                            "tags": ["技术"],
+                            "tags": [{"id": "tag_1", "name": "技术"}],
                             "content": "本文介绍如何从零搭建团队 AI 知识库……",
                             "created_at": "2026-07-01T00:00:00.000Z",
                             "updated_at": "2026-07-05T12:00:00.000Z",
                         }
                     ],
-                    "recent_tags": ["技术"],
+                    "recent_tags": [{"id": "tag_1", "name": "技术"}],
                     "recent_questions": [
-                        {"question": "RAG 和微调有什么区别？", "is_recommended": True}
+                        {
+                            "conversation_id": "conv_1",
+                            "question": "RAG 和微调有什么区别？",
+                            "is_recommended": True,
+                        }
                     ],
                 },
                 "max_questions": 3,
@@ -425,24 +433,31 @@ class TestRecommendQuestionsAPI:
         )
         assert data["questions"][0]["intent"] == "tag_operation"
         assert data["questions"][0]["reason"] == "用户近期有多个 AI 知识库相关资源"
+        assert data["questions"][0]["resource_ids"] == ["res_1"]
+        assert data["questions"][0]["tag_ids"] == ["tag_1"]
+        assert data["questions"][0]["conversation_ids"] == ["conv_1"]
         mock_question_recommender.ainvoke.assert_awaited_once()
         input_arg = mock_question_recommender.ainvoke.call_args.args[0]
         assert len(input_arg.recent_resources) == 1
         resource = input_arg.recent_resources[0]
+        assert resource.id == "res_1"
         assert resource.name == "AI 知识库搭建方案"
         assert resource.resource_type == "doc"
         assert resource.metadata == {"source": "web"}
-        assert resource.tags == ["技术"]
+        assert resource.tags[0].id == "tag_1"
+        assert resource.tags[0].name == "技术"
         assert resource.content == "本文介绍如何从零搭建团队 AI 知识库……"
         assert resource.created_at == "2026-07-01T00:00:00.000Z"
         assert resource.updated_at == "2026-07-05T12:00:00.000Z"
-        assert input_arg.recent_tags == ["技术"]
+        assert input_arg.recent_tags[0].id == "tag_1"
+        assert input_arg.recent_tags[0].name == "技术"
         assert len(input_arg.recent_questions) == 1
+        assert input_arg.recent_questions[0].conversation_id == "conv_1"
         assert input_arg.recent_questions[0].question == "RAG 和微调有什么区别？"
         assert input_arg.recent_questions[0].is_recommended is True
         assert input_arg.max_questions == 3
 
-    async def test_recommend_questions_accepts_legacy_string_questions(
+    async def test_recommend_questions_rejects_legacy_string_questions(
         self, client, mock_question_recommender
     ):
         response = client.post(
@@ -454,11 +469,24 @@ class TestRecommendQuestionsAPI:
             },
         )
 
-        assert response.status_code == 200
-        input_arg = mock_question_recommender.ainvoke.call_args.args[0]
-        assert len(input_arg.recent_questions) == 1
-        assert input_arg.recent_questions[0].question == "old style question"
-        assert input_arg.recent_questions[0].is_recommended is False
+        assert response.status_code == 422
+
+    async def test_recommend_questions_rejects_legacy_string_tags(
+        self, client, mock_question_recommender
+    ):
+        response = client.post(
+            "/internal/api/v1/wizard/recommend_questions",
+            json={
+                "namespace_id": "ns_1",
+                "user_id": "user_1",
+                "context": {
+                    "recent_resources": [{"name": "resource", "tags": ["legacy"]}],
+                    "recent_tags": ["legacy"],
+                },
+            },
+        )
+
+        assert response.status_code == 422
 
     async def test_recommend_questions_missing_required_fields(
         self, client, mock_question_recommender

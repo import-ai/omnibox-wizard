@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 
 from omnibox_wizard.worker.agent.base import BaseAgent
 
@@ -13,9 +13,27 @@ class RecommendedQuestion(BaseModel):
     reason: str = Field(
         description="Short explanation, grounded in the user's recent activity, of why this question is recommended."
     )
+    resource_ids: list[str] = Field(
+        default_factory=list,
+        description="IDs of recent_resources this question references.",
+    )
+    tag_ids: list[str] = Field(
+        default_factory=list,
+        description="IDs of recent_tags or resource tags this question references.",
+    )
+    conversation_ids: list[str] = Field(
+        default_factory=list,
+        description="IDs of recent_questions/conversations this question references.",
+    )
+
+
+class RecentTag(BaseModel):
+    id: str | None = Field(default=None, description="ID of the tag.")
+    name: str = Field(default="", description="Name of the tag.")
 
 
 class RecentResource(BaseModel):
+    id: str | None = Field(default=None, description="ID of the resource.")
     name: str = Field(default="", description="Name of the resource.")
     resource_type: str | None = Field(
         default=None, description="Type of the resource, e.g. doc, link, file."
@@ -23,8 +41,8 @@ class RecentResource(BaseModel):
     metadata: dict = Field(
         default_factory=dict, description="Additional metadata of the resource."
     )
-    tags: list[str] = Field(
-        default_factory=list, description="Tag names attached to the resource."
+    tags: list[RecentTag] = Field(
+        default_factory=list, description="Tags attached to the resource."
     )
     content: str | None = Field(
         default=None, description="Content of the resource, possibly truncated."
@@ -39,6 +57,9 @@ class RecentResource(BaseModel):
 
 
 class RecentQuestion(BaseModel):
+    conversation_id: str | None = Field(
+        default=None, description="ID of the conversation that contains the question."
+    )
     question: str = Field(description="The question the user asked.")
     is_recommended: bool = Field(
         default=False,
@@ -51,19 +72,12 @@ class QuestionRecommendContext(BaseModel):
         default_factory=list,
         description="The user's recently updated resources.",
     )
-    recent_tags: list[str] = Field(
-        default_factory=list, description="Names of recently used tags."
+    recent_tags: list[RecentTag] = Field(
+        default_factory=list, description="Recently used tags."
     )
     recent_questions: list[RecentQuestion] = Field(
         default_factory=list, description="Questions the user asked recently."
     )
-
-    @field_validator("recent_questions", mode="before")
-    @classmethod
-    def _coerce_recent_questions(cls, v):
-        if isinstance(v, list):
-            return [{"question": item} if isinstance(item, str) else item for item in v]
-        return v
 
 
 class QuestionRecommendInput(QuestionRecommendContext):
@@ -81,18 +95,24 @@ examples = [
         {
             "recent_resources": [
                 {
+                    "id": "res_llm_intro",
                     "name": "LLM 入门指南",
                     "resource_type": "doc",
-                    "tags": ["技术"],
+                    "tags": [{"id": "tag_tech", "name": "技术"}],
                     "content": "大语言模型（LLM）是一种基于海量文本训练的深度学习模型……",
                 },
                 {
+                    "id": "res_rag_notes",
                     "name": "RAG 实践笔记",
                     "resource_type": "doc",
-                    "tags": ["技术", "笔记"],
+                    "tags": [
+                        {"id": "tag_tech", "name": "技术"},
+                        {"id": "tag_note", "name": "笔记"},
+                    ],
                     "content": "RAG 通过检索外部知识增强生成质量，关键在于分块与召回……",
                 },
                 {
+                    "id": "res_ai_kb",
                     "name": "AI 知识库搭建方案",
                     "resource_type": "link",
                     "metadata": {"url": "https://example.com/ai-kb"},
@@ -100,14 +120,23 @@ examples = [
                     "content": "本文介绍如何从零搭建团队 AI 知识库……",
                 },
             ],
-            "recent_tags": ["技术", "笔记"],
+            "recent_tags": [
+                {"id": "tag_tech", "name": "技术"},
+                {"id": "tag_note", "name": "笔记"},
+            ],
             "recent_questions": [
-                {"question": "RAG 和微调有什么区别？", "is_recommended": False},
                 {
+                    "conversation_id": "conv_rag",
+                    "question": "RAG 和微调有什么区别？",
+                    "is_recommended": False,
+                },
+                {
+                    "conversation_id": "conv_llm_summary",
                     "question": "帮我总结一下「LLM 入门指南」的核心内容",
                     "is_recommended": True,
                 },
                 {
+                    "conversation_id": "conv_ai_kb_summary",
                     "question": "帮我总结一下「AI 知识库搭建方案」的要点",
                     "is_recommended": True,
                 },
@@ -120,11 +149,17 @@ examples = [
                     "question": "帮我给「RAG 实践笔记」和「AI 知识库搭建方案」添加 AI 知识库标签",
                     "intent": "tag_operation",
                     "reason": "用户近期更新了「RAG 实践笔记」和「AI 知识库搭建方案」，内容都与 AI 知识库相关",
+                    "resource_ids": ["res_rag_notes", "res_ai_kb"],
+                    "tag_ids": [],
+                    "conversation_ids": [],
                 },
                 {
                     "question": "RAG 落地时分块和召回策略应该怎么选？",
                     "intent": "qa",
                     "reason": "用户主动询问过 RAG 与微调的区别，且最近更新了「RAG 实践笔记」，适合追问；总结类推荐已被多次采纳，转而推荐问答类问题",
+                    "resource_ids": ["res_rag_notes"],
+                    "tag_ids": [],
+                    "conversation_ids": ["conv_rag"],
                 },
             ]
         },
@@ -133,19 +168,21 @@ examples = [
         {
             "recent_resources": [
                 {
+                    "id": "res_q3_roadmap",
                     "name": "Q3 Roadmap Draft",
                     "resource_type": "doc",
-                    "tags": ["planning"],
+                    "tags": [{"id": "tag_planning", "name": "planning"}],
                     "content": "Q3 priorities: launch self-serve onboarding, improve retention...",
                 },
                 {
+                    "id": "res_retro",
                     "name": "Team Retro Notes",
                     "resource_type": "doc",
                     "tags": [],
                     "content": "What went well: shipped billing revamp. What to improve: code review latency...",
                 },
             ],
-            "recent_tags": ["planning"],
+            "recent_tags": [{"id": "tag_planning", "name": "planning"}],
             "recent_questions": [],
             "max_questions": 1,
         },
@@ -155,6 +192,9 @@ examples = [
                     "question": "Summarize the key decisions in 「Team Retro Notes」",
                     "intent": "summarize",
                     "reason": "The user recently updated 「Team Retro Notes」",
+                    "resource_ids": ["res_retro"],
+                    "tag_ids": [],
+                    "conversation_ids": [],
                 },
             ]
         },

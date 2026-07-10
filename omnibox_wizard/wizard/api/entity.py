@@ -2,10 +2,6 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from omnibox_wizard.worker.agent.question_recommender import (
-    QuestionRecommendContext,
-    RecommendedQuestion,
-)
 from wizard_common.grimoire.entity.index_record import IndexRecord, IndexRecordType
 
 
@@ -62,18 +58,3 @@ class UpsertWeaviateMessageRequest(BaseModel):
     namespace_id: str
     user_id: str
     message: UpsertWeaviateMessage
-
-
-class RecommendQuestionsRequest(BaseModel):
-    namespace_id: str = Field(description="namespace id")
-    user_id: str = Field(description="user id")
-    context: QuestionRecommendContext = Field(default_factory=QuestionRecommendContext)
-    max_questions: int = Field(
-        default=3, ge=1, le=10, description="maximum number of questions"
-    )
-
-
-class RecommendQuestionsResponse(BaseModel):
-    questions: list[RecommendedQuestion] = Field(
-        default_factory=list, description="recommended questions"
-    )

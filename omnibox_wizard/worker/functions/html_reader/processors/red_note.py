@@ -65,17 +65,23 @@ class RedNoteProcessor(HTMLReaderBaseProcessor):
     @tracer.start_as_current_span("RedNoteProcessor.convert")
     async def convert(self, html: str, url: str) -> GeneratedContent:
         soup = BeautifulSoup(html, "html.parser")
-        image_selection = soup.select('meta[name="og:image"]')
+        image_selection = soup.select('meta[property="og:image"]')
         title_selection = soup.select("div.note-content div#detail-title")
         content_selection = soup.select(
             "div.note-content div#detail-desc span.note-text"
         )
 
         image_links = []
+        seen_image_links = set()
         for image_tag in image_selection:
             if src := image_tag.get("content"):
-                if "sns-webpic-qc.xhscdn.com" in src:
-                    image_links.append(src)
+                if "sns-webpic-qc.xhscdn.com" not in src:
+                    continue
+                if src in seen_image_links:
+                    continue
+
+                seen_image_links.add(src)
+                image_links.append(src)
 
         images = await self.get_images(
             [(src, str(i + 1)) for i, src in enumerate(image_links)]

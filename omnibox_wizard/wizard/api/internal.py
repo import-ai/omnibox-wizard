@@ -2,6 +2,7 @@ from functools import partial
 from json import dumps as lib_dumps
 
 from fastapi import APIRouter, Depends
+from opentelemetry import trace
 
 from common.config_loader import Loader
 from common.trace_info import TraceInfo
@@ -34,6 +35,7 @@ from wizard_common.grimoire.entity.message import Message
 from wizard_common.grimoire.retriever.weaviate_vector_db import WeaviateVectorDB
 
 dumps = partial(lib_dumps, ensure_ascii=False, separators=(",", ":"))
+tracer = trace.get_tracer(__name__)
 internal_router = APIRouter(prefix="/internal/api/v1/wizard")
 CHUNK_SIZE = 1024
 CHUNK_OVERLAP = 128
@@ -109,17 +111,37 @@ async def recommend_questions(
     request: RecommendQuestionsRequest,
     trace_info: TraceInfo = Depends(get_trace_info),
 ):
-    output: QuestionRecommendOutput = await question_recommender.ainvoke(
-        QuestionRecommendInput(
-            **request.context.model_dump(),
-            max_questions=request.max_questions,
-        ),
-        trace_info=trace_info,
-    )
-    output = _filter_question_references(output, request)
-    return RecommendQuestionsResponse(
-        questions=output.questions[: request.max_questions]
-    )
+    with tracer.start_as_current_span("wizard.recommend_questions") as span:
+        span.set_attributes(
+            {
+                "request.namespace_id": request.namespace_id,
+                "request.user_id": request.user_id,
+                "request.max_questions": request.max_questions,
+                "request.context": dumps(request.context.model_dump()),
+                "request.recent_resources_count": len(request.context.recent_resources),
+                "request.recent_tags_count": len(request.context.recent_tags),
+                "request.recent_questions_count": len(request.context.recent_questions),
+            }
+        )
+
+        output: QuestionRecommendOutput = await question_recommender.ainvoke(
+            QuestionRecommendInput(
+                **request.context.model_dump(),
+                max_questions=request.max_questions,
+            ),
+            trace_info=trace_info,
+        )
+        output = _filter_question_references(output, request)
+        questions = output.questions[: request.max_questions]
+        span.set_attributes(
+            {
+                "response.question_count": len(questions),
+                "response.questions": dumps(
+                    [question.model_dump() for question in questions]
+                ),
+            }
+        )
+        return RecommendQuestionsResponse(questions=questions)
 
 
 @internal_router.post("/search", tags=[], response_model=SearchResponse)

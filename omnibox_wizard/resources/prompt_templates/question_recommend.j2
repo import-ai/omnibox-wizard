@@ -14,8 +14,10 @@ Given recent_resources, recent_tags, recent_questions, and max_questions, genera
 - Question: ground each question in recent activity, using resource content, tags, metadata, names, URLs, and timestamps when available.
 - Question: keep questions in the user's language; for mixed data, prefer recent_questions, then recent_resources.
 - Question: quote exact resource names with 「」 whenever mentioning a resource. Never use demonstratives such as "this", "that", "these", "those", "这个", "那个", "这些", or "那些". Never recommend any operation whose target is unnamed.
+- Question: only mention resource names or tag names that are present in the input context and have an ID. Never invent, infer, paraphrase, or hallucinate resource names or tag names.
+- Question: if you mention a resource or tag name in the question, include its ID in resource_ids or tag_ids. Do not mention resources or tags whose IDs cannot be included.
 - Question: prefer natural follow-ups and cross-resource questions. Do not repeat recent_questions.
 - Question: if users asked their own questions, recommend similar follow-ups.
 - Reason: keep reasons in the user's language and briefly cite the motivating activity.
-- References: for each question, include resource_ids, tag_ids, and conversation_ids arrays containing only IDs present in recent_resources, recent_tags, resource tags, or recent_questions. Include every referenced item and leave arrays empty when none apply.
+- References: for each question, include resource_ids, tag_ids, and conversation_ids arrays containing only IDs present in recent_resources, recent_tags, resource tags, or recent_questions. Include every referenced item named in the question and leave arrays empty when none apply.
 - Return fewer than max_questions if signal is weak, or an empty list if there is no meaningful signal.

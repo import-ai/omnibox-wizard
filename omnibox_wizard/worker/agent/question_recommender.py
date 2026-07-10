@@ -21,10 +21,6 @@ class RecommendedQuestion(BaseModel):
         default_factory=list,
         description="IDs of recent_tags or resource tags this question references.",
     )
-    conversation_ids: list[str] = Field(
-        default_factory=list,
-        description="IDs of recent_questions/conversations this question references.",
-    )
 
 
 class RecentTag(BaseModel):

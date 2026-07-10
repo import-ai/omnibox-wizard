@@ -383,7 +383,6 @@ class TestRecommendQuestionsAPI:
                         reason="用户近期有多个 AI 知识库相关资源",
                         resource_ids=["res_1", "unknown_resource"],
                         tag_ids=["tag_1", "unknown_tag"],
-                        conversation_ids=["conv_1", "unknown_conversation"],
                     ),
                 ]
             )
@@ -435,7 +434,7 @@ class TestRecommendQuestionsAPI:
         assert data["questions"][0]["reason"] == "用户近期有多个 AI 知识库相关资源"
         assert data["questions"][0]["resource_ids"] == ["res_1"]
         assert data["questions"][0]["tag_ids"] == ["tag_1"]
-        assert data["questions"][0]["conversation_ids"] == ["conv_1"]
+        assert "conversation_ids" not in data["questions"][0]
         mock_question_recommender.ainvoke.assert_awaited_once()
         input_arg = mock_question_recommender.ainvoke.call_args.args[0]
         assert len(input_arg.recent_resources) == 1

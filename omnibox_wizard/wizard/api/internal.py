@@ -58,23 +58,12 @@ def _filter_question_references(
     valid_tag_ids = {
         tag.id for tag in request.context.recent_tags + resource_tags if tag.id
     }
-    valid_conversation_ids = {
-        question.conversation_id
-        for question in request.context.recent_questions
-        if question.conversation_id
-    }
-
     for question in output.questions:
         question.resource_ids = [
             value for value in question.resource_ids if value in valid_resource_ids
         ]
         question.tag_ids = [
             value for value in question.tag_ids if value in valid_tag_ids
-        ]
-        question.conversation_ids = [
-            value
-            for value in question.conversation_ids
-            if value in valid_conversation_ids
         ]
     return output
 

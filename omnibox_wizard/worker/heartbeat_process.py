@@ -42,14 +42,15 @@ from common.logger import get_logger
 # container may claim it while the old run is still winding down).
 Command = tuple[str, str, str]  # ("register" | "deregister", task_id, worker_uid)
 Event = tuple[str, str, str]  # ("lost_ownership", task_id, worker_uid)
+TaskKey = tuple[str, str]  # (task_id, worker_uid)
 
 HEARTBEAT_INTERVAL_SECONDS = 5
 
 # Per-request timeout for heartbeat POSTs. The backend re-claims a task when it
-# sees no heartbeat for OBB_TASK_HEARTBEAT_TIMEOUT_MS (30s in our deployments),
-# and the child POSTs serially, so hung requests must not be able to hold up
-# the other tasks' beats past that threshold.
-HEARTBEAT_REQUEST_TIMEOUT_SECONDS = 5
+# sees no heartbeat for the stale timeout (30s by default), and the child POSTs
+# serially, so hung requests must not hold up the other tasks' beats past that
+# threshold.
+HEARTBEAT_REQUEST_TIMEOUT_SECONDS = 2
 
 _CHILD_CHECK_INTERVAL_SECONDS = 5
 
@@ -64,16 +65,17 @@ class _InFlight:
 
     task: asyncio.Task
     worker_uid: str  # so we can re-register with a restarted child
-    lost: bool = False  # cancel was reporter-initiated (vs. e.g. shutdown)
+    lost: bool = False  # cancel was reporter-initiated (vs. task/caller cancel)
 
 
 class LostOwnershipError(Exception):
     """The backend reported we no longer own the task (e.g. the user canceled
     it, or it was reclaimed as stale); the in-flight work was aborted."""
 
-    def __init__(self, task_id: str):
-        super().__init__(f"Lost ownership of task {task_id}")
+    def __init__(self, task_id: str, worker_uid: str):
+        super().__init__(f"Lost ownership of task {task_id} for worker {worker_uid}")
         self.task_id = task_id
+        self.worker_uid = worker_uid
 
 
 def heartbeat_worker_main(
@@ -85,7 +87,7 @@ def heartbeat_worker_main(
     """Entry point for the heartbeat child process (must be importable at module
     level so it is picklable under the ``spawn`` start method)."""
     logger = get_logger("heartbeat_process")
-    active: dict[str, str] = {}
+    active: set[TaskKey] = set()
 
     with httpx.Client(
         base_url=base_url,
@@ -97,7 +99,7 @@ def heartbeat_worker_main(
             now = time.monotonic()
             if now >= next_beat:
                 next_beat = now + interval
-                for task_id, worker_uid in list(active.items()):
+                for task_id, worker_uid in list(active):
                     try:
                         response = client.post(
                             f"/internal/api/v1/wizard/tasks/{task_id}/heartbeat",
@@ -114,7 +116,7 @@ def heartbeat_worker_main(
                         logger.warning(
                             f"Lost ownership of task {task_id}; notifying parent"
                         )
-                        active.pop(task_id, None)
+                        active.discard((task_id, worker_uid))
                         event_q.put(("lost_ownership", task_id, worker_uid))
                 continue
 
@@ -127,11 +129,9 @@ def heartbeat_worker_main(
                 return
             action, task_id, worker_uid = cmd
             if action == "register":
-                active[task_id] = worker_uid
-            elif action == "deregister" and active.get(task_id) == worker_uid:
-                # Only the current registrant may deregister: a worker winding
-                # down late must not clobber a re-claimant's registration.
-                del active[task_id]
+                active.add((task_id, worker_uid))
+            elif action == "deregister":
+                active.discard((task_id, worker_uid))
 
 
 class HeartbeatReporter:
@@ -152,7 +152,7 @@ class HeartbeatReporter:
         self._process: multiprocessing.process.BaseProcess | None = None
         self._drain_thread: threading.Thread | None = None
         self._stopping = threading.Event()
-        self._tasks: dict[str, _InFlight] = {}
+        self._tasks: dict[TaskKey, _InFlight] = {}
         self._lock = threading.Lock()
         self._logger = get_logger("heartbeat_reporter")
 
@@ -186,34 +186,25 @@ class HeartbeatReporter:
         the caller (e.g. shutdown) cancels the work and propagates unchanged.
         """
         work_task = asyncio.ensure_future(coro)
+        key = (task_id, worker_uid)
         with self._lock:
-            self._tasks[task_id] = _InFlight(work_task, worker_uid)
-        self._command_q.put(("register", task_id, worker_uid))
+            assert key not in self._tasks
+            self._tasks[key] = _InFlight(work_task, worker_uid)
+            self._command_q.put(("register", task_id, worker_uid))
         try:
             return await work_task
         except asyncio.CancelledError:
             with self._lock:
-                entry = self._tasks.get(task_id)
-                # Identity check: a re-claimant of the same task id may have
-                # replaced our entry; its flag says nothing about us.
-                if entry is None or entry.task is not work_task or not entry.lost:
-                    # The caller was cancelled (e.g. shutdown): make sure the
-                    # work dies too (a no-op if awaiting already cancelled it).
-                    work_task.cancel()
-                    raise
+                lost = self._tasks[key].lost
             current = asyncio.current_task()
             assert current is not None
-            if current.cancelling() > 0:
-                # A cancellation of the caller raced our lost-ownership cancel;
-                # shutdown wins.
-                raise
-            raise LostOwnershipError(task_id) from None
+            if lost and current.cancelling() == 0:
+                raise LostOwnershipError(task_id, worker_uid) from None
+            raise
         finally:
             with self._lock:
-                entry = self._tasks.get(task_id)
-                if entry is not None and entry.task is work_task:
-                    del self._tasks[task_id]
-            self._command_q.put(("deregister", task_id, worker_uid))
+                del self._tasks[key]
+                self._command_q.put(("deregister", task_id, worker_uid))
 
     def _drain_events(self) -> None:
         """Blocking loop (own thread): apply lost-ownership events by cancelling
@@ -232,14 +223,12 @@ class HeartbeatReporter:
             action, task_id, worker_uid = evt
             if action != "lost_ownership":
                 continue
+            key = (task_id, worker_uid)
             with self._lock:
-                entry = self._tasks.get(task_id)
-                if entry is None or entry.worker_uid != worker_uid:
-                    # No longer registered, or the event is about a previous
-                    # registrant of this task id.
+                entry = self._tasks.get(key)
+                if entry is None:
+                    # No longer registered.
                     continue
-                # Mark before scheduling the cancel so ``run_owned()`` sees
-                # the flag when the CancelledError reaches it.
                 entry.lost = True
                 work_task = entry.task
             try:
@@ -260,9 +249,8 @@ class HeartbeatReporter:
         )
         self._start_child()
         with self._lock:
-            in_flight = [(tid, e.worker_uid) for tid, e in self._tasks.items()]
-        for task_id, worker_uid in in_flight:
-            self._command_q.put(("register", task_id, worker_uid))
+            for task_id, worker_uid in self._tasks:
+                self._command_q.put(("register", task_id, worker_uid))
 
     def stop(self) -> None:
         """Best-effort teardown. The child is a daemon, so it also dies with the

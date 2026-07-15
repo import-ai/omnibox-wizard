@@ -123,6 +123,7 @@ async def worker(worker_config: WorkerConfig) -> Worker:
         config=worker_config,
         worker_id=0,
         functions=compute_supported_functions(worker_config.task),
+        heartbeat_reporter=None,
         health_tracker=None,
     )
     return worker

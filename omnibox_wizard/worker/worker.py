@@ -2,7 +2,7 @@ import asyncio
 import os
 import socket
 import traceback
-from contextlib import asynccontextmanager, suppress
+from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import AsyncGenerator, Callable
 
@@ -31,12 +31,13 @@ from omnibox_wizard.worker.functions.tag_extractor import TagExtractor
 from omnibox_wizard.worker.functions.title_generator import TitleGenerator
 from omnibox_wizard.worker.functions.web_analysis import WebAnalysisFunction
 from omnibox_wizard.worker.health_tracker import HealthTracker
+from omnibox_wizard.worker.heartbeat_process import (
+    HeartbeatReporter,
+    LostOwnershipError,
+)
 from omnibox_wizard.worker.task_manager import TaskManager
 
 tracer = trace.get_tracer(__name__)
-
-# How often to report a heartbeat to the backend while a task is running.
-HEARTBEAT_INTERVAL_SECONDS = 5
 
 FILE_READER_FUNCTIONS: frozenset[str] = frozenset(
     {
@@ -91,6 +92,7 @@ class Worker:
         config: WorkerConfig,
         worker_id: int,
         functions: list[str],
+        heartbeat_reporter: HeartbeatReporter,
         health_tracker: HealthTracker | None = None,
     ):
         self.config: WorkerConfig = config
@@ -101,6 +103,7 @@ class Worker:
         self.worker_uid = f"{socket.gethostname()}-{os.getpid()}-{worker_id}"
         self.callback_util = CallbackUtil(config, self.worker_uid)
         self.health_tracker = health_tracker
+        self.heartbeat_reporter = heartbeat_reporter
         self.task_manager = TaskManager(config)
 
         self.file_reader: FileReader = FileReader(config)
@@ -155,30 +158,6 @@ class Worker:
             data = response.json().get("task")
             return Task.model_validate(data) if data else None
 
-    async def _report_heartbeat(self, task_id: str, work_task: asyncio.Task) -> None:
-        """Periodically tell the backend the task is still being worked on, so
-        it is not treated as stale and re-claimed by another worker. If the
-        backend reports we no longer own the task (another worker has claimed
-        it), abort the in-flight work so we don't produce a duplicate result."""
-        async with self._backend_client() as client:
-            while True:
-                await asyncio.sleep(HEARTBEAT_INTERVAL_SECONDS)
-                try:
-                    response = await client.post(
-                        f"/internal/api/v1/wizard/tasks/{task_id}/heartbeat",
-                        json={"worker_id": self.worker_uid},
-                    )
-                    response.raise_for_status()
-                except Exception as e:
-                    self.logger.warning(
-                        f"Failed to report heartbeat for task {task_id}: {e}"
-                    )
-                    continue
-                if response.json().get("owned") is False:
-                    self.logger.warning(f"Lost ownership of task {task_id}; aborting")
-                    work_task.cancel()
-                    return
-
     def get_trace_info(self, task: Task) -> TraceInfo:
         return TraceInfo(
             task.id,
@@ -223,27 +202,19 @@ class Worker:
             }
             | ({"task.resource_id": resource_id} if resource_id else {}),
         ):
-            work_task: asyncio.Task = asyncio.ensure_future(
-                self._run_task(task, trace_info)
-            )
-            heartbeat_task = asyncio.create_task(
-                self._report_heartbeat(task.id, work_task)
-            )
-            try:
-                processed_task: Task = await work_task
+
+            async def process_and_callback() -> None:
+                processed_task: Task = await self._run_task(task, trace_info)
                 await self.callback_util.send_callback(processed_task)
-            except asyncio.CancelledError:
-                if not work_task.cancelled():
-                    # We were cancelled (e.g. shutdown), not the work itself.
-                    work_task.cancel()
-                    raise
+
+            try:
+                await self.heartbeat_reporter.run_owned(
+                    task.id, self.worker_uid, process_and_callback()
+                )
+            except LostOwnershipError:
                 trace_info.warning(
                     {"message": "task_aborted", "reason": "lost_ownership"}
                 )
-            finally:
-                heartbeat_task.cancel()
-                with suppress(asyncio.CancelledError):
-                    await heartbeat_task
 
         if self.health_tracker:
             self.health_tracker.update_worker_status(
@@ -272,8 +243,7 @@ class Worker:
         span = trace.get_current_span()
 
         try:
-            # Use TaskManager to run with timeout and cancellation support
-            output = await self.task_manager.run_with_timeout_and_cancellation(
+            output = await self.task_manager.run_with_timeout(
                 task, self.worker_router, trace_info
             )
             task.output = output
@@ -307,16 +277,6 @@ class Worker:
             span.set_status(Status(StatusCode.ERROR, error_msg))
             span.set_attribute("error.message", error_msg)
             span.set_attribute("error.type", "TimeoutError")
-
-        except asyncio.CancelledError:
-            # Handle cancellation
-            error_msg = "Task cancelled by user"
-            task.exception = {"error": error_msg, "type": "CancelledError"}
-            task.status = "canceled"
-            logging_func = trace_info.bind(error=error_msg).info
-            span.set_status(Status(StatusCode.ERROR, error_msg))
-            span.set_attribute("error.message", error_msg)
-            span.set_attribute("error.type", "CancelledError")
 
         except Exception as e:
             # Handle other exceptions

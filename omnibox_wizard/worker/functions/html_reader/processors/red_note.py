@@ -62,26 +62,65 @@ class RedNoteProcessor(HTMLReaderBaseProcessor):
         markdown = " ".join(markdown_parts)
         return markdown.strip()
 
+    @classmethod
+    def normalize_image_key(cls, src: str) -> str:
+        return src.replace("http://", "https://").split("!")[0]
+
+    @classmethod
+    def extract_note_image_links(cls, soup: BeautifulSoup) -> list[str]:
+        image_links = []
+        seen_image_keys = set()
+
+        image_selection = soup.select(
+            "div.note-container div.xhs-slider-container div.note-slider-img img"
+        )
+
+        for image_tag in image_selection:
+            src = image_tag.get("src", "")
+            if "sns-webpic-qc.xhscdn.com" not in src:
+                continue
+
+            image_key = cls.normalize_image_key(src)
+            if image_key in seen_image_keys:
+                continue
+
+            seen_image_keys.add(image_key)
+            image_links.append(src)
+
+        return image_links
+
+    @classmethod
+    def extract_og_image_links(cls, soup: BeautifulSoup) -> list[str]:
+        image_links = []
+        seen_image_keys = set()
+
+        image_selection = soup.select('meta[property="og:image"]')
+
+        for image_tag in image_selection:
+            src = image_tag.get("content", "")
+            if "sns-webpic-qc.xhscdn.com" not in src:
+                continue
+
+            image_key = cls.normalize_image_key(src)
+            if image_key in seen_image_keys:
+                continue
+
+            seen_image_keys.add(image_key)
+            image_links.append(src)
+
+        return image_links
+
     @tracer.start_as_current_span("RedNoteProcessor.convert")
     async def convert(self, html: str, url: str) -> GeneratedContent:
         soup = BeautifulSoup(html, "html.parser")
-        image_selection = soup.select('meta[property="og:image"]')
         title_selection = soup.select("div.note-content div#detail-title")
         content_selection = soup.select(
             "div.note-content div#detail-desc span.note-text"
         )
 
-        image_links = []
-        seen_image_links = set()
-        for image_tag in image_selection:
-            if src := image_tag.get("content"):
-                if "sns-webpic-qc.xhscdn.com" not in src:
-                    continue
-                if src in seen_image_links:
-                    continue
-
-                seen_image_links.add(src)
-                image_links.append(src)
+        image_links = self.extract_note_image_links(soup)
+        if not image_links:
+            image_links = self.extract_og_image_links(soup)
 
         images = await self.get_images(
             [(src, str(i + 1)) for i, src in enumerate(image_links)]

@@ -87,6 +87,15 @@ class RedNoteProcessor(HTMLReaderBaseProcessor):
             seen_image_keys.add(image_key)
             image_links.append(src)
 
+        og_image_links = cls.extract_og_image_links(soup)
+        if not og_image_links:
+            return image_links
+
+        og_image_key = cls.normalize_image_key(og_image_links[0])
+        for index, image_link in enumerate(image_links):
+            if cls.normalize_image_key(image_link) == og_image_key:
+                return image_links[index:] + image_links[:index]
+
         return image_links
 
     @classmethod

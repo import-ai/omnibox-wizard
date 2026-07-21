@@ -1,3 +1,4 @@
+import json
 from urllib.parse import urlparse
 
 from bs4 import BeautifulSoup, Tag, Comment, NavigableString
@@ -67,6 +68,47 @@ class RedNoteProcessor(HTMLReaderBaseProcessor):
         return src.replace("http://", "https://").split("!")[0]
 
     @classmethod
+    def extract_structured_image_links(cls, soup: BeautifulSoup) -> list[str]:
+        image_links = []
+        seen_image_keys = set()
+
+        for script in soup.select('script[type="application/ld+json"]'):
+            text = script.string or script.get_text() or ""
+            if not text:
+                continue
+
+            try:
+                data = json.loads(text)
+            except json.JSONDecodeError:
+                continue
+
+            items = data if isinstance(data, list) else [data]
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                if item.get("@type") != "Article":
+                    continue
+
+                images = item.get("image") or []
+                if isinstance(images, str):
+                    images = [images]
+
+                for src in images:
+                    if not isinstance(src, str):
+                        continue
+                    if "sns-webpic-qc.xhscdn.com" not in src:
+                        continue
+
+                    image_key = cls.normalize_image_key(src)
+                    if image_key in seen_image_keys:
+                        continue
+
+                    seen_image_keys.add(image_key)
+                    image_links.append(src)
+
+        return image_links
+
+    @classmethod
     def extract_note_image_links(cls, soup: BeautifulSoup) -> list[str]:
         image_links = []
         seen_image_keys = set()
@@ -86,15 +128,6 @@ class RedNoteProcessor(HTMLReaderBaseProcessor):
 
             seen_image_keys.add(image_key)
             image_links.append(src)
-
-        og_image_links = cls.extract_og_image_links(soup)
-        if not og_image_links:
-            return image_links
-
-        og_image_key = cls.normalize_image_key(og_image_links[0])
-        for index, image_link in enumerate(image_links):
-            if cls.normalize_image_key(image_link) == og_image_key:
-                return image_links[index:] + image_links[:index]
 
         return image_links
 
@@ -127,7 +160,9 @@ class RedNoteProcessor(HTMLReaderBaseProcessor):
             "div.note-content div#detail-desc span.note-text"
         )
 
-        image_links = self.extract_note_image_links(soup)
+        image_links = self.extract_structured_image_links(soup)
+        if not image_links:
+            image_links = self.extract_note_image_links(soup)
         if not image_links:
             image_links = self.extract_og_image_links(soup)
 

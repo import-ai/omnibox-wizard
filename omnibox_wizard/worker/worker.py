@@ -27,7 +27,6 @@ from omnibox_wizard.worker.functions.index import (
     UpsertIndex,
     UpsertMessageIndex,
 )
-from omnibox_wizard.worker.functions.rss_item_parser import RssItemParserFunction
 from omnibox_wizard.worker.functions.tag_extractor import TagExtractor
 from omnibox_wizard.worker.functions.title_generator import TitleGenerator
 from omnibox_wizard.worker.functions.web_analysis import WebAnalysisFunction
@@ -60,7 +59,6 @@ OTHER_FUNCTIONS: frozenset[str] = frozenset(
         "collect",
         "collect_url",
         "web_analysis",
-        "parse_rss_item",
         "extract_tags",
         "generate_title",
     }
@@ -114,7 +112,6 @@ class Worker:
             "collect": HTMLReaderV2(config),
             "collect_url": CollectUrlFunction(config),
             "web_analysis": WebAnalysisFunction(config),
-            "parse_rss_item": RssItemParserFunction(config),
             "upsert_index": UpsertIndex(config),
             "delete_index": DeleteIndex(config),
             # All base file_reader_* kinds share one handler; it dispatches on

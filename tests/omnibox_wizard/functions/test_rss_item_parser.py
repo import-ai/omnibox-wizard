@@ -3,14 +3,13 @@ from unittest.mock import AsyncMock
 import pytest
 
 from omnibox_wizard.worker.functions.collect_url import ScrapeResponseDto
-from omnibox_wizard.worker.functions.rss_item_parser import RssItemParserFunction
+from omnibox_wizard.worker.functions.rss_item_parser import RssItemParser
 from omnibox_wizard.worker.worker import compute_supported_functions
-from wizard_common.worker.entity import Task
 
 
 @pytest.mark.asyncio
-async def test_rss_item_parser_returns_only_markdown():
-    parser = RssItemParserFunction.__new__(RssItemParserFunction)
+async def test_rss_item_parser_returns_markdown():
+    parser = RssItemParser.__new__(RssItemParser)
     parser.collect_url = AsyncMock()
     parser.collect_url._scrape_url.return_value = ScrapeResponseDto(
         final_url="https://example.com/article",
@@ -24,18 +23,10 @@ async def test_rss_item_parser_returns_only_markdown():
         "images": [{"link": "https://example.com/image.png"}],
         "next_tasks": [{"function": "extract_tags"}],
     }
-    task = Task(
-        id="task-1",
-        priority=5,
-        namespace_id="namespace-1",
-        user_id="user-1",
-        function="parse_rss_item",
-        input={"url": "https://example.com/original"},
-    )
 
-    result = await parser.run(task, AsyncMock())
+    markdown = await parser.parse("https://example.com/original", AsyncMock())
 
-    assert result == {"markdown": "# Article"}
+    assert markdown == "# Article"
     reader_task = parser.html_reader.main.call_args.args[0]
     assert reader_task.input == {
         "url": "https://example.com/article",
@@ -44,7 +35,17 @@ async def test_rss_item_parser_returns_only_markdown():
     }
 
 
-def test_rss_item_parser_is_enabled_by_default():
+@pytest.mark.asyncio
+async def test_rss_item_parser_requires_url():
+    parser = RssItemParser.__new__(RssItemParser)
+    parser.collect_url = AsyncMock()
+    parser.html_reader = AsyncMock()
+
+    with pytest.raises(ValueError):
+        await parser.parse("", AsyncMock())
+
+
+def test_parse_rss_item_is_not_a_worker_function():
     task_config = type("TaskConfig", (), {"functions": None})()
 
-    assert "parse_rss_item" in compute_supported_functions(task_config)
+    assert "parse_rss_item" not in compute_supported_functions(task_config)

@@ -20,6 +20,14 @@ class TagsResponse(BaseModel):
     tags: list[str] = Field(description="tags of text")
 
 
+class RssItemParseRequest(BaseModel):
+    url: str = Field(description="article url of the rss item to parse")
+
+
+class RssItemParseResponse(BaseModel):
+    markdown: str = Field(description="markdown rendered from the rss item")
+
+
 class SearchRequest(BaseModel):
     query: str = Field(description="search query")
     namespace_id: str = Field(description="namespace id to search in")

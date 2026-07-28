@@ -71,7 +71,7 @@ async def parse_rss_item(
     request: RssItemParseRequest,
     trace_info: TraceInfo = Depends(get_trace_info),
 ):
-    markdown = await rss_item_parser.parse(request.url, trace_info)
+    markdown = await rss_item_parser.parse(request.url, request.content, trace_info)
     return RssItemParseResponse(markdown=markdown)
 
 

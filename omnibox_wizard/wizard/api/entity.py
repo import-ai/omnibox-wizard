@@ -21,7 +21,14 @@ class TagsResponse(BaseModel):
 
 
 class RssItemParseRequest(BaseModel):
-    url: str = Field(description="article url of the rss item to parse")
+    url: str = Field(
+        default="",
+        description="article url; used to scrape when no content, and as image base",
+    )
+    content: str = Field(
+        default="",
+        description="embedded article HTML, if the feed provided it",
+    )
 
 
 class RssItemParseResponse(BaseModel):

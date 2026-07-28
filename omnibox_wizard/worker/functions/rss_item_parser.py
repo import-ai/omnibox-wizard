@@ -21,11 +21,19 @@ class RssItemParser:
         self.html_reader = HTMLReaderV2(config)
 
     @tracer.start_as_current_span("RssItemParser.parse")
-    async def parse(self, url: str, trace_info: TraceInfo) -> str:
-        if not url:
-            raise ValueError("RSS item URL is required")
+    async def parse(self, url: str, content: str, trace_info: TraceInfo) -> str:
+        if content:
+            # The feed already embedded the article HTML; convert it directly and
+            # skip fetching the link. `url` is only an image base for convert_img_src.
+            html, final_url, title = content, url, ""
+        elif url:
+            scrape_result = await self.collect_url._scrape_url(url)
+            html = scrape_result.html
+            final_url = scrape_result.final_url
+            title = scrape_result.title
+        else:
+            raise ValueError("RSS item URL or content is required")
 
-        scrape_result = await self.collect_url._scrape_url(url)
         # html_reader.main() reads html/url/title off task.input; the rest of the
         # Task is unused by the plain HTML-to-Markdown path.
         reader_task = Task(
@@ -34,11 +42,7 @@ class RssItemParser:
             namespace_id="",
             user_id="",
             function="collect",
-            input={
-                "url": scrape_result.final_url,
-                "html": scrape_result.html,
-                "title": scrape_result.title,
-            },
+            input={"url": final_url, "html": html, "title": title},
         )
         result = await self.html_reader.main(reader_task, trace_info)
         return result.get("markdown", "")

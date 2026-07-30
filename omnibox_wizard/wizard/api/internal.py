@@ -9,6 +9,8 @@ from omnibox_wizard.indexing import build_resource_chunks
 from omnibox_wizard.wizard.api.depends import get_trace_info
 from omnibox_wizard.wizard.api.entity import (
     CommonAITextRequest,
+    RssItemParseRequest,
+    RssItemParseResponse,
     SearchRequest,
     SearchResponse,
     TitleResponse,
@@ -20,7 +22,8 @@ from omnibox_wizard.worker.agent.chat_title_generator import (
     ChatTitleGenerateOutput,
     ChatTitleGenerator,
 )
-from omnibox_wizard.worker.config import TaskConfig
+from omnibox_wizard.worker.config import TaskConfig, WorkerConfig
+from omnibox_wizard.worker.functions.rss_item_parser import RssItemParser
 from omnibox_wizard.worker.worker import compute_supported_functions
 from wizard_common.grimoire.config import GrimoireAgentConfig
 from wizard_common.grimoire.entity.message import Message
@@ -32,16 +35,20 @@ CHUNK_SIZE = 1024
 CHUNK_OVERLAP = 128
 vector_db: WeaviateVectorDB
 title_generator: ChatTitleGenerator
+rss_item_parser: RssItemParser
 capabilities: dict = {}
 
 
 async def init(_):
-    global title_generator, vector_db, capabilities
+    global title_generator, vector_db, rss_item_parser, capabilities
     loader = Loader(GrimoireAgentConfig, env_prefix=ENV_PREFIX)
     config: GrimoireAgentConfig = loader.load()
 
     title_generator = ChatTitleGenerator(config.grimoire.openai)
     vector_db = WeaviateVectorDB(config.vector)
+
+    worker_config: WorkerConfig = Loader(WorkerConfig, env_prefix=ENV_PREFIX).load()
+    rss_item_parser = RssItemParser(worker_config)
 
     task_config = Loader(TaskConfig, env_prefix=f"{ENV_PREFIX}_TASK").load()
     supported = compute_supported_functions(task_config)
@@ -57,6 +64,15 @@ async def title(request: CommonAITextRequest):
         }
     )
     return TitleResponse(title=output.title)
+
+
+@internal_router.post("/rss/parse", tags=["RSS"], response_model=RssItemParseResponse)
+async def parse_rss_item(
+    request: RssItemParseRequest,
+    trace_info: TraceInfo = Depends(get_trace_info),
+):
+    markdown = await rss_item_parser.parse(request.url, request.content, trace_info)
+    return RssItemParseResponse(markdown=markdown)
 
 
 @internal_router.post("/search", tags=[], response_model=SearchResponse)

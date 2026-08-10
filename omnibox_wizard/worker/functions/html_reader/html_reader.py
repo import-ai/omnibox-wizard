@@ -33,6 +33,9 @@ from omnibox_wizard.worker.functions.html_reader.processors.okjike_web import (
 from omnibox_wizard.worker.functions.html_reader.processors.red_note import (
     RedNoteProcessor,
 )
+from omnibox_wizard.worker.functions.html_reader.processors.reddit import (
+    RedditProcessor,
+)
 from omnibox_wizard.worker.functions.html_reader.processors.x import XProcessor
 from omnibox_wizard.worker.functions.html_reader.selectors.base import BaseSelector
 from omnibox_wizard.worker.functions.html_reader.selectors.common import CommonSelector
@@ -230,6 +233,7 @@ class HTMLReaderV2(BaseFunction):
             RedNoteProcessor(config=config),
             OKJikeWebProcessor(config=config),
             OKJikeMProcessor(config=config),
+            RedditProcessor(config=config),
             XProcessor(config=config),
         ]
         self.selectors: list[BaseSelector] = [
@@ -249,6 +253,7 @@ class HTMLReaderV2(BaseFunction):
             CommonSelector(
                 "x.com", {"name": "div", "attrs": {"data-testid": "tweetText"}}
             ),
+            CommonSelector("reddit.com", {"name": "shreddit-post-text-body"}),
             CommonSelector("www.reddit.com", {"name": "shreddit-post-text-body"}),
             LambdaSelector(
                 lambda parsed, soup: (

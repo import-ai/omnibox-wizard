@@ -33,6 +33,9 @@ from omnibox_wizard.worker.functions.html_reader.processors.okjike_web import (
 from omnibox_wizard.worker.functions.html_reader.processors.red_note import (
     RedNoteProcessor,
 )
+from omnibox_wizard.worker.functions.html_reader.processors.instagram import (
+    InstagramProcessor,
+)
 from omnibox_wizard.worker.functions.html_reader.processors.reddit import (
     RedditProcessor,
 )
@@ -231,6 +234,7 @@ class HTMLReaderV2(BaseFunction):
             GreenNoteProcessor(config=config),
             GreenNoticeProcessor(config=config),
             RedNoteProcessor(config=config),
+            InstagramProcessor(config=config),
             OKJikeWebProcessor(config=config),
             OKJikeMProcessor(config=config),
             RedditProcessor(config=config),

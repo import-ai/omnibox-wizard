@@ -1,0 +1,516 @@
+import json
+from unittest.mock import AsyncMock, Mock
+
+import pytest
+from wizard_common.worker.entity import Image
+
+from omnibox_wizard.worker.functions.html_reader.processors.instagram import (
+    InstagramProcessor,
+)
+from omnibox_wizard.worker.functions.html_reader.html_reader import (
+    HTMLReaderV2,
+)
+
+
+def _processor() -> InstagramProcessor:
+    return InstagramProcessor(config=Mock())
+
+
+@pytest.mark.parametrize(
+    ("url", "shortcode"),
+    [
+        (
+            "https://www.instagram.com/p/DcFzoFogOFC",
+            "DcFzoFogOFC",
+        ),
+        (
+            "https://www.instagram.com/p/Db8WEVXGWDA/",
+            "Db8WEVXGWDA",
+        ),
+        (
+            "https://www.instagram.com/p/DcOI0PtF-j5/"
+            "?utm_source=ig_web_copy_link&igsh=sample",
+            "DcOI0PtF-j5",
+        ),
+    ],
+)
+def test_accepts_supported_instagram_post_urls(
+    url: str,
+    shortcode: str,
+):
+    processor = _processor()
+
+    assert processor.hit("", url) is True
+    assert processor._extract_shortcode(url) == shortcode
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://www.instagram.com/",
+        "https://www.instagram.com/p/",
+        "https://www.instagram.com/reel/DcFzoFogOFC/",
+        "https://www.instagram.com/reels/DcFzoFogOFC/",
+        "https://www.instagram.com/tutorcircle/p/DcFzoFogOFC/",
+        "http://www.instagram.com/p/DcFzoFogOFC/",
+        "https://instagram.com/p/DcFzoFogOFC/",
+        "https://www.instagram.com.evil.example/p/DcFzoFogOFC/",
+        "https://www.instagram.com/p/DcFzoFogOFC/comments/",
+    ],
+)
+def test_rejects_unsupported_instagram_urls(url: str):
+    assert _processor().hit("", url) is False
+
+
+def _json_html(*documents: object) -> str:
+    return "".join(
+        f'<script type="application/json">{json.dumps(document)}</script>'
+        for document in documents
+    )
+
+
+def test_find_image_media_by_shortcode_and_deduplicate_media_id():
+    target = {
+        "pk": "3962138827016462528",
+        "code": "Db8WEVXGWDA",
+        "media_type": 8,
+        "product_type": "carousel_container",
+        "carousel_media": [],
+    }
+    unrelated = {
+        "pk": "unrelated-media",
+        "code": "OtherPost01",
+        "media_type": 1,
+        "image_versions2": {"candidates": []},
+    }
+    html = _json_html(
+        {"payload": {"items": [unrelated, target]}},
+        {"duplicate": target},
+    )
+
+    media = InstagramProcessor._find_image_media(
+        html,
+        "Db8WEVXGWDA",
+    )
+
+    assert media == target
+
+
+@pytest.mark.parametrize(
+    ("documents", "expected_count"),
+    [
+        (
+            [
+                {
+                    "items": [
+                        {
+                            "pk": "video-media",
+                            "code": "TargetPost01",
+                            "media_type": 2,
+                            "video_versions": [
+                                {"url": "https://example.com/video.mp4"}
+                            ],
+                        }
+                    ]
+                }
+            ],
+            0,
+        ),
+        (
+            [
+                {
+                    "pk": "first-media",
+                    "code": "TargetPost01",
+                    "media_type": 1,
+                    "image_versions2": {"candidates": []},
+                },
+                {
+                    "pk": "second-media",
+                    "code": "TargetPost01",
+                    "media_type": 8,
+                    "carousel_media": [],
+                },
+            ],
+            2,
+        ),
+    ],
+)
+def test_rejects_invalid_image_media_count(
+    documents: list[object],
+    expected_count: int,
+):
+    html = _json_html(*documents)
+
+    with pytest.raises(
+        RuntimeError,
+        match=rf"Expected one Instagram image record, found {expected_count}",
+    ):
+        InstagramProcessor._find_image_media(
+            html,
+            "TargetPost01",
+        )
+
+
+def _image_candidate(
+    name: str,
+    width: int,
+    height: int,
+) -> dict:
+    return {
+        "url": (f"https://scontent-lax3-1.cdninstagram.com/{name}.jpg"),
+        "width": width,
+        "height": height,
+    }
+
+
+def test_extract_image_urls_from_single_image_media():
+    small = _image_candidate("single-small", 320, 400)
+    largest = _image_candidate("single-largest", 1080, 1350)
+    medium = _image_candidate("single-medium", 720, 900)
+    media = {
+        "media_type": 1,
+        "image_versions2": {
+            "candidates": [small, largest, medium],
+        },
+    }
+
+    image_urls = InstagramProcessor._extract_image_urls(media)
+
+    assert image_urls == [largest["url"]]
+
+
+def test_extract_image_urls_from_carousel_in_original_order():
+    first_small = _image_candidate("first-small", 320, 400)
+    first_largest = _image_candidate("first-largest", 1080, 1350)
+    second_largest = _image_candidate("second-largest", 1080, 1080)
+    second_small = _image_candidate("second-small", 320, 320)
+    media = {
+        "media_type": 8,
+        "carousel_media": [
+            {
+                "image_versions2": {
+                    "candidates": [first_small, first_largest],
+                },
+            },
+            {
+                "image_versions2": {
+                    "candidates": [second_largest, second_small],
+                },
+            },
+        ],
+    }
+
+    image_urls = InstagramProcessor._extract_image_urls(media)
+
+    assert image_urls == [
+        first_largest["url"],
+        second_largest["url"],
+    ]
+
+
+@pytest.mark.parametrize(
+    ("url", "error_message"),
+    [
+        (
+            "http://scontent-lax3-1.cdninstagram.com/image.jpg",
+            "Instagram image URL is not valid HTTPS",
+        ),
+        (
+            "/relative/image.jpg",
+            "Instagram image URL is not valid HTTPS",
+        ),
+        (
+            "https://example.com/image.jpg",
+            "Instagram image URL uses an unexpected CDN host",
+        ),
+        (
+            "https://cdninstagram.com.evil.example/image.jpg",
+            "Instagram image URL uses an unexpected CDN host",
+        ),
+    ],
+)
+def test_rejects_invalid_instagram_image_url(
+    url: str,
+    error_message: str,
+):
+    media = {
+        "media_type": 1,
+        "image_versions2": {
+            "candidates": [
+                {
+                    "url": url,
+                    "width": 1080,
+                    "height": 1350,
+                }
+            ],
+        },
+    }
+
+    with pytest.raises(
+        RuntimeError,
+        match=error_message,
+    ):
+        InstagramProcessor._extract_image_urls(media)
+
+
+def test_extract_single_image_from_target_article_src():
+    target_url = _image_candidate(
+        "dom-single-target",
+        1080,
+        1350,
+    )["url"]
+    avatar_url = _image_candidate(
+        "dom-single-avatar",
+        150,
+        150,
+    )["url"]
+    unrelated_url = _image_candidate(
+        "dom-single-unrelated",
+        1080,
+        1080,
+    )["url"]
+    html = f"""
+        <article>
+            <a href="/other/p/OtherPost01/"></a>
+            <div class="_aagv">
+                <img src="{unrelated_url}">
+            </div>
+        </article>
+        <article>
+            <a href="/tutorcircle/p/DcFzoFogOFC/"></a>
+            <div class="_aagv">
+                <img src="{target_url}">
+            </div>
+            <img src="{avatar_url}" alt="avatar">
+            <h1>Target Instagram caption</h1>
+        </article>
+    """
+
+    image_url, caption = InstagramProcessor._extract_single_image_from_dom(
+        html,
+        "DcFzoFogOFC",
+    )
+
+    assert image_url == target_url
+    assert caption == "Target Instagram caption"
+
+
+def test_extract_single_image_from_largest_srcset_candidate():
+    small_url = _image_candidate(
+        "dom-srcset-small",
+        320,
+        400,
+    )["url"]
+    largest_url = _image_candidate(
+        "dom-srcset-largest",
+        1080,
+        1350,
+    )["url"]
+    medium_url = _image_candidate(
+        "dom-srcset-medium",
+        720,
+        900,
+    )["url"]
+    html = f"""
+        <article>
+            <a href="/p/SinglePost01/"></a>
+            <div class="_aagv">
+                <img
+                    src="{small_url}"
+                    srcset="
+                        {medium_url} 720w,
+                        {largest_url} 1080w,
+                        {small_url} 320w
+                    "
+                >
+            </div>
+            <h1>Single image caption</h1>
+        </article>
+    """
+
+    image_url, caption = InstagramProcessor._extract_single_image_from_dom(
+        html,
+        "SinglePost01",
+    )
+
+    assert image_url == largest_url
+    assert caption == "Single image caption"
+
+
+def test_extract_post_data_prefers_matching_json_media():
+    structured_url = _image_candidate(
+        "structured-single",
+        1080,
+        1350,
+    )["url"]
+    target = {
+        "pk": "structured-media",
+        "code": "StructuredPost01",
+        "media_type": 1,
+        "image_versions2": {
+            "candidates": [
+                {
+                    "url": structured_url,
+                    "width": 1080,
+                    "height": 1350,
+                }
+            ],
+        },
+        "caption": {
+            "text": "Structured caption",
+        },
+    }
+    html = (
+        _json_html({"payload": target})
+        + """
+        <article>
+            <a href="/creator/p/StructuredPost01/"></a>
+            <div class="_aagv">
+                <img src="https://example.com/incorrect.jpg">
+            </div>
+            <h1>Incorrect DOM caption</h1>
+        </article>
+    """
+    )
+
+    image_urls, caption = InstagramProcessor._extract_post_data(
+        html,
+        "StructuredPost01",
+    )
+
+    assert image_urls == [structured_url]
+    assert caption == "Structured caption"
+
+
+def test_extract_post_data_falls_back_to_single_image_dom():
+    dom_url = _image_candidate(
+        "dom-fallback",
+        1080,
+        1350,
+    )["url"]
+    html = f"""
+        <article>
+            <a href="/creator/p/DomFallback01/"></a>
+            <div class="_aagv">
+                <img src="{dom_url}">
+            </div>
+            <h1>DOM fallback caption</h1>
+        </article>
+    """
+
+    image_urls, caption = InstagramProcessor._extract_post_data(
+        html,
+        "DomFallback01",
+    )
+
+    assert image_urls == [dom_url]
+    assert caption
+
+
+async def test_convert_builds_ordered_image_markdown_and_caption():
+    first_url = _image_candidate(
+        "convert-first",
+        1080,
+        1350,
+    )["url"]
+    second_url = _image_candidate(
+        "convert-second",
+        1080,
+        1350,
+    )["url"]
+    downloaded_images = [
+        Image(
+            name="1",
+            link=first_url,
+            data="first-base64",
+            mimetype="image/jpeg",
+        ),
+        Image(
+            name="2",
+            link=second_url,
+            data="second-base64",
+            mimetype="image/jpeg",
+        ),
+    ]
+    processor = _processor()
+    processor._extract_post_data = Mock(
+        return_value=(
+            [first_url, second_url],
+            "Instagram post caption",
+        )
+    )
+    processor.get_images = AsyncMock(return_value=downloaded_images)
+
+    result = await processor.convert(
+        "<html></html>",
+        "https://www.instagram.com/p/ConvertPost01/",
+    )
+
+    processor._extract_post_data.assert_called_once_with(
+        "<html></html>",
+        "ConvertPost01",
+    )
+    processor.get_images.assert_awaited_once_with(
+        [
+            (first_url, "1"),
+            (second_url, "2"),
+        ]
+    )
+    assert result.title is None
+    assert result.markdown == (
+        f"![1]({first_url})\n\n![2]({second_url})\n\nInstagram post caption"
+    )
+    assert result.images == downloaded_images
+
+
+def test_html_reader_registers_instagram_processor(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        "omnibox_wizard.worker.functions.html_reader.html_reader.HTMLContentExtractor",
+        Mock(return_value=Mock()),
+    )
+    reader = HTMLReaderV2(config=Mock())
+
+    processor = reader.get_processor(
+        "",
+        "https://www.instagram.com/p/DcFzoFogOFC/",
+    )
+
+    assert isinstance(processor, InstagramProcessor)
+
+
+async def test_convert_rejects_partial_image_download():
+    first_url = _image_candidate(
+        "partial-first",
+        1080,
+        1350,
+    )["url"]
+    second_url = _image_candidate(
+        "partial-second",
+        1080,
+        1350,
+    )["url"]
+    downloaded_image = Image(
+        name="1",
+        link=first_url,
+        data="first-base64",
+        mimetype="image/jpeg",
+    )
+    processor = _processor()
+    processor._extract_post_data = Mock(
+        return_value=(
+            [first_url, second_url],
+            "Instagram post caption",
+        )
+    )
+    processor.get_images = AsyncMock(return_value=[downloaded_image])
+
+    with pytest.raises(
+        RuntimeError,
+        match=("Expected 2 Instagram images to be downloaded, got 1"),
+    ):
+        await processor.convert(
+            "<html></html>",
+            "https://www.instagram.com/p/PartialPost01/",
+        )

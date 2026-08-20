@@ -36,6 +36,14 @@ def is_tiktok(url: str) -> bool:
     return False
 
 
+def is_instagram(url: str) -> bool:
+    domain: str = urlparse(url).netloc
+    for pattern in ["instagram.com"]:
+        if pattern in domain:
+            return True
+    return False
+
+
 def is_ximalaya(url: str) -> bool:
     host: str = urlparse(url).hostname or ""
     for domain in ["ximalaya.com", "xima.tv"]:
@@ -92,6 +100,13 @@ class WebAnalysisFunction(BaseFunction):
                 ):
                     return False
             return True
+        if is_instagram(url):
+            parsed = urlparse(url)
+            if parsed.path.startswith(("/reel/", "/reels/")):
+                return True
+            if parsed.path.startswith("/p/"):
+                return soup.select_one("main video") is not None
+            return False
         for prefix in self.video_prefixes:
             if url.startswith(prefix):
                 return True

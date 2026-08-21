@@ -258,6 +258,28 @@ class InstagramProcessor(HTMLReaderBaseProcessor):
 
         raise RuntimeError("Instagram image has no valid candidates")
 
+    @staticmethod
+    def _build_title(
+        caption: str,
+        author_name: str,
+    ) -> str:
+        normalized_caption = " ".join(caption.split())
+        if normalized_caption:
+            return normalized_caption
+
+        return author_name.strip()
+
+    @staticmethod
+    def _extract_author_name(media: dict) -> str:
+        user = media["user"]
+
+        full_name = str(user.get("full_name") or "").strip()
+        if full_name:
+            return full_name
+
+        username = str(user["username"]).strip()
+        return f"@{username}"
+
     @classmethod
     def _extract_image_urls(
         cls,
@@ -408,6 +430,7 @@ class InstagramProcessor(HTMLReaderBaseProcessor):
         url: str,
     ) -> GeneratedContent:
         shortcode = self._extract_shortcode(url)
+        post_html = html
         try:
             image_urls, caption = self._extract_post_data(
                 html,
@@ -418,8 +441,9 @@ class InstagramProcessor(HTMLReaderBaseProcessor):
             scrape_result = await self.collect_url._scrape_url(
                 canonical_url,
             )
+            post_html = scrape_result.html
             image_urls, caption = self._extract_post_data(
-                scrape_result.html,
+                post_html,
                 shortcode,
             )
 
@@ -443,8 +467,21 @@ class InstagramProcessor(HTMLReaderBaseProcessor):
         if caption:
             markdown_parts.append(caption)
 
+        author_name = ""
+        if not caption.strip():
+            media = self._find_image_media(
+                post_html,
+                shortcode,
+            )
+            author_name = self._extract_author_name(media)
+
+        title = self._build_title(
+            caption,
+            author_name,
+        )
+
         return GeneratedContent(
-            title=None,
+            title=title,
             markdown="\n\n".join(markdown_parts),
             images=images or None,
         )

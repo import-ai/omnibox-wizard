@@ -550,7 +550,7 @@ async def test_convert_builds_ordered_image_markdown_and_caption():
             (second_url, "2"),
         ]
     )
-    assert result.title is None
+    assert result.title == "Instagram post caption"
     assert result.markdown == (
         f"![1]({first_url})\n\n![2]({second_url})\n\nInstagram post caption"
     )
@@ -812,3 +812,111 @@ async def test_convert_rescrapes_canonical_post_for_incomplete_carousel():
     assert result.images == downloaded_images
     assert "Complete structured caption" in result.markdown
     assert "Incomplete DOM caption" not in result.markdown
+
+
+@pytest.mark.parametrize(
+    ("caption", "author_name", "expected_title"),
+    [
+        (
+            "第一段正文\n\n第二段正文  包含连续空格",
+            "示例作者",
+            "第一段正文 第二段正文 包含连续空格",
+        ),
+        (
+            "   ",
+            "示例作者",
+            "示例作者",
+        ),
+    ],
+)
+def test_build_title_from_caption_or_author(
+    caption: str,
+    author_name: str,
+    expected_title: str,
+):
+    assert (
+        InstagramProcessor._build_title(
+            caption,
+            author_name,
+        )
+        == expected_title
+    )
+
+
+@pytest.mark.parametrize(
+    ("user", "expected_author"),
+    [
+        (
+            {
+                "full_name": "示例作者",
+                "username": "example_user",
+            },
+            "示例作者",
+        ),
+        (
+            {
+                "full_name": "   ",
+                "username": "example_user",
+            },
+            "@example_user",
+        ),
+    ],
+)
+def test_extract_author_name_prefers_full_name(
+    user: dict,
+    expected_author: str,
+):
+    media = {"user": user}
+
+    assert InstagramProcessor._extract_author_name(media) == expected_author
+
+
+async def test_convert_uses_author_name_when_caption_is_empty():
+    shortcode = "AuthorFallback01"
+    image_url = _image_candidate(
+        "author-fallback",
+        1080,
+        1350,
+    )["url"]
+    html = _json_html(
+        {
+            "pk": "author-fallback-media",
+            "code": shortcode,
+            "media_type": 1,
+            "caption": {
+                "text": "   ",
+            },
+            "user": {
+                "full_name": "示例作者",
+                "username": "example_user",
+            },
+            "image_versions2": {
+                "candidates": [
+                    _image_candidate(
+                        "author-fallback",
+                        1080,
+                        1350,
+                    )
+                ]
+            },
+        }
+    )
+    downloaded_image = Image(
+        name="1",
+        link=image_url,
+        data="image-base64",
+        mimetype="image/jpeg",
+    )
+    processor = _processor()
+    processor.collect_url._scrape_url = AsyncMock()
+    processor.get_images = AsyncMock(
+        return_value=[downloaded_image],
+    )
+
+    result = await processor.convert(
+        html,
+        f"https://www.instagram.com/p/{shortcode}/",
+    )
+
+    processor.collect_url._scrape_url.assert_not_awaited()
+    assert result.title == "示例作者"

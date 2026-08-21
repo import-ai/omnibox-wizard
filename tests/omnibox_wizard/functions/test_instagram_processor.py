@@ -435,6 +435,7 @@ async def test_convert_builds_ordered_image_markdown_and_caption():
         ),
     ]
     processor = _processor()
+    processor.collect_url._scrape_url = AsyncMock()
     processor._extract_post_data = Mock(
         return_value=(
             [first_url, second_url],
@@ -447,6 +448,8 @@ async def test_convert_builds_ordered_image_markdown_and_caption():
         "<html></html>",
         "https://www.instagram.com/p/ConvertPost01/",
     )
+
+    processor.collect_url._scrape_url.assert_not_awaited()
 
     processor._extract_post_data.assert_called_once_with(
         "<html></html>",
@@ -622,3 +625,101 @@ async def test_fetch_img_records_sanitized_http_error(
     status = span.set_status.call_args.args[0]
     assert status.status_code is trace.StatusCode.ERROR
     assert status.description == "ConnectTimeout"
+
+
+async def test_convert_rescrapes_canonical_post_for_incomplete_carousel():
+    shortcode = "RetryCarousel01"
+    first_url = _image_candidate(
+        "retry-first",
+        1080,
+        1350,
+    )["url"]
+    second_url = _image_candidate(
+        "retry-second",
+        1080,
+        1350,
+    )["url"]
+
+    initial_html = f"""
+        <article>
+            <a href="/creator/p/{shortcode}/"></a>
+            <div class="_aagv"><img src="{first_url}"></div>
+            <div class="_aagv"><img src="{second_url}"></div>
+            <h1>Incomplete DOM caption</h1>
+        </article>
+    """
+    canonical_html = _json_html(
+        {
+            "pk": "retry-carousel-media",
+            "code": shortcode,
+            "media_type": 8,
+            "caption": {
+                "text": "Complete structured caption",
+            },
+            "carousel_media": [
+                {
+                    "image_versions2": {
+                        "candidates": [
+                            _image_candidate(
+                                "retry-first",
+                                1080,
+                                1350,
+                            )
+                        ]
+                    }
+                },
+                {
+                    "image_versions2": {
+                        "candidates": [
+                            _image_candidate(
+                                "retry-second",
+                                1080,
+                                1350,
+                            )
+                        ]
+                    }
+                },
+            ],
+        }
+    )
+    downloaded_images = [
+        Image(
+            name="1",
+            link=first_url,
+            data="first-base64",
+            mimetype="image/jpeg",
+        ),
+        Image(
+            name="2",
+            link=second_url,
+            data="second-base64",
+            mimetype="image/jpeg",
+        ),
+    ]
+
+    processor = _processor()
+    processor.collect_url = Mock()
+    processor.collect_url._scrape_url = AsyncMock(
+        return_value=Mock(html=canonical_html)
+    )
+    processor.get_images = AsyncMock(
+        return_value=downloaded_images,
+    )
+
+    result = await processor.convert(
+        initial_html,
+        f"https://www.instagram.com/p/{shortcode}/?img_index=1",
+    )
+
+    processor.collect_url._scrape_url.assert_awaited_once_with(
+        f"https://www.instagram.com/p/{shortcode}/"
+    )
+    processor.get_images.assert_awaited_once_with(
+        [
+            (first_url, "1"),
+            (second_url, "2"),
+        ]
+    )
+    assert result.images == downloaded_images
+    assert "Complete structured caption" in result.markdown
+    assert "Incomplete DOM caption" not in result.markdown

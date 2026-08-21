@@ -13,11 +13,18 @@ from wizard_common.worker.entity import GeneratedContent
 from omnibox_wizard.worker.functions.html_reader.processors.base import (
     HTMLReaderBaseProcessor,
 )
+from omnibox_wizard.worker.config import WorkerConfig
+from omnibox_wizard.worker.functions.collect_url import CollectUrlFunction
+
 
 tracer = trace.get_tracer("InstagramProcessor")
 
 
 class _InstagramImageMediaNotFoundError(RuntimeError):
+    pass
+
+
+class _InstagramIncompleteDomError(RuntimeError):
     pass
 
 
@@ -32,6 +39,14 @@ class InstagramProcessor(HTMLReaderBaseProcessor):
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
         ),
     }
+
+    def __init__(self, config: WorkerConfig):
+        super().__init__(config)
+        self.collect_url = CollectUrlFunction(config)
+
+    @staticmethod
+    def _build_canonical_url(shortcode: str) -> str:
+        return f"https://www.instagram.com/p/{shortcode}/"
 
     def hit(self, html: str, url: str) -> bool:
         try:
@@ -263,7 +278,7 @@ class InstagramProcessor(HTMLReaderBaseProcessor):
                     break
 
         if len(target_articles) != 1:
-            raise RuntimeError(
+            raise _InstagramIncompleteDomError(
                 f"Expected one Instagram target article, found {len(target_articles)}"
             )
 
@@ -305,7 +320,7 @@ class InstagramProcessor(HTMLReaderBaseProcessor):
 
         image_tags = article.select("div._aagv img")
         if len(image_tags) != 1:
-            raise RuntimeError(
+            raise _InstagramIncompleteDomError(
                 f"Expected one Instagram article image, found {len(image_tags)}"
             )
 
@@ -363,10 +378,20 @@ class InstagramProcessor(HTMLReaderBaseProcessor):
         url: str,
     ) -> GeneratedContent:
         shortcode = self._extract_shortcode(url)
-        image_urls, caption = self._extract_post_data(
-            html,
-            shortcode,
-        )
+        try:
+            image_urls, caption = self._extract_post_data(
+                html,
+                shortcode,
+            )
+        except _InstagramIncompleteDomError:
+            canonical_url = self._build_canonical_url(shortcode)
+            scrape_result = await self.collect_url._scrape_url(
+                canonical_url,
+            )
+            image_urls, caption = self._extract_post_data(
+                scrape_result.html,
+                shortcode,
+            )
 
         images = await self.get_images(
             [

@@ -1,8 +1,10 @@
 import json
+import httpx
 from unittest.mock import AsyncMock, Mock
 
 import pytest
 from wizard_common.worker.entity import Image
+from opentelemetry import trace
 
 from omnibox_wizard.worker.functions.html_reader.processors.instagram import (
     InstagramProcessor,
@@ -514,3 +516,109 @@ async def test_convert_rejects_partial_image_download():
             "<html></html>",
             "https://www.instagram.com/p/PartialPost01/",
         )
+
+
+async def test_fetch_img_uses_proxy_and_instagram_request_config(
+    monkeypatch,
+):
+    proxy = "http://proxy.example:8080"
+    image_url = "https://scontent.example.cdninstagram.com/image.jpg?signature=secret"
+    transport = Mock()
+    transport_factory = Mock(return_value=transport)
+
+    response = Mock(
+        status_code=200,
+        headers={"Content-Type": "image/png"},
+        content=b"image",
+    )
+    client = Mock()
+    client.get = AsyncMock(return_value=response)
+    client.__aenter__ = AsyncMock(return_value=client)
+    client.__aexit__ = AsyncMock(return_value=None)
+    client_factory = Mock(return_value=client)
+
+    monkeypatch.setenv("OB_SCRAPE_PROXY", proxy)
+    monkeypatch.setattr(
+        "omnibox_wizard.worker.functions.html_reader.processors."
+        "instagram.httpx.AsyncHTTPTransport",
+        transport_factory,
+    )
+    monkeypatch.setattr(
+        "omnibox_wizard.worker.functions.html_reader.processors."
+        "instagram.httpx.AsyncClient",
+        client_factory,
+    )
+
+    result = await InstagramProcessor.fetch_img(image_url)
+
+    assert result == ("image/png", "aW1hZ2U=")
+    transport_factory.assert_called_once_with(
+        retries=3,
+        proxy=proxy,
+    )
+
+    client_kwargs = client_factory.call_args.kwargs
+    assert client_kwargs["headers"] == InstagramProcessor.HEADERS
+    assert client_kwargs["follow_redirects"] is True
+    assert client_kwargs["transport"] is transport
+    assert client_kwargs["timeout"].connect == 20.0
+    assert client_kwargs["timeout"].read == 60.0
+    assert client_kwargs["timeout"].write == 60.0
+    assert client_kwargs["timeout"].pool == 60.0
+
+    client.get.assert_awaited_once_with(image_url)
+    response.raise_for_status.assert_called_once_with()
+
+
+async def test_fetch_img_records_sanitized_http_error(
+    monkeypatch,
+):
+    image_url = (
+        "https://scontent.example.cdninstagram.com/image.jpg?signature=sensitive"
+    )
+    request = httpx.Request("GET", image_url)
+    error = httpx.ConnectTimeout(
+        "connection timed out",
+        request=request,
+    )
+    span = Mock()
+    transport = Mock()
+    client = Mock()
+    client.get = AsyncMock(side_effect=error)
+    client.__aenter__ = AsyncMock(return_value=client)
+    client.__aexit__ = AsyncMock(return_value=None)
+
+    monkeypatch.delenv("OB_SCRAPE_PROXY", raising=False)
+    monkeypatch.setattr(
+        "omnibox_wizard.worker.functions.html_reader.processors."
+        "instagram.httpx.AsyncHTTPTransport",
+        Mock(return_value=transport),
+    )
+    monkeypatch.setattr(
+        "omnibox_wizard.worker.functions.html_reader.processors."
+        "instagram.httpx.AsyncClient",
+        Mock(return_value=client),
+    )
+    monkeypatch.setattr(
+        "omnibox_wizard.worker.functions.html_reader.processors."
+        "instagram.trace.get_current_span",
+        Mock(return_value=span),
+    )
+
+    result = await InstagramProcessor.fetch_img(image_url)
+
+    assert result is None
+    span.set_attribute.assert_any_call(
+        "image.host",
+        "scontent.example.cdninstagram.com",
+    )
+    span.set_attribute.assert_any_call("has_proxy", False)
+    span.set_attribute.assert_any_call(
+        "error.type",
+        "ConnectTimeout",
+    )
+    span.record_exception.assert_not_called()
+
+    status = span.set_status.call_args.args[0]
+    assert status.status_code is trace.StatusCode.ERROR
+    assert status.description == "ConnectTimeout"

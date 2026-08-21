@@ -1,14 +1,20 @@
-import re
+import base64
 import json
+import os
+import re
 from collections.abc import Iterator
 from urllib.parse import urlparse
 
+import httpx
 from bs4 import BeautifulSoup, Tag
+from opentelemetry import trace
 from wizard_common.worker.entity import GeneratedContent
 
 from omnibox_wizard.worker.functions.html_reader.processors.base import (
     HTMLReaderBaseProcessor,
 )
+
+tracer = trace.get_tracer("InstagramProcessor")
 
 
 class _InstagramImageMediaNotFoundError(RuntimeError):
@@ -20,6 +26,12 @@ class InstagramProcessor(HTMLReaderBaseProcessor):
     ARTICLE_POST_PATH_PATTERN: re.Pattern[str] = re.compile(
         r"/(?:[^/]+/)?p/([A-Za-z0-9_-]+)/?"
     )
+    HEADERS = {
+        "Referer": "https://www.instagram.com/",
+        "User-Agent": (
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
+        ),
+    }
 
     def hit(self, html: str, url: str) -> bool:
         try:
@@ -27,6 +39,49 @@ class InstagramProcessor(HTMLReaderBaseProcessor):
         except RuntimeError:
             return False
         return True
+
+    @classmethod
+    @tracer.start_as_current_span("InstagramProcessor.fetch_img")
+    async def fetch_img(cls, src: str) -> tuple[str, str] | None:
+        span = trace.get_current_span()
+        proxy = os.getenv("OB_SCRAPE_PROXY") or None
+
+        span.set_attribute("image.host", urlparse(src).hostname or "")
+        span.set_attribute("has_proxy", proxy is not None)
+
+        try:
+            transport = httpx.AsyncHTTPTransport(
+                retries=3,
+                proxy=proxy,
+            )
+            timeout = httpx.Timeout(60.0, connect=20.0)
+
+            async with httpx.AsyncClient(
+                headers=cls.HEADERS,
+                follow_redirects=True,
+                transport=transport,
+                timeout=timeout,
+            ) as client:
+                response = await client.get(src)
+                span.set_attribute("http.status_code", response.status_code)
+                response.raise_for_status()
+
+                mimetype = response.headers.get(
+                    "Content-Type",
+                    "image/jpeg",
+                )
+                base64_data = base64.b64encode(response.content).decode()
+                return mimetype, base64_data
+        except httpx.HTTPError as exc:
+            error_type = type(exc).__name__
+            span.set_attribute("error.type", error_type)
+            span.set_status(
+                trace.Status(
+                    trace.StatusCode.ERROR,
+                    error_type,
+                )
+            )
+            return None
 
     @classmethod
     def _extract_shortcode(cls, url: str) -> str:

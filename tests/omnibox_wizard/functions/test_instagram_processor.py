@@ -99,6 +99,66 @@ def test_find_image_media_by_shortcode_and_deduplicate_media_id():
 
 
 @pytest.mark.parametrize(
+    "reverse_order",
+    [False, True],
+)
+def test_find_image_media_prefers_complete_duplicate_record(
+    reverse_order: bool,
+):
+    complete = {
+        "pk": "duplicate-carousel-media",
+        "code": "DuplicateCarousel01",
+        "media_type": 8,
+        "caption": {
+            "text": "Complete caption",
+        },
+        "carousel_media": [
+            {
+                "image_versions2": {
+                    "candidates": [
+                        _image_candidate(
+                            "duplicate-first",
+                            1080,
+                            1350,
+                        )
+                    ]
+                }
+            },
+            {
+                "image_versions2": {
+                    "candidates": [
+                        _image_candidate(
+                            "duplicate-second",
+                            1080,
+                            1350,
+                        )
+                    ]
+                }
+            },
+        ],
+    }
+    summary = {
+        "pk": "duplicate-carousel-media",
+        "code": "DuplicateCarousel01",
+        "media_type": 8,
+        "caption": {
+            "text": "Complete caption",
+        },
+        "carousel_media_count": 2,
+    }
+    records = [complete, summary]
+    if reverse_order:
+        records.reverse()
+
+    media = InstagramProcessor._find_image_media(
+        _json_html(*records),
+        "DuplicateCarousel01",
+    )
+
+    assert media == complete
+
+
+@pytest.mark.parametrize(
     ("documents", "expected_count"),
     [
         (
@@ -163,6 +223,35 @@ def _image_candidate(
         "width": width,
         "height": height,
     }
+
+
+def test_select_image_uses_display_uri_without_candidate_dimensions():
+    display_uri = "https://scontent-lax3-1.cdninstagram.com/display-original.jpg"
+    media = {
+        "display_uri": display_uri,
+        "original_width": 2560,
+        "original_height": 2560,
+        "image_versions2": {
+            "candidates": [
+                {
+                    "url": (
+                        "https://scontent-lax3-1.cdninstagram.com/candidate-small.jpg"
+                    )
+                },
+                {
+                    "url": (
+                        "https://scontent-lax3-1.cdninstagram.com/candidate-large.jpg"
+                    )
+                },
+            ]
+        },
+    }
+
+    selected = InstagramProcessor._select_largest_image_url(
+        media,
+    )
+
+    assert selected == display_uri
 
 
 def test_extract_image_urls_from_single_image_media():

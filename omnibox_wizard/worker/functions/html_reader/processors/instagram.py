@@ -144,6 +144,16 @@ class InstagramProcessor(HTMLReaderBaseProcessor):
                 yield from cls._iter_objects(child)
 
     @classmethod
+    def _image_media_completeness(
+        cls,
+        media: dict,
+    ) -> int:
+        try:
+            return len(cls._extract_image_urls(media))
+        except RuntimeError:
+            return 0
+
+    @classmethod
     def _find_image_media(
         cls,
         html: str,
@@ -164,7 +174,13 @@ class InstagramProcessor(HTMLReaderBaseProcessor):
                         "Matching Instagram image has no stable media ID"
                     )
 
-                matches[str(media_id)] = candidate
+                media_id = str(media_id)
+                existing = matches.get(media_id)
+
+                if existing is None or cls._image_media_completeness(
+                    candidate
+                ) > cls._image_media_completeness(existing):
+                    matches[media_id] = candidate
 
         if not matches:
             raise _InstagramImageMediaNotFoundError(
@@ -215,18 +231,32 @@ class InstagramProcessor(HTMLReaderBaseProcessor):
 
             valid_candidates.append(candidate)
 
-        if not valid_candidates:
-            raise RuntimeError("Instagram image has no valid candidates")
+        if valid_candidates:
+            selected = max(
+                valid_candidates,
+                key=lambda candidate: (
+                    candidate["width"] * candidate["height"],
+                    candidate["width"],
+                    candidate["height"],
+                ),
+            )
+            return selected["url"]
 
-        selected = max(
-            valid_candidates,
-            key=lambda candidate: (
-                candidate["width"] * candidate["height"],
-                candidate["width"],
-                candidate["height"],
-            ),
-        )
-        return selected["url"]
+        display_uri = media.get("display_uri")
+        original_width = media.get("original_width")
+        original_height = media.get("original_height")
+
+        if (
+            isinstance(display_uri, str)
+            and display_uri
+            and isinstance(original_width, (int, float))
+            and original_width > 0
+            and isinstance(original_height, (int, float))
+            and original_height > 0
+        ):
+            return display_uri
+
+        raise RuntimeError("Instagram image has no valid candidates")
 
     @classmethod
     def _extract_image_urls(

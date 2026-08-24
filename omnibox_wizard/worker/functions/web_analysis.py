@@ -8,6 +8,7 @@ from wizard_common.worker.entity import Task, TaskFunction
 from common.trace_info import TraceInfo
 from omnibox_wizard.worker.config import WorkerConfig
 from omnibox_wizard.worker.functions.base_function import BaseFunction
+from omnibox_wizard.worker.functions.collect_url import CollectUrlFunction
 
 tracer = trace.get_tracer(__name__)
 
@@ -86,10 +87,59 @@ def is_audio(url: str) -> bool:
 
 
 class WebAnalysisFunction(BaseFunction):
-    def __init__(self, _: WorkerConfig):
+    def __init__(self, config: WorkerConfig):
+        self.collect_url = CollectUrlFunction(config)
         self.video_prefixes: list[str] = list(
             filter(bool, os.getenv("OB_VIDEO_PREFIXES", "").split(","))
         )
+
+    async def _analyze_instagram(
+        self,
+        url: str,
+        html: str,
+        title: str,
+    ) -> tuple[bool, str, str, str]:
+        parsed = urlparse(url)
+        if parsed.path.startswith(("/reel/", "/reels/")):
+            return True, url, html, title
+        if not parsed.path.startswith("/p/"):
+            return False, url, html, title
+
+        path_parts = [part for part in parsed.path.split("/") if part]
+        is_standard_post = (
+            parsed.scheme == "https"
+            and parsed.netloc.lower() == "www.instagram.com"
+            and len(path_parts) == 2
+            and path_parts[0] == "p"
+        )
+        if not is_standard_post:
+            return False, url, html, title
+
+        shortcode = path_parts[1]
+        canonical_url = f"https://www.instagram.com/p/{shortcode}/"
+        span = trace.get_current_span()
+
+        span.set_attribute("instagram_shortcode", shortcode)
+        span.set_attribute("instagram_detail_scraped", False)
+
+        try:
+            scrape_result = await self.collect_url._scrape_url(canonical_url)
+            if not scrape_result.html.strip():
+                raise RuntimeError("Instagram detail scrape returned empty HTML")
+        except Exception as error:
+            span.record_exception(error)
+        else:
+            url = canonical_url
+            html = scrape_result.html
+            title = scrape_result.title
+            span.set_attribute("instagram_detail_scraped", True)
+
+        soup = BeautifulSoup(html, "html.parser")
+        is_video = bool(soup.select_one("main video"))
+        if not is_video:
+            is_video = _instagram_target_article_has_video(soup, shortcode)
+
+        return is_video, url, html, title
 
     def is_video(self, url: str, html: str) -> bool:
         soup = BeautifulSoup(html, "html.parser")
@@ -119,24 +169,6 @@ class WebAnalysisFunction(BaseFunction):
                 ):
                     return False
             return True
-        if is_instagram(url):
-            parsed = urlparse(url)
-            if parsed.path.startswith(("/reel/", "/reels/")):
-                return True
-            if not parsed.path.startswith("/p/"):
-                return False
-            if soup.select_one("main video"):
-                return True
-            path_parts = [part for part in parsed.path.split("/") if part]
-            if len(path_parts) < 2:
-                return False
-            shortcode = path_parts[1]
-            if _instagram_target_article_has_video(
-                soup,
-                shortcode,
-            ):
-                return True
-            return False
         for prefix in self.video_prefixes:
             if url.startswith(prefix):
                 return True
@@ -152,8 +184,18 @@ class WebAnalysisFunction(BaseFunction):
         span.set_attribute("url", url)
 
         is_audio_content = is_audio(url)
-        is_video = False if is_audio_content else self.is_video(url, html)
+        if is_audio_content:
+            is_video = False
+        elif is_instagram(url):
+            is_video, url, html, title = await self._analyze_instagram(
+                url,
+                html,
+                title,
+            )
+        else:
+            is_video = self.is_video(url, html)
 
+        span.set_attribute("url", url)
         span.set_attribute("is_audio", is_audio_content)
         span.set_attribute("is_video", is_video)
 

@@ -44,6 +44,25 @@ def is_instagram(url: str) -> bool:
     return False
 
 
+def _instagram_target_article_has_video(
+    soup: BeautifulSoup,
+    shortcode: str,
+) -> bool:
+    for article in soup.select("article"):
+        for link in article.select("a[href]"):
+            path = urlparse(str(link.get("href") or "")).path
+            path_parts = [part for part in path.split("/") if part]
+
+            matches_shortcode = any(
+                path_parts[index] in {"p", "reel", "reels"}
+                and path_parts[index + 1] == shortcode
+                for index in range(len(path_parts) - 1)
+            )
+            if matches_shortcode and article.select_one("video"):
+                return True
+    return False
+
+
 def is_ximalaya(url: str) -> bool:
     host: str = urlparse(url).hostname or ""
     for domain in ["ximalaya.com", "xima.tv"]:
@@ -104,8 +123,19 @@ class WebAnalysisFunction(BaseFunction):
             parsed = urlparse(url)
             if parsed.path.startswith(("/reel/", "/reels/")):
                 return True
-            if parsed.path.startswith("/p/"):
-                return soup.select_one("main video") is not None
+            if not parsed.path.startswith("/p/"):
+                return False
+            if soup.select_one("main video"):
+                return True
+            path_parts = [part for part in parsed.path.split("/") if part]
+            if len(path_parts) < 2:
+                return False
+            shortcode = path_parts[1]
+            if _instagram_target_article_has_video(
+                soup,
+                shortcode,
+            ):
+                return True
             return False
         for prefix in self.video_prefixes:
             if url.startswith(prefix):

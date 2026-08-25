@@ -21,10 +21,11 @@ def test_template_parser():
 def test_ask_prompt_declares_capability_boundary():
     rendered = render_ask_prompt()
     assert "# Capability Boundaries" in rendered
-    assert "Basic edition" in rendered
-    assert "基础版" in rendered
-    assert "Pro edition" in rendered
-    assert "高级版" in rendered
-    assert "upgrade to Pro" in rendered
+    assert "Agent 1.1" in rendered
+    assert "Agent 2.1" in rendered
+    # The two search tools, and nothing beyond them.
+    assert "read-only" in rendered
+    # The upgrade invitation must be capped at a single mention per reply.
+    assert "exactly once in the entire reply" in rendered
     # The boundary section must stay ahead of the general guidelines.
     assert rendered.index("# Capability Boundaries") < rendered.index("# Guidelines")

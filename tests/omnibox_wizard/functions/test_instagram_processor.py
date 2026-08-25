@@ -464,13 +464,14 @@ def test_extract_post_data_prefers_matching_json_media():
     """
     )
 
-    image_urls, caption = InstagramProcessor._extract_post_data(
+    image_urls, caption, author_name = InstagramProcessor._extract_post_data(
         html,
         "StructuredPost01",
     )
 
     assert image_urls == [structured_url]
     assert caption == "Structured caption"
+    assert author_name == ""
 
 
 def test_extract_post_data_falls_back_to_single_image_dom():
@@ -489,13 +490,14 @@ def test_extract_post_data_falls_back_to_single_image_dom():
         </article>
     """
 
-    image_urls, caption = InstagramProcessor._extract_post_data(
+    image_urls, caption, author_name = InstagramProcessor._extract_post_data(
         html,
         "DomFallback01",
     )
 
     assert image_urls == [dom_url]
     assert caption
+    assert author_name == ""
 
 
 async def test_convert_builds_ordered_image_markdown_and_caption():
@@ -529,6 +531,7 @@ async def test_convert_builds_ordered_image_markdown_and_caption():
         return_value=(
             [first_url, second_url],
             "Instagram post caption",
+            "",
         )
     )
     processor.get_images = AsyncMock(return_value=downloaded_images)
@@ -596,6 +599,7 @@ async def test_convert_rejects_partial_image_download():
         return_value=(
             [first_url, second_url],
             "Instagram post caption",
+            "",
         )
     )
     processor.get_images = AsyncMock(return_value=[downloaded_image])
@@ -920,3 +924,40 @@ async def test_convert_uses_author_name_when_caption_is_empty():
 
     processor.collect_url._scrape_url.assert_not_awaited()
     assert result.title == "示例作者"
+
+
+async def test_convert_dom_fallback_allows_empty_caption():
+    shortcode = "DomFallbackNoCaption01"
+    image_url = _image_candidate(
+        "dom-fallback-no-caption",
+        1080,
+        1350,
+    )["url"]
+    html = f"""
+    <main>
+      <article>
+        <a href="/p/{shortcode}/">post</a>
+        <div class="_aagv"><img src="{image_url}"></div>
+      </article>
+    </main>
+    """
+    downloaded_image = Image(
+        name="1",
+        link=image_url,
+        data="image-base64",
+        mimetype="image/jpeg",
+    )
+    processor = _processor()
+    processor.collect_url._scrape_url = AsyncMock()
+    processor.get_images = AsyncMock(
+        return_value=[downloaded_image],
+    )
+
+    result = await processor.convert(
+        html,
+        f"https://www.instagram.com/p/{shortcode}/",
+    )
+
+    processor.collect_url._scrape_url.assert_not_awaited()
+    assert result.title == ""
+    assert result.markdown == f"![1]({image_url})"

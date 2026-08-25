@@ -401,7 +401,7 @@ class InstagramProcessor(HTMLReaderBaseProcessor):
         cls,
         html: str,
         shortcode: str,
-    ) -> tuple[list[str], str]:
+    ) -> tuple[list[str], str, str]:
         try:
             media = cls._find_image_media(
                 html,
@@ -412,7 +412,7 @@ class InstagramProcessor(HTMLReaderBaseProcessor):
                 html,
                 shortcode,
             )
-            return [image_url], caption
+            return [image_url], caption, ""
 
         caption_data = media.get("caption")
         caption = ""
@@ -422,7 +422,11 @@ class InstagramProcessor(HTMLReaderBaseProcessor):
             if isinstance(caption_text, str):
                 caption = caption_text.strip()
 
-        return cls._extract_image_urls(media), caption
+        author_name = ""
+        if not caption:
+            author_name = cls._extract_author_name(media)
+
+        return cls._extract_image_urls(media), caption, author_name
 
     async def convert(
         self,
@@ -430,9 +434,8 @@ class InstagramProcessor(HTMLReaderBaseProcessor):
         url: str,
     ) -> GeneratedContent:
         shortcode = self._extract_shortcode(url)
-        post_html = html
         try:
-            image_urls, caption = self._extract_post_data(
+            image_urls, caption, author_name = self._extract_post_data(
                 html,
                 shortcode,
             )
@@ -441,9 +444,8 @@ class InstagramProcessor(HTMLReaderBaseProcessor):
             scrape_result = await self.collect_url._scrape_url(
                 canonical_url,
             )
-            post_html = scrape_result.html
-            image_urls, caption = self._extract_post_data(
-                post_html,
+            image_urls, caption, author_name = self._extract_post_data(
+                scrape_result.html,
                 shortcode,
             )
 
@@ -466,14 +468,6 @@ class InstagramProcessor(HTMLReaderBaseProcessor):
         markdown_parts = [f"![{image.name}]({image.link})" for image in images]
         if caption:
             markdown_parts.append(caption)
-
-        author_name = ""
-        if not caption.strip():
-            media = self._find_image_media(
-                post_html,
-                shortcode,
-            )
-            author_name = self._extract_author_name(media)
 
         title = self._build_title(
             caption,

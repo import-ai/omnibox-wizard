@@ -36,6 +36,43 @@ def is_tiktok(url: str) -> bool:
     return False
 
 
+def is_instagram(url: str) -> bool:
+    domain: str = urlparse(url).netloc
+    for pattern in ["instagram.com"]:
+        if pattern in domain:
+            return True
+    return False
+
+
+def _instagram_target_article_has_video(
+    soup: BeautifulSoup,
+    shortcode: str,
+) -> bool | None:
+    target_article_found = False
+
+    for article in soup.select("article"):
+        for link in article.select("a[href]"):
+            path = urlparse(str(link.get("href") or "")).path
+            path_parts = [part for part in path.split("/") if part]
+
+            matches_shortcode = any(
+                path_parts[index] in {"p", "reel", "reels"}
+                and path_parts[index + 1] == shortcode
+                for index in range(len(path_parts) - 1)
+            )
+            if not matches_shortcode:
+                continue
+
+            target_article_found = True
+            if article.select_one("video"):
+                return True
+            break
+
+    if target_article_found:
+        return False
+    return None
+
+
 def is_ximalaya(url: str) -> bool:
     host: str = urlparse(url).hostname or ""
     for domain in ["ximalaya.com", "xima.tv"]:
@@ -92,6 +129,23 @@ class WebAnalysisFunction(BaseFunction):
                 ):
                     return False
             return True
+        if is_instagram(url):
+            parsed = urlparse(url)
+            if parsed.path.startswith(("/reel/", "/reels/")):
+                return True
+            if not parsed.path.startswith("/p/"):
+                return False
+            path_parts = [part for part in parsed.path.split("/") if part]
+            if len(path_parts) < 2:
+                return False
+            shortcode = path_parts[1]
+            target_article_has_video = _instagram_target_article_has_video(
+                soup,
+                shortcode,
+            )
+            if target_article_has_video is not None:
+                return target_article_has_video
+            return soup.select_one("main video") is not None
         for prefix in self.video_prefixes:
             if url.startswith(prefix):
                 return True

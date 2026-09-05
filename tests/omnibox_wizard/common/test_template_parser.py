@@ -25,7 +25,14 @@ def test_ask_prompt_declares_capability_boundary():
     assert "Agent 2.1" in rendered
     # The two search tools, and nothing beyond them.
     assert "read-only" in rendered
-    # The upgrade invitation must be capped at a single mention per reply.
+    # The credits invitation must be capped at a single mention per reply.
     assert "exactly once in the entire reply" in rendered
+    # The upsell is about buying Agent 2.1 credits, never about a plan change.
+    assert "Agent 2.1 credits" in rendered
+    boundaries = rendered[
+        rendered.index("# Capability Boundaries") : rendered.index("# Guidelines")
+    ]
+    for banned in ("premium subscription", "basic subscription", "高级版", "基础版"):
+        assert banned not in boundaries
     # The boundary section must stay ahead of the general guidelines.
     assert rendered.index("# Capability Boundaries") < rendered.index("# Guidelines")

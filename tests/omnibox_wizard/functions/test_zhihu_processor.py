@@ -54,8 +54,10 @@ async def test_convert_keeps_title_author_body_and_column_only(
     )
 
     assert result.title == "马年第一颗雷爆了！烧光500亿，“中国宝马”倒下"
-
-    assert "[象视汽车](https://www.zhihu.com/people/xiangshiqiche)" in result.markdown
+    assert (
+        "[象视汽车](https://www.zhihu.com/people/xiangshiqiche)" not in result.markdown
+    )
+    assert "看看车，聊聊车，侃侃车。公众号：象视汽车" not in result.markdown
     assert (
         "所属专栏：[汽车行业]"
         "(https://www.zhihu.com/column/c_1595837101454635008)" in result.markdown
@@ -185,8 +187,10 @@ async def test_html_reader_main_uses_zhihu_processor(
 
     assert result["title"] == "马年第一颗雷爆了！烧光500亿，“中国宝马”倒下"
     assert (
-        "[象视汽车](https://www.zhihu.com/people/xiangshiqiche)" in result["markdown"]
+        "[象视汽车](https://www.zhihu.com/people/xiangshiqiche)"
+        not in result["markdown"]
     )
+    assert "看看车，聊聊车，侃侃车。公众号：象视汽车" not in result["markdown"]
     assert "岁末年初，当寒冬笼罩中国汽车产业" in result["markdown"]
     assert "编辑于 2026-01-14 09:02" not in result["markdown"]
     assert "最热内容" not in result["markdown"]

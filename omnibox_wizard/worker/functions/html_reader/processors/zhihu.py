@@ -29,17 +29,6 @@ class ZhihuProcessor(HTMLReaderBaseProcessor):
         return title.get_text(" ", strip=True) if title else ""
 
     @staticmethod
-    def _extract_author(article: Tag) -> tuple[str, str]:
-        for link in article.select(".Post-Header .Post-Author a.UserLink-link"):
-            name = link.get_text(" ", strip=True)
-            href = link.get("href")
-
-            if name and href:
-                return name, urljoin("https://zhuanlan.zhihu.com", href)
-
-        return "", ""
-
-    @staticmethod
     def _extract_column(article: Tag) -> tuple[str, str]:
         column_link = article.select_one('.Post-Header a[href*="/column/"]')
         if not column_link:
@@ -73,16 +62,11 @@ class ZhihuProcessor(HTMLReaderBaseProcessor):
 
     @staticmethod
     def _build_markdown(
-        author_name: str,
-        author_url: str,
         body_markdown: str,
         column_name: str,
         column_url: str,
     ) -> str:
         parts = []
-
-        if author_name and author_url:
-            parts.append(f"[{author_name}]({author_url})")
 
         if body_markdown:
             parts.append(body_markdown)
@@ -106,13 +90,10 @@ class ZhihuProcessor(HTMLReaderBaseProcessor):
             raise ValueError("Zhihu column article body was not found")
 
         title = self._extract_title(article)
-        author_name, author_url = self._extract_author(article)
         column_name, column_url = self._extract_column(article)
         image_refs = self._extract_image_refs(body)
         body_markdown = html2text(str(body), bodywidth=0).strip()
         markdown = self._build_markdown(
-            author_name,
-            author_url,
             body_markdown,
             column_name,
             column_url,

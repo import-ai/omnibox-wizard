@@ -1,5 +1,4 @@
 from unittest.mock import AsyncMock, Mock
-from pathlib import Path
 
 import pytest
 
@@ -11,11 +10,66 @@ from omnibox_wizard.worker.functions.html_reader.processors.zhihu import (
 from wizard_common.worker.entity import Task
 
 
-ZHIHU_SAMPLE_DIR = Path("tmp/parse_html/zhihu")
+SAMPLE_ARTICLE_HTML = """
+<html>
+  <head>
+    <title>(2 封私信) 马年第一颗雷爆了！烧光500亿，“中国宝马”倒下 - 知乎</title>
+  </head>
+  <body>
+    <article class="Post-Main">
+      <header class="Post-Header">
+        <h1 class="Post-Title">马年第一颗雷爆了！烧光500亿，“中国宝马”倒下</h1>
+        <div class="Post-Author">
+          <img class="AuthorInfo-avatar" src="https://img.example.com/avatar.jpg">
+          <a class="UserLink-link" href="//www.zhihu.com/people/xiangshiqiche">
+            象视汽车
+          </a>
+          <div class="AuthorInfo-detail">看看车，聊聊车，侃侃车。公众号：象视汽车</div>
+        </div>
+        <a href="https://www.zhihu.com/column/c_1595837101454635008">
+          收录于 · 汽车行业
+        </a>
+      </header>
+      <div class="Post-RichText">
+        <p>岁末年初，当寒冬笼罩中国汽车产业。</p>
+        <p>正文内容只保留文章主体。</p>
+        <img src="https://pic2.zhimg.com/body-1.jpg">
+        <img src="https://pica.zhimg.com/body-2.jpg">
+        <img src="https://pic4.zhimg.com/body-3.jpg">
+        <img src="https://picx.zhimg.com/body-4.jpg">
+        <img src="https://pic3.zhimg.com/body-5.jpg">
+      </div>
+      <div class="ContentItem-time">编辑于 2026-01-14 09:02 · 广东</div>
+      <div class="Recommendations-Main">最热内容 推荐文章</div>
+    </article>
+  </body>
+</html>
+"""
 
-
-def read_sample(name: str) -> str:
-    return (ZHIHU_SAMPLE_DIR / name).read_text(encoding="utf-8")
+SAMPLE_RICH_ARTICLE_HTML = """
+<html>
+  <body>
+    <article class="Post-Main">
+      <header class="Post-Header">
+        <h1 class="Post-Title">ACP：一个可能被低估的 Agent 接口协议</h1>
+        <a href="https://www.zhihu.com/column/c_1981500933335711840">
+          收录于 · 技术思考
+        </a>
+      </header>
+      <div class="Post-RichText">
+        <p>协议解决了 Agent 和客户端之间的协作问题。</p>
+        <h2>0. 问题本质</h2>
+        <ul>
+          <li>每个 Agent 都有自己的 API 设计</li>
+          <li>客户端需要统一能力</li>
+        </ul>
+        <pre><code>session/request_permission</code></pre>
+        <p>MCP 可以连接外部工具和数据源。</p>
+      </div>
+    </article>
+  </body>
+</html>
+"""
 
 
 @pytest.fixture
@@ -49,7 +103,7 @@ async def test_convert_keeps_title_author_body_and_column_only(
     processor.get_images = AsyncMock(return_value=[])
 
     result = await processor.convert(
-        read_sample("sample02.html"),
+        SAMPLE_ARTICLE_HTML,
         "https://zhuanlan.zhihu.com/p/1994423521271637277",
     )
 
@@ -79,7 +133,7 @@ async def test_convert_preserves_rich_body_structure(
     processor.get_images = AsyncMock(return_value=[])
 
     result = await processor.convert(
-        read_sample("sample03.html"),
+        SAMPLE_RICH_ARTICLE_HTML,
         "https://zhuanlan.zhihu.com/p/1994561622988055312",
     )
 
@@ -97,30 +151,30 @@ async def test_convert_extracts_only_body_images_in_source_order(
     processor.get_images = AsyncMock(return_value=[])
 
     await processor.convert(
-        read_sample("sample02.html"),
+        SAMPLE_ARTICLE_HTML,
         "https://zhuanlan.zhihu.com/p/1994423521271637277",
     )
 
     processor.get_images.assert_awaited_once_with(
         [
             (
-                "https://pic2.zhimg.com/v2-f211ff81b1de9227e451f19c75554373_1440w.jpg",
+                "https://pic2.zhimg.com/body-1.jpg",
                 "1",
             ),
             (
-                "https://pica.zhimg.com/v2-3c80deb38541129eba983e74c06d2370_1440w.jpg",
+                "https://pica.zhimg.com/body-2.jpg",
                 "2",
             ),
             (
-                "https://pic4.zhimg.com/v2-fa18a4ca9c66979979e3f92ce72909c3_1440w.jpg",
+                "https://pic4.zhimg.com/body-3.jpg",
                 "3",
             ),
             (
-                "https://picx.zhimg.com/v2-4e9c84aec48d1fb0059da09c3fde8b5f_1440w.jpg",
+                "https://picx.zhimg.com/body-4.jpg",
                 "4",
             ),
             (
-                "https://pic3.zhimg.com/v2-9c7d3729e97a8fc929117154045558ec_1440w.jpg",
+                "https://pic3.zhimg.com/body-5.jpg",
                 "5",
             ),
         ]
@@ -178,7 +232,7 @@ async def test_html_reader_main_uses_zhihu_processor(
         user_id="test",
         function="collect",
         input={
-            "html": read_sample("sample02.html"),
+            "html": SAMPLE_ARTICLE_HTML,
             "url": "https://zhuanlan.zhihu.com/p/1994423521271637277",
         },
     )

@@ -39,6 +39,9 @@ from omnibox_wizard.worker.functions.html_reader.processors.instagram import (
 from omnibox_wizard.worker.functions.html_reader.processors.reddit import (
     RedditProcessor,
 )
+from omnibox_wizard.worker.functions.html_reader.processors.zhihu import (
+    ZhihuProcessor,
+)
 from omnibox_wizard.worker.functions.html_reader.processors.x import XProcessor
 from omnibox_wizard.worker.functions.html_reader.selectors.base import BaseSelector
 from omnibox_wizard.worker.functions.html_reader.selectors.common import CommonSelector
@@ -221,7 +224,6 @@ class HTMLReaderV2(BaseFunction):
         "medium.com": {"name": "article"},
         "mp.weixin.qq.com": {"name": "div", "class_": "rich_media_content"},
         "news.qq.com": {"name": "div", "class_": "content-article"},
-        "zhuanlan.zhihu.com": {"name": "article"},
         "www.zhihu.com": {"class_": "RichText", "select_all": True},
         "www.163.com": {"name": "div", "class_": "post_body"},
         "x.com": {"name": "div", "attrs": {"data-testid": "tweetText"}},
@@ -239,6 +241,7 @@ class HTMLReaderV2(BaseFunction):
             OKJikeMProcessor(config=config),
             RedditProcessor(config=config),
             XProcessor(config=config),
+            ZhihuProcessor(config=config),
         ]
         self.selectors: list[BaseSelector] = [
             CommonSelector(
@@ -252,7 +255,6 @@ class HTMLReaderV2(BaseFunction):
             ZhihuAnswerSelector(),
             ZhihuQuestionSelector(),
             CommonSelector("www.zhihu.com", {"class_": "RichText"}, True),
-            CommonSelector("zhuanlan.zhihu.com", {"name": "article"}),
             CommonSelector("www.163.com", {"name": "div", "class_": "post_body"}),
             CommonSelector(
                 "x.com", {"name": "div", "attrs": {"data-testid": "tweetText"}}

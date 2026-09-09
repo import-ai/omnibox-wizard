@@ -9,6 +9,7 @@ from omnibox_wizard.worker.agent.html_tags_extractor import (
     TagsExtractor,
     TagsExtractOutput,
 )
+from wizard_common.worker.omnibox_context import load_omnibox_markdown
 
 tracer = trace.get_tracer(__name__)
 
@@ -29,12 +30,21 @@ class TagExtractor(BaseFunction):
         if not (content or title):
             raise ValueError("content or title is required for tag extraction")
 
+        tag_rules = await load_omnibox_markdown(
+            filename="TAGS.md",
+            base_url=self.config.backend.base_url,
+            namespace_id=task.namespace_id,
+            user_id=task.user_id,
+        )
+        extract_input = {
+            "title": title,
+            "snippet": content.strip()[:512],
+            "lang": lang,
+        }
+        if tag_rules:
+            extract_input["tag_rules"] = tag_rules
         tags_extract_output: TagsExtractOutput = await self.tag_extractor.ainvoke(
-            {
-                "title": title,
-                "snippet": content.strip()[:512],
-                "lang": lang,
-            }
+            extract_input
         )
         span.set_attributes(
             {

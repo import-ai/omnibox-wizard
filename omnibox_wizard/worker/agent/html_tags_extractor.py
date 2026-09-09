@@ -10,6 +10,10 @@ class TagsExtractInput(BaseModel):
         description="The snippet of the Webpage, usually the first few lines of the content."
     )
     lang: str = Field(description="The expected output language.")
+    tag_rules: str | None = Field(
+        default=None,
+        description="Optional user tagging rules from .omnibox/TAGS.md.",
+    )
 
 
 class TagsExtractOutput(BaseModel):

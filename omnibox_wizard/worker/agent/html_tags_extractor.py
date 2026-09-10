@@ -56,7 +56,17 @@ class TagsExtractor(BaseAgent[TagsExtractInput, TagsExtractOutput]):
             TagsExtractOutput,
             examples=examples,
             system_prompt_template="tags_extract.j2",
+            # The user's rules go in the user turn, after the few-shot
+            # examples: those examples all answer with three plain, unprefixed
+            # tags, and when the rules sat in the system prompt the examples
+            # out-argued them and the rules were mostly ignored.
             user_prompt_template=Template(
-                "<title>{{ title }}</title>\n<snippet>\n{{ snippet }}\n</snippet>\n<expected_output_lang>{{ lang }}</expected_output_lang>"
+                "<title>{{ title }}</title>\n"
+                "<snippet>\n{{ snippet }}\n</snippet>\n"
+                "<expected_output_lang>{{ lang }}</expected_output_lang>"
+                "{% if tag_rules %}\n<user_classification_rules>\n{{ tag_rules }}\n</user_classification_rules>\n"
+                "The rules above are defined by the user and override both the "
+                "task guidelines and the example answers, including how many "
+                "tags to return.{% endif %}"
             ),
         )

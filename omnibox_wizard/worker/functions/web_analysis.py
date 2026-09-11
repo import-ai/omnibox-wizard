@@ -91,8 +91,12 @@ def is_xiaoyuzhou(url: str) -> bool:
     return parsed.path.startswith("/episode/")
 
 
+def is_apple_podcasts(url: str) -> bool:
+    return urlparse(url).hostname == "podcasts.apple.com"
+
+
 def is_audio(url: str) -> bool:
-    return is_ximalaya(url) or is_xiaoyuzhou(url)
+    return is_ximalaya(url) or is_xiaoyuzhou(url) or is_apple_podcasts(url)
 
 
 class WebAnalysisFunction(BaseFunction):

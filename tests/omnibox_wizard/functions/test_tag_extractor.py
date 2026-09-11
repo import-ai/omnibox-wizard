@@ -16,7 +16,7 @@ class FakeTagsExtractor:
         return TagsExtractOutput(tags=["test"])
 
 
-def make_task(input_dict):
+def make_task(input_dict, payload=None):
     return Task(
         id="test_task",
         priority=1,
@@ -24,6 +24,7 @@ def make_task(input_dict):
         user_id="test_user",
         function="extract_tags",
         input=input_dict,
+        payload={"resource_id": "test_resource"} if payload is None else payload,
     )
 
 
@@ -77,6 +78,7 @@ async def test_tag_extractor_passes_title_content_and_lang(trace_info, monkeypat
             "base_url": "http://backend",
             "namespace_id": "test_namespace",
             "user_id": "test_user",
+            "resource_id": "test_resource",
         }
     ]
 
@@ -99,3 +101,15 @@ async def test_tag_extractor_requires_content_or_title(trace_info, monkeypatch):
 
     with pytest.raises(ValueError, match="content or title is required"):
         await tag_extractor.run(make_task({}), trace_info)
+
+
+@pytest.mark.asyncio
+async def test_tag_extractor_handles_task_without_payload(trace_info, monkeypatch):
+    tag_extractor, _, fake_load = make_tag_extractor(monkeypatch)
+
+    result = await tag_extractor.run(
+        make_task({"content": "123"}, payload={}), trace_info
+    )
+
+    assert result == {"tags": ["test"]}
+    assert fake_load.calls[0]["resource_id"] is None

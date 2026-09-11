@@ -35,6 +35,7 @@ class TagExtractor(BaseFunction):
             base_url=self.config.backend.base_url,
             namespace_id=task.namespace_id,
             user_id=task.user_id,
+            resource_id=(task.payload or {}).get("resource_id"),
         )
         extract_input = {
             "title": title,

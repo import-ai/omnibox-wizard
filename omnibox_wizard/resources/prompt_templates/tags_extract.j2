@@ -16,3 +16,6 @@ Input contains three parts:
 - **IMPORTANT: All tags MUST be in the user's preference language**
 - Your response must be in JSON format, with key "tags"
 - Prioritize accuracy over specificity
+{% if tag_rules -%}
+- The final message carries the user's own classification rules in a `<user_classification_rules>` block. Those rules take precedence over these guidelines and over the example answers.
+{%- endif %}

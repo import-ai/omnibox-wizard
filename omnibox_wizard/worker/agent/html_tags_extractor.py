@@ -1,7 +1,9 @@
 from jinja2 import Template
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from omnibox_wizard.worker.agent.base import BaseAgent
+
+RULES_CLOSING_TAG = "</user_classification_rules>"
 
 
 class TagsExtractInput(BaseModel):
@@ -14,6 +16,18 @@ class TagsExtractInput(BaseModel):
         default=None,
         description="Optional user tagging rules from .omnibox/TAGS.md.",
     )
+
+    @field_validator("tag_rules")
+    @classmethod
+    def strip_rules_delimiter(cls, value: str | None) -> str | None:
+        """Keep TAGS.md content from closing the block it is rendered into.
+
+        A teamspace TAGS.md is written by one member and applied to everyone
+        else's resources, so its content is not necessarily trusted.
+        """
+        if not value:
+            return value
+        return value.replace(RULES_CLOSING_TAG, "")
 
 
 class TagsExtractOutput(BaseModel):

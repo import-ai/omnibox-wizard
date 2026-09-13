@@ -194,3 +194,43 @@ def test_full_catalog_and_references(monkeypatch):
             ThinkingModels.model_validate(
                 {**raw, "default": {"steps": steps, "default_step": default}}
             )
+
+
+def test_private_prices_and_server_billing_snapshot(monkeypatch):
+    from types import SimpleNamespace
+    from wizard_common.grimoire.thinking import billing_headers
+
+    raw = {
+        "basic": {"default_level": "low", "levels": [{"id": "low", "model": "flash"}]},
+        "pro": {"default_level": "max", "levels": [{"id": "max", "model": "pro"}]},
+        "prices": {
+            "flash": {"input": 80, "input_cached": 23, "output": 280},
+            "pro": {"input": 800, "input_cached": 200, "output": 2800},
+        },
+    }
+    monkeypatch.setenv("OBW_MODELS", json.dumps(raw))
+    get_thinking_models.cache_clear()
+    try:
+        models = get_thinking_models()
+        assert "prices" not in json.dumps(models.public_config())
+        request = SimpleNamespace(edition=None, level=None)
+        billing = json.loads(billing_headers(request, "pro")["X-Omnibox-Billing"])
+        assert (request.edition, request.level) == ("pro", "max")
+        assert billing == {"edition": "pro", "price": raw["prices"]["pro"]}
+        basic = SimpleNamespace(edition="basic", level="low")
+        assert (
+            json.loads(billing_headers(basic, "basic")["X-Omnibox-Billing"])["edition"]
+            == "basic"
+        )
+        with pytest.raises(ValueError):
+            billing_headers(basic, "pro")
+        for invalid in [-1, True, "800", 0.5]:
+            with pytest.raises(ValidationError):
+                ThinkingModels.model_validate(
+                    {
+                        **raw,
+                        "prices": {"pro": {**raw["prices"]["pro"], "input": invalid}},
+                    }
+                )
+    finally:
+        get_thinking_models.cache_clear()

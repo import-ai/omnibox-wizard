@@ -55,7 +55,7 @@ async def api_write(
     return streaming_response(call_stream(write, request, trace_info))
 
 
-@wizard_router.get("/thinking")
-async def thinking_config():
+@wizard_router.get("/models")
+async def models_config():
     models = get_thinking_models()
-    return models.public_config() if models else {}
+    return models.public_config(("basic",)) if models else {}

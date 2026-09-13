@@ -51,7 +51,11 @@ async def test_wire_payloads_and_public_config():
             "basic": {
                 "default": {"edition": "basic", "level": level["id"]},
                 "levels": [{"edition": "basic", "level": level["id"]}],
-            }
+            },
+            "default": {
+                "default": {"edition": "basic", "level": level["id"]},
+                "levels": [{"edition": "basic", "level": level["id"]}],
+            },
         }
         selected, kwargs = models.basic.select(level["id"]).resolve(connection)
         captured = []
@@ -105,7 +109,7 @@ def test_validation(monkeypatch):
     ]:
         with pytest.raises(ValidationError):
             config(levels, default)
-    monkeypatch.setenv("OBW_THINKING_MODELS", config([low]).model_dump_json())
+    monkeypatch.setenv("OBW_MODELS", config([low]).model_dump_json())
     get_thinking_models.cache_clear()
     try:
         validate_selection("basic", "low")
@@ -121,3 +125,72 @@ def test_validation(monkeypatch):
                 validate_selection(*selection)
     finally:
         get_thinking_models.cache_clear()
+
+
+def test_full_catalog_and_references(monkeypatch):
+    raw = {
+        "basic": {
+            "default_level": "low",
+            "levels": [
+                {"id": "low", "model": "Instruct"},
+                {"id": "high", "model": "Thinking"},
+            ],
+        },
+        "pro": {
+            "default_level": "high",
+            "levels": [
+                {
+                    "id": level,
+                    "model": "private",
+                    "parameters": {"reasoning_effort": level},
+                }
+                for level in ("low", "high", "max")
+            ],
+        },
+        "default": {
+            "default_step": "pro.high",
+            "steps": [
+                "basic.low",
+                "basic.high",
+                "pro.low",
+                "pro.high",
+                "pro.max",
+            ],
+        },
+    }
+    models = ThinkingModels.model_validate(raw)
+    public = models.public_config()
+    assert {key: len(value["levels"]) for key, value in public.items()} == {
+        "basic": 2,
+        "pro": 3,
+        "default": 5,
+    }
+    assert public["default"]["levels"] == [
+        {"edition": step.split(".")[0], "level": step.split(".")[1]}
+        for step in raw["default"]["steps"]
+    ]
+    assert public["default"]["default"] == {"edition": "pro", "level": "high"}
+    assert "model" not in json.dumps(public)
+    assert "parameters" not in json.dumps(public)
+    basic_only = models.public_config(("basic",))
+    assert set(basic_only) == {"basic", "default"}
+    assert basic_only["default"]["default"] == {"edition": "basic", "level": "low"}
+    monkeypatch.setenv("OBW_MODELS", models.model_dump_json())
+    get_thinking_models.cache_clear()
+    try:
+        validate_selection("pro", "max", "pro")
+        with pytest.raises(ValueError):
+            validate_selection("pro", "max", "basic")
+    finally:
+        get_thinking_models.cache_clear()
+    for steps, default in [
+        (["pro.missing"], "pro.missing"),
+        (["unknown.low"], "unknown.low"),
+        (["basic.low", "basic.low"], "basic.low"),
+        (["basic.low"], "pro.high"),
+        (["low"], "low"),
+    ]:
+        with pytest.raises(ValidationError):
+            ThinkingModels.model_validate(
+                {**raw, "default": {"steps": steps, "default_step": default}}
+            )

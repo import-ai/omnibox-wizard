@@ -1,7 +1,7 @@
 from functools import partial
 from json import dumps as lib_dumps
 
-from fastapi import APIRouter, Depends, FastAPI
+from fastapi import APIRouter, Depends, FastAPI, HTTPException
 from opentelemetry import trace
 
 from common.config_loader import Loader
@@ -13,6 +13,7 @@ from wizard_common.grimoire.agent.write import Write
 from wizard_common.grimoire.base_streamable import ChatResponse
 from wizard_common.grimoire.config import GrimoireAgentConfig
 from wizard_common.grimoire.entity.api import AgentRequest
+from wizard_common.grimoire.thinking import get_thinking_models, validate_selection
 from wizard_common.wizard.utils import call_stream, streaming_response
 
 dumps = partial(lib_dumps, ensure_ascii=False, separators=(",", ":"))
@@ -27,6 +28,7 @@ async def init(_: FastAPI):
     loader = Loader(GrimoireAgentConfig, env_prefix=ENV_PREFIX)
     config: GrimoireAgentConfig = loader.load()
 
+    get_thinking_models()
     ask = Ask(config)
     write = Write(config)
 
@@ -35,6 +37,10 @@ async def init(_: FastAPI):
 async def api_ask(
     request: AgentRequest, trace_info: TraceInfo = Depends(get_trace_info)
 ):
+    try:
+        validate_selection(request.edition, request.level)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Unsupported thinking selection")
     return streaming_response(call_stream(ask, request, trace_info))
 
 
@@ -42,4 +48,14 @@ async def api_ask(
 async def api_write(
     request: AgentRequest, trace_info: TraceInfo = Depends(get_trace_info)
 ):
+    try:
+        validate_selection(request.edition, request.level)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Unsupported thinking selection")
     return streaming_response(call_stream(write, request, trace_info))
+
+
+@wizard_router.get("/thinking")
+async def thinking_config():
+    models = get_thinking_models()
+    return models.public_config() if models else {}

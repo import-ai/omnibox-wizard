@@ -1,0 +1,118 @@
+from unittest.mock import AsyncMock
+
+import pytest
+
+from omnibox_wizard.worker.functions.html_reader.processors.x import XProcessor
+
+
+ARTICLE_URL = "https://x.com/example/status/123456789"
+
+LOGIN_ARTICLE_HTML = """
+<article data-testid="twitterArticleReadView">
+  <div data-testid="twitter-article-title">登录态文章标题</div>
+  <div data-testid="twitterArticleRichTextView">
+    <div data-testid="longformRichTextComponent">
+      <div data-contents="true">
+        <div data-block="true" class="longform-unstyled">
+          <div class="public-DraftStyleDefault-block"><span>第一段正文。</span></div>
+        </div>
+        <div data-block="true" class="longform-header-two">
+          <h2 class="longform-header-two">第一章</h2>
+        </div>
+        <section>
+          <img src="https://pbs.twimg.com/media/body-login.jpg" alt="正文图片">
+        </section>
+      </div>
+    </div>
+  </div>
+</article>
+"""
+
+SHARED_ARTICLE_HTML = """
+<main>
+  <article>
+    <h1>分享态文章标题</h1>
+    <div class="x-article-body break-words">
+      <div class="contents">
+        <p><b><strong>分享页的第一段正文。</strong></b></p>
+        <h3>第一章</h3>
+        <p>正文中的 <a href="https://example.com/source">链接</a>。</p>
+        <figure>
+          <img src="https://pbs.twimg.com/media/body-share.jpg" alt="正文图片">
+        </figure>
+      </div>
+    </div>
+  </article>
+  <section class="comments">
+    <article><p>这是一条评论，不应被提取。</p></article>
+  </section>
+</main>
+"""
+
+REGULAR_POST_HTML = """
+<article data-testid="tweet">
+  <div data-testid="User-Name">Example @example</div>
+  <div data-testid="tweetText">普通 POST 正文。</div>
+</article>
+"""
+
+
+@pytest.fixture
+def processor() -> XProcessor:
+    return XProcessor(config=None)
+
+
+@pytest.mark.asyncio
+async def test_convert_login_article_keeps_body_and_images(processor: XProcessor):
+    processor.get_images = AsyncMock(return_value=[])
+
+    result = await processor.convert(LOGIN_ARTICLE_HTML, ARTICLE_URL)
+
+    assert result.title == "登录态文章标题"
+    assert "第一段正文。" in result.markdown
+    assert "## 第一章" in result.markdown
+    assert "正文图片" in result.markdown
+    processor.get_images.assert_awaited_once_with(
+        [
+            (
+                "https://pbs.twimg.com/media/body-login.jpg",
+                "正文图片",
+            )
+        ]
+    )
+
+
+@pytest.mark.asyncio
+async def test_convert_shared_article_extracts_article_not_comments(
+    processor: XProcessor,
+):
+    processor.get_images = AsyncMock(return_value=[])
+
+    result = await processor.convert(SHARED_ARTICLE_HTML, ARTICLE_URL)
+
+    assert result.title == "分享态文章标题"
+    assert "分享页的第一段正文。" in result.markdown
+    assert "**分享页的第一段正文。**" in result.markdown
+    assert "****分享页的第一段正文。****" not in result.markdown
+    assert "第一章" in result.markdown
+    assert "[链接](https://example.com/source)" in result.markdown
+    assert "正文图片" in result.markdown
+    assert "这是一条评论，不应被提取。" not in result.markdown
+    processor.get_images.assert_awaited_once_with(
+        [
+            (
+                "https://pbs.twimg.com/media/body-share.jpg",
+                "正文图片",
+            )
+        ]
+    )
+
+
+@pytest.mark.asyncio
+async def test_convert_regular_post_does_not_use_article_branch(processor: XProcessor):
+    processor.get_images = AsyncMock(return_value=[])
+
+    result = await processor.convert(REGULAR_POST_HTML, ARTICLE_URL)
+
+    assert result.title == "普通 POST 正文。"
+    assert result.markdown.strip() == "普通 POST 正文。"

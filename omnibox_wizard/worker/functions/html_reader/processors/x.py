@@ -29,7 +29,7 @@ class XProcessor(HTMLReaderBaseProcessor):
         soup = BeautifulSoup(html, "html.parser")
         soup = self._clean_comment_section(soup)
 
-        if soup.select_one('div[data-testid="twitterArticleReadView"]'):
+        if self._is_article_page(soup):
             result = self._convert_article(soup)
         else:
             tweet_containers = self._find_relevant_tweet_containers(soup)
@@ -52,6 +52,12 @@ class XProcessor(HTMLReaderBaseProcessor):
             downloaded_images = await self.get_images(image_links)
             result.images = downloaded_images
         return result
+
+    def _is_article_page(self, soup: BeautifulSoup) -> bool:
+        return bool(
+            soup.select_one('[data-testid="twitterArticleReadView"]')
+            or soup.select_one(".x-article-body")
+        )
 
     def _find_main_tweet_container(self, soup: BeautifulSoup) -> Tag | None:
         main_cell = self._find_main_content_cell(soup)
@@ -1315,39 +1321,15 @@ class XProcessor(HTMLReaderBaseProcessor):
         return GeneratedContent(title=title, markdown=markdown, images=images or None)
 
     def _convert_article(self, soup) -> GeneratedContent:
-        title_tag = soup.select_one('div[data-testid="twitter-article-title"]')
-        title = title_tag.get_text(strip=True) if title_tag else ""
+        if soup.select_one(".x-article-body"):
+            return self._convert_shared_article(soup)
 
-        title_images = []
-        article_view = soup.select_one('div[data-testid="twitterArticleReadView"]')
-        if article_view:
-            for child in article_view.children:
-                if isinstance(child, Tag):
-                    title_in_child = child.select_one(
-                        '[data-testid="twitter-article-title"]'
-                    )
-                    if not title_in_child:
-                        imgs = child.find_all("img")
-                        for img in imgs:
-                            src = img.get("src", "")
-                            alt = img.get("alt", "")
-                            if self._is_content_image(src):
-                                title_images.append(
-                                    Image.model_validate(
-                                        {
-                                            "name": alt,
-                                            "link": src,
-                                            "data": "",
-                                            "mimetype": "",
-                                        }
-                                    )
-                                )
+        title_tag = soup.select_one('[data-testid="twitter-article-title"]')
+        title = title_tag.get_text(strip=True) if title_tag else ""
 
         content_div = soup.select_one('div[data-testid="longformRichTextComponent"]')
         if not content_div:
-            return GeneratedContent(
-                title=title, markdown="", images=title_images or None
-            )
+            return GeneratedContent(title=title, markdown="", images=None)
 
         contents_div = content_div.select_one('[data-contents="true"]')
         if contents_div:
@@ -1357,9 +1339,6 @@ class XProcessor(HTMLReaderBaseProcessor):
 
         markdown_parts = []
         images = []
-
-        for img in title_images:
-            markdown_parts.append(f"![{img.name}]({img.link})")
 
         for block in blocks:
             classes = block.get("class", [])
@@ -1426,9 +1405,46 @@ class XProcessor(HTMLReaderBaseProcessor):
                         )
                         continue
         markdown = "\n\n".join(markdown_parts)
-        all_images = title_images + images
+        return GeneratedContent(title=title, markdown=markdown, images=images or None)
+
+    def _convert_shared_article(self, soup: BeautifulSoup) -> GeneratedContent:
+        body = soup.select_one(".x-article-body")
+        if not body:
+            return GeneratedContent(title="", markdown="", images=None)
+
+        article = body.find_parent("article")
+        title_tag = article.select_one("h1") if article else None
+        if not title_tag:
+            title_tag = body.find_previous("h1")
+        title = title_tag.get_text(" ", strip=True) if title_tag else ""
+
+        body_copy = BeautifulSoup(str(body), "html.parser")
+        for bold in body_copy.find_all("b"):
+            if len(bold.contents) == 1 and isinstance(bold.contents[0], Tag):
+                if bold.contents[0].name == "strong":
+                    bold.replace_with(bold.contents[0].extract())
+
+        markdown = html2text(str(body_copy), bodywidth=0).strip()
+        images = []
+        for img in body.find_all("img"):
+            src = img.get("src", "")
+            if not self._is_content_image(src):
+                continue
+            images.append(
+                Image.model_validate(
+                    {
+                        "name": img.get("alt", "") or src,
+                        "link": src,
+                        "data": "",
+                        "mimetype": "",
+                    }
+                )
+            )
+
         return GeneratedContent(
-            title=title, markdown=markdown, images=all_images or None
+            title=title,
+            markdown=markdown,
+            images=images or None,
         )
 
     def _extract_article_quote(self, block: Tag) -> tuple[str, list[Image]]:

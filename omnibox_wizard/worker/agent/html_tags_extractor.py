@@ -1,7 +1,9 @@
 from jinja2 import Template
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from omnibox_wizard.worker.agent.base import BaseAgent
+
+RULES_CLOSING_TAG = "</user_classification_rules>"
 
 
 class TagsExtractInput(BaseModel):
@@ -10,6 +12,22 @@ class TagsExtractInput(BaseModel):
         description="The snippet of the Webpage, usually the first few lines of the content."
     )
     lang: str = Field(description="The expected output language.")
+    tag_rules: str | None = Field(
+        default=None,
+        description="Optional user tagging rules from .omnibox/TAGS.md.",
+    )
+
+    @field_validator("tag_rules")
+    @classmethod
+    def strip_rules_delimiter(cls, value: str | None) -> str | None:
+        """Keep TAGS.md content from closing the block it is rendered into.
+
+        A teamspace TAGS.md is written by one member and applied to everyone
+        else's resources, so its content is not necessarily trusted.
+        """
+        if not value:
+            return value
+        return value.replace(RULES_CLOSING_TAG, "")
 
 
 class TagsExtractOutput(BaseModel):
@@ -52,7 +70,17 @@ class TagsExtractor(BaseAgent[TagsExtractInput, TagsExtractOutput]):
             TagsExtractOutput,
             examples=examples,
             system_prompt_template="tags_extract.j2",
+            # The user's rules go in the user turn, after the few-shot
+            # examples: those examples all answer with three plain, unprefixed
+            # tags, and when the rules sat in the system prompt the examples
+            # out-argued them and the rules were mostly ignored.
             user_prompt_template=Template(
-                "<title>{{ title }}</title>\n<snippet>\n{{ snippet }}\n</snippet>\n<expected_output_lang>{{ lang }}</expected_output_lang>"
+                "<title>{{ title }}</title>\n"
+                "<snippet>\n{{ snippet }}\n</snippet>\n"
+                "<expected_output_lang>{{ lang }}</expected_output_lang>"
+                "{% if tag_rules %}\n<user_classification_rules>\n{{ tag_rules }}\n</user_classification_rules>\n"
+                "The rules above are defined by the user and override both the "
+                "task guidelines and the example answers, including how many "
+                "tags to return.{% endif %}"
             ),
         )

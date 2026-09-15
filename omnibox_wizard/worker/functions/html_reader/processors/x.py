@@ -1383,9 +1383,14 @@ class XProcessor(HTMLReaderBaseProcessor):
                 text = self._get_article_block_text(block)
                 if text:
                     markdown_parts.append(text)
+            elif block.select_one("h1.longform-header-one"):
+                h1_text = block.select_one("h1").get_text(strip=True)
+                if h1_text:
+                    markdown_parts.append(f"# {h1_text}")
             elif block.select_one("h2.longform-header-two"):
                 h2_text = block.select_one("h2").get_text(strip=True)
-                markdown_parts.append(f"## {h2_text}")
+                if h2_text:
+                    markdown_parts.append(f"## {h2_text}")
             elif tag_name == "blockquote":
                 text = self._get_article_block_text(block)
                 if text:

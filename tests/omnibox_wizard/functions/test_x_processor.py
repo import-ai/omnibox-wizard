@@ -23,6 +23,9 @@ LOGIN_ARTICLE_HTML = """
             <span>）上关注的账号动态。</span>
           </div>
         </div>
+        <div class="css-146c3p1">
+          <h1 class="longform-header-one" data-block="true">What Is the Agent Harness?</h1>
+        </div>
         <div data-block="true" class="longform-header-two">
           <h2 class="longform-header-two">第一章</h2>
         </div>
@@ -83,6 +86,7 @@ async def test_convert_login_article_keeps_body_and_images(processor: XProcessor
     assert "第一段正文。" in result.markdown
     assert "[reidhannaford](https://x.com/reidhannaford)" in result.markdown
     assert "[@reidhannaford](https://x.com/@reidhannaford)" not in result.markdown
+    assert "# What Is the Agent Harness?" in result.markdown
     assert "## 第一章" in result.markdown
     assert "正文图片" in result.markdown
     processor.get_images.assert_awaited_once_with(

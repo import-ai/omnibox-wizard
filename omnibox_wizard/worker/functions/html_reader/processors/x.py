@@ -727,9 +727,9 @@ class XProcessor(HTMLReaderBaseProcessor):
 
             if child.name == "a":
                 label = child.get_text("", strip=True)
-                href = self._absolute_x_url(child.get("href") or "")
+                href = child.get("href") or ""
                 if label and href:
-                    parts.append(f"[{label}]({href})")
+                    parts.append(self._format_markdown_link(label, href))
                 else:
                     parts.append(label)
                 continue
@@ -919,6 +919,40 @@ class XProcessor(HTMLReaderBaseProcessor):
         if href.startswith("/"):
             return f"https://x.com{href}"
         return href
+
+    # Normalizes profile hrefs so editors do not treat them as mentions.
+    def _normalize_markdown_link_href(self, href: str) -> str:
+        normalized = self._absolute_x_url(href)
+        return re.sub(
+            r"(https://(?:x|twitter)\.com)/@([^/?#]+)",
+            r"\1/\2",
+            normalized,
+        )
+
+    # Formats markdown links without a leading "@" in the label.
+    def _format_markdown_link(self, link_text: str, href: str) -> str:
+        text = (link_text or "").strip()
+        if text.startswith("@"):
+            text = text[1:]
+        normalized_href = self._normalize_markdown_link_href(href or "")
+        if normalized_href and text:
+            return f"[{text}]({normalized_href})"
+        return text
+
+    # Rewrites anchors before html2text so labels do not start with "@".
+    def _normalize_markdown_anchors(self, root: Tag) -> None:
+        for anchor in root.find_all("a"):
+            href = anchor.get("href") or ""
+            link_text = anchor.get_text(strip=True)
+            if not href or not link_text:
+                continue
+            normalized_href = self._normalize_markdown_link_href(href)
+            normalized_text = link_text[1:] if link_text.startswith("@") else link_text
+            if normalized_href == href and normalized_text == link_text:
+                continue
+            anchor["href"] = normalized_href
+            anchor.clear()
+            anchor.append(normalized_text)
 
     # Checks whether a link is the "From domain" source line of an external preview.
     def _is_restricted_link_preview_source(self, link: Tag) -> bool:
@@ -1301,6 +1335,7 @@ class XProcessor(HTMLReaderBaseProcessor):
             for img in content.find_all("img"):
                 if "abs.twimg.com/emoji" in (img.get("src", "")):
                     img.replace_with(img.get("alt", ""))
+            self._normalize_markdown_anchors(content)
             content_with_br: str = str(content).replace("\n", "<br>\n")
             content_with_br = content_with_br.replace('href="/', 'href="https://x.com/')
             markdown = html2text(content_with_br, bodywidth=0) + "\n\n" + markdown
@@ -1423,6 +1458,7 @@ class XProcessor(HTMLReaderBaseProcessor):
             if len(bold.contents) == 1 and isinstance(bold.contents[0], Tag):
                 if bold.contents[0].name == "strong":
                     bold.replace_with(bold.contents[0].extract())
+        self._normalize_markdown_anchors(body_copy)
 
         markdown = html2text(str(body_copy), bodywidth=0).strip()
         images = []
@@ -1538,7 +1574,9 @@ class XProcessor(HTMLReaderBaseProcessor):
                     href = child.get("href", "")
                     link_text = child.get_text(strip=True)
                     if href and link_text:
-                        result_parts.append(f"[{link_text}]({href})")
+                        result_parts.append(
+                            self._format_markdown_link(link_text, href)
+                        )
         return "".join(result_parts).strip()
 
     def _parse_article_span(self, span: Tag) -> str:
@@ -1557,7 +1595,7 @@ class XProcessor(HTMLReaderBaseProcessor):
                     href = child.get("href", "")
                     link_text = child.get_text(strip=True)
                     if href and link_text:
-                        inner_text += f"[{link_text}]({href})"
+                        inner_text += self._format_markdown_link(link_text, href)
                     else:
                         inner_text += link_text
                 elif child.name == "br":

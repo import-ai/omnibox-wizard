@@ -16,6 +16,13 @@ LOGIN_ARTICLE_HTML = """
         <div data-block="true" class="longform-unstyled">
           <div class="public-DraftStyleDefault-block"><span>第一段正文。</span></div>
         </div>
+        <div data-block="true" class="longform-unstyled">
+          <div class="public-DraftStyleDefault-block">
+            <span>每天自动抓取 X（</span>
+            <a href="https://x.com/@reidhannaford">@reidhannaford</a>
+            <span>）上关注的账号动态。</span>
+          </div>
+        </div>
         <div data-block="true" class="longform-header-two">
           <h2 class="longform-header-two">第一章</h2>
         </div>
@@ -37,6 +44,7 @@ SHARED_ARTICLE_HTML = """
         <p><b><strong>分享页的第一段正文。</strong></b></p>
         <h3>第一章</h3>
         <p>正文中的 <a href="https://example.com/source">链接</a>。</p>
+        <p>参考账号 <a href="https://x.com/@reidhannaford">@reidhannaford</a>。</p>
         <figure>
           <img src="https://pbs.twimg.com/media/body-share.jpg" alt="正文图片">
         </figure>
@@ -52,7 +60,10 @@ SHARED_ARTICLE_HTML = """
 REGULAR_POST_HTML = """
 <article data-testid="tweet">
   <div data-testid="User-Name">Example @example</div>
-  <div data-testid="tweetText">普通 POST 正文。</div>
+  <div data-testid="tweetText">
+    普通 POST 正文，提及
+    <a href="https://x.com/@example">@example</a>。
+  </div>
 </article>
 """
 
@@ -70,6 +81,8 @@ async def test_convert_login_article_keeps_body_and_images(processor: XProcessor
 
     assert result.title == "登录态文章标题"
     assert "第一段正文。" in result.markdown
+    assert "[reidhannaford](https://x.com/reidhannaford)" in result.markdown
+    assert "[@reidhannaford](https://x.com/@reidhannaford)" not in result.markdown
     assert "## 第一章" in result.markdown
     assert "正文图片" in result.markdown
     processor.get_images.assert_awaited_once_with(
@@ -96,6 +109,8 @@ async def test_convert_shared_article_extracts_article_not_comments(
     assert "****分享页的第一段正文。****" not in result.markdown
     assert "第一章" in result.markdown
     assert "[链接](https://example.com/source)" in result.markdown
+    assert "[reidhannaford](https://x.com/reidhannaford)" in result.markdown
+    assert "[@reidhannaford](" not in result.markdown
     assert "正文图片" in result.markdown
     assert "这是一条评论，不应被提取。" not in result.markdown
     processor.get_images.assert_awaited_once_with(
@@ -114,5 +129,7 @@ async def test_convert_regular_post_does_not_use_article_branch(processor: XProc
 
     result = await processor.convert(REGULAR_POST_HTML, ARTICLE_URL)
 
-    assert result.title == "普通 POST 正文。"
-    assert result.markdown.strip() == "普通 POST 正文。"
+    assert "普通 POST 正文" in (result.title or "")
+    assert "普通 POST 正文" in result.markdown
+    assert "[example](https://x.com/example)" in result.markdown
+    assert "[@example](" not in result.markdown

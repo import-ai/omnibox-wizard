@@ -1444,8 +1444,40 @@ class XProcessor(HTMLReaderBaseProcessor):
                             )
                         )
                         continue
+
+                table = block.select_one("table")
+                if table:
+                    table_md = self._convert_article_table(table)
+                    if table_md:
+                        markdown_parts.append(table_md)
+                    continue
         markdown = "\n\n".join(markdown_parts)
         return GeneratedContent(title=title, markdown=markdown, images=images or None)
+
+    def _convert_article_table(self, table: Tag) -> str:
+        rows = []
+        for tr in table.find_all("tr"):
+            cells = []
+            for cell in tr.find_all(["th", "td"], recursive=False):
+                text = cell.get_text(" ", strip=True).replace("|", "\\|")
+                cells.append(text)
+            if cells:
+                rows.append(cells)
+        if not rows:
+            return ""
+
+        width = max(len(row) for row in rows)
+        normalized = [row + [""] * (width - len(row)) for row in rows]
+
+        header = normalized[0]
+        body = normalized[1:] if len(normalized) > 1 else []
+        lines = [
+            "| " + " | ".join(header) + " |",
+            "| " + " | ".join("---" for _ in header) + " |",
+        ]
+        for row in body:
+            lines.append("| " + " | ".join(row) + " |")
+        return "\n".join(lines)
 
     def _convert_shared_article(self, soup: BeautifulSoup) -> GeneratedContent:
         body = soup.select_one(".x-article-body")

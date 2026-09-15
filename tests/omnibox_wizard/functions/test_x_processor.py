@@ -29,6 +29,22 @@ LOGIN_ARTICLE_HTML = """
         <div data-block="true" class="longform-header-two">
           <h2 class="longform-header-two">第一章</h2>
         </div>
+        <section data-block="true">
+          <div>
+            <div>
+              <table>
+                <tr>
+                  <th><span>能力来源</span></th>
+                  <th><span>对系统搭建的帮助</span></th>
+                </tr>
+                <tr>
+                  <td><span>产品营销</span></td>
+                  <td><span>为智能体提供客户、定位和产品方案上下文</span></td>
+                </tr>
+              </table>
+            </div>
+          </div>
+        </section>
         <section>
           <img src="https://pbs.twimg.com/media/body-login.jpg" alt="正文图片">
         </section>
@@ -88,6 +104,8 @@ async def test_convert_login_article_keeps_body_and_images(processor: XProcessor
     assert "[@reidhannaford](https://x.com/@reidhannaford)" not in result.markdown
     assert "# What Is the Agent Harness?" in result.markdown
     assert "## 第一章" in result.markdown
+    assert "| 能力来源 | 对系统搭建的帮助 |" in result.markdown
+    assert "| 产品营销 | 为智能体提供客户、定位和产品方案上下文 |" in result.markdown
     assert "正文图片" in result.markdown
     processor.get_images.assert_awaited_once_with(
         [

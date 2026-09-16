@@ -29,7 +29,7 @@ class XProcessor(HTMLReaderBaseProcessor):
         soup = BeautifulSoup(html, "html.parser")
         soup = self._clean_comment_section(soup)
 
-        if soup.select_one('div[data-testid="twitterArticleReadView"]'):
+        if self._is_article_page(soup):
             result = self._convert_article(soup)
         else:
             tweet_containers = self._find_relevant_tweet_containers(soup)
@@ -52,6 +52,12 @@ class XProcessor(HTMLReaderBaseProcessor):
             downloaded_images = await self.get_images(image_links)
             result.images = downloaded_images
         return result
+
+    def _is_article_page(self, soup: BeautifulSoup) -> bool:
+        return bool(
+            soup.select_one('[data-testid="twitterArticleReadView"]')
+            or soup.select_one(".x-article-body")
+        )
 
     def _find_main_tweet_container(self, soup: BeautifulSoup) -> Tag | None:
         main_cell = self._find_main_content_cell(soup)
@@ -721,9 +727,9 @@ class XProcessor(HTMLReaderBaseProcessor):
 
             if child.name == "a":
                 label = child.get_text("", strip=True)
-                href = self._absolute_x_url(child.get("href") or "")
+                href = child.get("href") or ""
                 if label and href:
-                    parts.append(f"[{label}]({href})")
+                    parts.append(self._format_markdown_link(label, href))
                 else:
                     parts.append(label)
                 continue
@@ -913,6 +919,40 @@ class XProcessor(HTMLReaderBaseProcessor):
         if href.startswith("/"):
             return f"https://x.com{href}"
         return href
+
+    # Normalizes profile hrefs so editors do not treat them as mentions.
+    def _normalize_markdown_link_href(self, href: str) -> str:
+        normalized = self._absolute_x_url(href)
+        return re.sub(
+            r"(https://(?:x|twitter)\.com)/@([^/?#]+)",
+            r"\1/\2",
+            normalized,
+        )
+
+    # Formats markdown links without a leading "@" in the label.
+    def _format_markdown_link(self, link_text: str, href: str) -> str:
+        text = (link_text or "").strip()
+        if text.startswith("@"):
+            text = text[1:]
+        normalized_href = self._normalize_markdown_link_href(href or "")
+        if normalized_href and text:
+            return f"[{text}]({normalized_href})"
+        return text
+
+    # Rewrites anchors before html2text so labels do not start with "@".
+    def _normalize_markdown_anchors(self, root: Tag) -> None:
+        for anchor in root.find_all("a"):
+            href = anchor.get("href") or ""
+            link_text = anchor.get_text(strip=True)
+            if not href or not link_text:
+                continue
+            normalized_href = self._normalize_markdown_link_href(href)
+            normalized_text = link_text[1:] if link_text.startswith("@") else link_text
+            if normalized_href == href and normalized_text == link_text:
+                continue
+            anchor["href"] = normalized_href
+            anchor.clear()
+            anchor.append(normalized_text)
 
     # Checks whether a link is the "From domain" source line of an external preview.
     def _is_restricted_link_preview_source(self, link: Tag) -> bool:
@@ -1295,6 +1335,7 @@ class XProcessor(HTMLReaderBaseProcessor):
             for img in content.find_all("img"):
                 if "abs.twimg.com/emoji" in (img.get("src", "")):
                     img.replace_with(img.get("alt", ""))
+            self._normalize_markdown_anchors(content)
             content_with_br: str = str(content).replace("\n", "<br>\n")
             content_with_br = content_with_br.replace('href="/', 'href="https://x.com/')
             markdown = html2text(content_with_br, bodywidth=0) + "\n\n" + markdown
@@ -1315,39 +1356,15 @@ class XProcessor(HTMLReaderBaseProcessor):
         return GeneratedContent(title=title, markdown=markdown, images=images or None)
 
     def _convert_article(self, soup) -> GeneratedContent:
-        title_tag = soup.select_one('div[data-testid="twitter-article-title"]')
-        title = title_tag.get_text(strip=True) if title_tag else ""
+        if soup.select_one(".x-article-body"):
+            return self._convert_shared_article(soup)
 
-        title_images = []
-        article_view = soup.select_one('div[data-testid="twitterArticleReadView"]')
-        if article_view:
-            for child in article_view.children:
-                if isinstance(child, Tag):
-                    title_in_child = child.select_one(
-                        '[data-testid="twitter-article-title"]'
-                    )
-                    if not title_in_child:
-                        imgs = child.find_all("img")
-                        for img in imgs:
-                            src = img.get("src", "")
-                            alt = img.get("alt", "")
-                            if self._is_content_image(src):
-                                title_images.append(
-                                    Image.model_validate(
-                                        {
-                                            "name": alt,
-                                            "link": src,
-                                            "data": "",
-                                            "mimetype": "",
-                                        }
-                                    )
-                                )
+        title_tag = soup.select_one('[data-testid="twitter-article-title"]')
+        title = title_tag.get_text(strip=True) if title_tag else ""
 
         content_div = soup.select_one('div[data-testid="longformRichTextComponent"]')
         if not content_div:
-            return GeneratedContent(
-                title=title, markdown="", images=title_images or None
-            )
+            return GeneratedContent(title=title, markdown="", images=None)
 
         contents_div = content_div.select_one('[data-contents="true"]')
         if contents_div:
@@ -1358,9 +1375,6 @@ class XProcessor(HTMLReaderBaseProcessor):
         markdown_parts = []
         images = []
 
-        for img in title_images:
-            markdown_parts.append(f"![{img.name}]({img.link})")
-
         for block in blocks:
             classes = block.get("class", [])
             tag_name = block.name
@@ -1369,9 +1383,14 @@ class XProcessor(HTMLReaderBaseProcessor):
                 text = self._get_article_block_text(block)
                 if text:
                     markdown_parts.append(text)
+            elif block.select_one("h1.longform-header-one"):
+                h1_text = block.select_one("h1").get_text(strip=True)
+                if h1_text:
+                    markdown_parts.append(f"# {h1_text}")
             elif block.select_one("h2.longform-header-two"):
                 h2_text = block.select_one("h2").get_text(strip=True)
-                markdown_parts.append(f"## {h2_text}")
+                if h2_text:
+                    markdown_parts.append(f"## {h2_text}")
             elif tag_name == "blockquote":
                 text = self._get_article_block_text(block)
                 if text:
@@ -1425,10 +1444,86 @@ class XProcessor(HTMLReaderBaseProcessor):
                             )
                         )
                         continue
+
+                table = block.select_one("table")
+                if table:
+                    table_md = self._convert_article_table(table)
+                    if table_md:
+                        markdown_parts.append(table_md)
+                    continue
         markdown = "\n\n".join(markdown_parts)
-        all_images = title_images + images
+        return GeneratedContent(title=title, markdown=markdown, images=images or None)
+
+    def _convert_article_table(self, table: Tag) -> str:
+        rows = []
+        for tr in table.find_all("tr"):
+            cells = []
+            for cell in tr.find_all(["th", "td"], recursive=False):
+                text = cell.get_text(" ", strip=True).replace("|", "\\|")
+                cells.append(text)
+            if cells:
+                rows.append(cells)
+        if not rows:
+            return ""
+
+        width = max(len(row) for row in rows)
+        normalized = [row + [""] * (width - len(row)) for row in rows]
+
+        header = normalized[0]
+        body = normalized[1:] if len(normalized) > 1 else []
+        lines = [
+            "| " + " | ".join(header) + " |",
+            "| " + " | ".join("---" for _ in header) + " |",
+        ]
+        for row in body:
+            lines.append("| " + " | ".join(row) + " |")
+        return "\n".join(lines)
+
+    def _convert_shared_article(self, soup: BeautifulSoup) -> GeneratedContent:
+        body = soup.select_one(".x-article-body")
+        if not body:
+            return GeneratedContent(title="", markdown="", images=None)
+
+        article = body.find_parent("article")
+        title_tag = article.select_one("h1") if article else None
+        if not title_tag:
+            title_tag = body.find_previous("h1")
+        title = title_tag.get_text(" ", strip=True) if title_tag else ""
+
+        body_copy = BeautifulSoup(str(body), "html.parser")
+        for bold in body_copy.find_all("b"):
+            if len(bold.contents) == 1 and isinstance(bold.contents[0], Tag):
+                if bold.contents[0].name == "strong":
+                    bold.replace_with(bold.contents[0].extract())
+        for heading in body_copy.find_all(["h2", "h3"]):
+            for child in list(heading.children):
+                if getattr(child, "name", None) == "br":
+                    child.decompose()
+                    continue
+                break
+        self._normalize_markdown_anchors(body_copy)
+        markdown = html2text(str(body_copy), bodywidth=0).strip()
+
+        images = []
+        for img in body.find_all("img"):
+            src = img.get("src", "")
+            if not self._is_content_image(src):
+                continue
+            images.append(
+                Image.model_validate(
+                    {
+                        "name": img.get("alt", "") or src,
+                        "link": src,
+                        "data": "",
+                        "mimetype": "",
+                    }
+                )
+            )
+
         return GeneratedContent(
-            title=title, markdown=markdown, images=all_images or None
+            title=title,
+            markdown=markdown,
+            images=images or None,
         )
 
     def _extract_article_quote(self, block: Tag) -> tuple[str, list[Image]]:
@@ -1522,7 +1617,9 @@ class XProcessor(HTMLReaderBaseProcessor):
                     href = child.get("href", "")
                     link_text = child.get_text(strip=True)
                     if href and link_text:
-                        result_parts.append(f"[{link_text}]({href})")
+                        result_parts.append(
+                            self._format_markdown_link(link_text, href)
+                        )
         return "".join(result_parts).strip()
 
     def _parse_article_span(self, span: Tag) -> str:
@@ -1541,7 +1638,7 @@ class XProcessor(HTMLReaderBaseProcessor):
                     href = child.get("href", "")
                     link_text = child.get_text(strip=True)
                     if href and link_text:
-                        inner_text += f"[{link_text}]({href})"
+                        inner_text += self._format_markdown_link(link_text, href)
                     else:
                         inner_text += link_text
                 elif child.name == "br":

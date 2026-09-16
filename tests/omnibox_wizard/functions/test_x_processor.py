@@ -1,4 +1,5 @@
 from unittest.mock import AsyncMock
+import re
 
 import pytest
 
@@ -61,6 +62,7 @@ SHARED_ARTICLE_HTML = """
     <div class="x-article-body break-words">
       <div class="contents">
         <p><b><strong>分享页的第一段正文。</strong></b></p>
+        <h2><br/><span>What a harness actually is</span></h2>
         <h3>第一章</h3>
         <p>正文中的 <a href="https://example.com/source">链接</a>。</p>
         <p>参考账号 <a href="https://x.com/@reidhannaford">@reidhannaford</a>。</p>
@@ -129,6 +131,8 @@ async def test_convert_shared_article_extracts_article_not_comments(
     assert "分享页的第一段正文。" in result.markdown
     assert "**分享页的第一段正文。**" in result.markdown
     assert "****分享页的第一段正文。****" not in result.markdown
+    assert "## What a harness actually is" in result.markdown
+    assert re.search(r"^##\s*$", result.markdown, re.M) is None
     assert "第一章" in result.markdown
     assert "[链接](https://example.com/source)" in result.markdown
     assert "[reidhannaford](https://x.com/reidhannaford)" in result.markdown

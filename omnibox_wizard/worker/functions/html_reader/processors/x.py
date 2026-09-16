@@ -1495,9 +1495,15 @@ class XProcessor(HTMLReaderBaseProcessor):
             if len(bold.contents) == 1 and isinstance(bold.contents[0], Tag):
                 if bold.contents[0].name == "strong":
                     bold.replace_with(bold.contents[0].extract())
+        for heading in body_copy.find_all(["h2", "h3"]):
+            for child in list(heading.children):
+                if getattr(child, "name", None) == "br":
+                    child.decompose()
+                    continue
+                break
         self._normalize_markdown_anchors(body_copy)
-
         markdown = html2text(str(body_copy), bodywidth=0).strip()
+
         images = []
         for img in body.find_all("img"):
             src = img.get("src", "")

@@ -8,7 +8,7 @@ from common.config_loader import Loader
 from common.trace_info import TraceInfo
 from omnibox_wizard.wizard.api.depends import get_trace_info
 from omnibox_wizard.wizard.config import ENV_PREFIX
-from wizard_common.grimoire.agent.ask import Ask
+from omnibox_wizard.wizard.agent.ask import Ask
 from wizard_common.grimoire.agent.write import Write
 from wizard_common.grimoire.base_streamable import ChatResponse
 from wizard_common.grimoire.config import GrimoireAgentConfig

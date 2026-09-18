@@ -3,11 +3,11 @@ from unittest.mock import AsyncMock
 import httpx
 import pytest
 
-from omnibox_wizard.wizard.agent.backend_visible_client import (
+from wizard_common.grimoire.retriever.resource_search import ResourceSearch
+from wizard_common.grimoire.retriever.visible_client import (
     BackendVisibleBaseClient,
     BackendVisibleClient,
 )
-from omnibox_wizard.wizard.agent.resource_search import ResourceSearch
 from wizard_common.grimoire.entity.chunk import Chunk, ChunkType, ResourceChunkRetrieval
 from wizard_common.grimoire.entity.retrieval import Score
 from wizard_common.grimoire.entity.tools import (

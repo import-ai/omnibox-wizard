@@ -234,3 +234,24 @@ async def test_filter_visible_resource_ids_skips_empty_post(monkeypatch):
 
     assert await client.filter_visible_resource_ids([]) == []
     request_mock.assert_not_awaited()
+
+
+def test_get_type_defaults_to_resource_when_visible_resources_empty():
+    resource = Resource.model_validate(
+        {
+            "id": "doc-1",
+            "name": "My doc",
+            "type": WeaviateVectorRetriever.get_type("doc-1", []),
+        }
+    )
+    assert resource.type is PrivateSearchResourceType.RESOURCE
+
+
+def test_get_type_uses_visible_resource_when_present():
+    resources = [
+        Resource(id="folder-1", name="f", type=PrivateSearchResourceType.FOLDER),
+    ]
+    assert (
+        WeaviateVectorRetriever.get_type("folder-1", resources)
+        is PrivateSearchResourceType.FOLDER
+    )

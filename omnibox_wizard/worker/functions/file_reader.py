@@ -97,8 +97,6 @@ class Convertor:
         if ext in self.supported_extensions and ext not in {".md", ".txt"}:
             path = filepath
             if ext in OFFICE_CONVERSIONS:
-                if not self.office_operator_base_url:
-                    raise ValueError(f"unsupported_type: {ext}")
                 async with OfficeOperatorClient(
                     base_url=self.office_operator_base_url,
                     transport=AsyncHTTPTransport(retries=3),

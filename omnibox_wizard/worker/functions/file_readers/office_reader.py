@@ -14,6 +14,20 @@ from omnibox_wizard.worker.functions.file_readers.utils import (
 )
 
 
+OFFICE_CONVERSIONS = {
+    ".doc": ".docx",
+    ".wps": ".docx",
+    ".wpt": ".docx",
+    ".rtf": ".docx",
+    ".odt": ".docx",
+    ".ppt": ".pptx",
+    ".dps": ".pptx",
+    ".dpt": ".pptx",
+    ".odp": ".pptx",
+    ".xls": ".xlsx",
+}
+
+
 class OfficeReader(httpx.AsyncClient):
     """Unified Office Document Reader supporting both MarkItDown and Docling conversion engines."""
 
@@ -70,7 +84,9 @@ class OfficeOperatorClient(httpx.AsyncClient):
         with open(src_path, "rb") as f:
             bytes_content: bytes = f.read()
         src_ext = src_ext or Path(src_path).suffix.lower()
-        dest_path = dest_path or src_path + "x"
+        dest_path = dest_path or str(
+            Path(src_path).with_suffix(OFFICE_CONVERSIONS[src_ext])
+        )
         mimetype = mimetype or guess_mimetype(src_path)
 
         response: httpx.Response = await self.post(

@@ -13,6 +13,7 @@ from wizard_common.worker.entity import Task, Image, TaskFunction
 from omnibox_wizard.worker.functions.base_function import BaseFunction
 from omnibox_wizard.worker.functions.file_readers.md_reader import MDReader
 from omnibox_wizard.worker.functions.file_readers.office_reader import (
+    OFFICE_CONVERSIONS,
     OfficeReader,
     OfficeOperatorClient,
 )
@@ -63,7 +64,11 @@ class Convertor:
         if docling_base_url:
             extensions += [".pptx", ".docx"]
             if office_operator_base_url:
-                extensions += [".ppt", ".doc"]
+                extensions += [
+                    ext
+                    for ext, target in OFFICE_CONVERSIONS.items()
+                    if target in {".docx", ".pptx"}
+                ]
         return extensions
 
     def __init__(
@@ -89,11 +94,9 @@ class Convertor:
         images: list[Image] = []
         metadata: dict[str, str] = {}
 
-        if ext in [".pptx", ".docx", ".ppt", ".doc"] and self.docling_base_url:
+        if ext in self.supported_extensions and ext not in {".md", ".txt"}:
             path = filepath
-            if ext in [".ppt", ".doc"]:
-                if not self.office_operator_base_url:
-                    raise ValueError(f"unsupported_type: {ext}")
+            if ext in OFFICE_CONVERSIONS:
                 async with OfficeOperatorClient(
                     base_url=self.office_operator_base_url,
                     transport=AsyncHTTPTransport(retries=3),

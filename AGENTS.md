@@ -96,6 +96,13 @@ The `HTMLReaderV2` uses a modular processor/selector pattern:
 
 All environment variables use the `OBW_` prefix. The `Loader` class from the `common` submodule/package handles loading configs from environment. Use `example.env` as the local starting point.
 
+Worker BaseAgent calls accept thinking parameters in model env values, for example
+`OBW_GRIMOIRE_OPENAI_MINI_MODEL=<model>?enable_thinking=false&reasoning_effort=low`.
+Either parameter can be omitted. BaseAgent sends no implicit thinking values and
+does not select legacy `*_THINKING` models. When migrating deployments, explicitly
+configure required thinking behavior; an unsuffixed model uses provider defaults.
+Chat thinking levels are separate.
+
 Key config modules:
 - `WorkerConfig` (`worker/config.py`) - Worker service configuration
 - `Config` (`wizard/config.py`) - API service configuration

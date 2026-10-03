@@ -2,6 +2,7 @@ from functools import partial
 from json import dumps as lib_dumps
 
 from fastapi import APIRouter, Depends
+from pydantic import BaseModel, Field
 
 from common.config_loader import Loader
 from common.trace_info import TraceInfo
@@ -120,3 +121,13 @@ async def upsert_weaviate_message(
 @internal_router.get("/functions")
 async def get_functions():
     return capabilities
+
+
+class ClearMessageIndexRequest(BaseModel):
+    namespace_id: str = Field(min_length=1)
+
+
+@internal_router.post("/clear_message_index")
+async def clear_message_index(request: ClearMessageIndexRequest):
+    deleted = await vector_db.remove_message_vectors(request.namespace_id)
+    return {"deleted": deleted}

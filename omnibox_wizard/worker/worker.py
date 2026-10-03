@@ -1,3 +1,4 @@
+from wizard_common.worker.retry import is_retryable
 import asyncio
 import os
 import socket
@@ -271,6 +272,7 @@ class Worker:
                 "timeout": actual_timeout,
                 "timeout_source": timeout_source,
                 "type": "TimeoutError",
+                "retryable": task.function == "upsert_message_index",
             }
             task.status = "timeout"
             logging_func = trace_info.bind(error=error_msg).warning
@@ -290,6 +292,9 @@ class Worker:
             }
             if isinstance(e, CommonException):
                 task.exception["code"] = e.code
+            task.exception["retryable"] = (
+                task.function == "upsert_message_index" and is_retryable(e)
+            )
             task.status = "error"
             logging_func = trace_info.bind(
                 error=CommonException.parse_exception(e)

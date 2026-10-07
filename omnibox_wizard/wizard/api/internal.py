@@ -79,6 +79,8 @@ async def parse_rss_item(
 @internal_router.post("/search", tags=[], response_model=SearchResponse)
 async def search(request: SearchRequest):
     records = await vector_db.search(
+        conversation_ids=request.conversation_ids,
+        exclude_conversation_ids=request.exclude_conversation_ids,
         query=request.query,
         namespace_id=request.namespace_id,
         user_id=request.user_id,

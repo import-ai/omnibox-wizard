@@ -695,7 +695,7 @@ class XProcessor(HTMLReaderBaseProcessor):
         return bool(
             tag.name in {"div", "span"}
             and "whitespace-pre-wrap" in classes
-            and "break-words" in classes
+            and "wrap-break-word" in classes
             and "font-normal" in classes
         )
 

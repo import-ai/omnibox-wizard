@@ -1,10 +1,11 @@
-from common import project_root
+from importlib.resources import files
+
 from common.template_parser import TemplateParser
 
 
 def render_ask_prompt() -> str:
     template_parser = TemplateParser(
-        base_dir=project_root.path("wizard_common/resources/prompt_templates")
+        base_dir=str(files("wizard_common") / "resources" / "prompt_templates")
     )
     template = template_parser.get_template("ask.j2")
     return template_parser.render_template(template, lang="简体中文", tools="")

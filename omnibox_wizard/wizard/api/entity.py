@@ -36,6 +36,8 @@ class RssItemParseResponse(BaseModel):
 
 
 class SearchRequest(BaseModel):
+    conversation_ids: list[str] | None = None
+    exclude_conversation_ids: list[str] | None = None
     query: str = Field(description="search query")
     namespace_id: str = Field(description="namespace id to search in")
     user_id: str | None = Field(description="user id")

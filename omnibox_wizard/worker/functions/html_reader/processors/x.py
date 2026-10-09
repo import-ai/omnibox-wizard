@@ -745,6 +745,15 @@ class XProcessor(HTMLReaderBaseProcessor):
                 if "abs.twimg.com/emoji" in (img.get("src", "")):
                     img.replace_with(img.get("alt", ""))
 
+            # Share page wraps links as span > a; keep those hrefs as markdown.
+            for anchor in child.find_all("a"):
+                label = anchor.get_text("", strip=True)
+                href = anchor.get("href") or ""
+                if label and href:
+                    anchor.replace_with(self._format_markdown_link(label, href))
+                else:
+                    anchor.replace_with(label)
+
             parts.append(child.get_text("", strip=False))
 
         markdown = "".join(parts)

@@ -1,4 +1,5 @@
 import json
+import re
 from urllib.parse import urlparse
 
 from bs4 import BeautifulSoup, Tag, Comment, NavigableString
@@ -10,6 +11,11 @@ from omnibox_wizard.worker.functions.html_reader.processors.base import (
 )
 
 tracer = trace.get_tracer("RedNoteProcessor")
+
+_XHS_INITIAL_STATE_RE = re.compile(
+    r"window\.__INITIAL_STATE__\s*=\s*(\{.*?\});?\s*</script>",
+    re.S,
+)
 
 
 class RedNoteProcessor(HTMLReaderBaseProcessor):
@@ -152,19 +158,93 @@ class RedNoteProcessor(HTMLReaderBaseProcessor):
 
         return image_links
 
-    @tracer.start_as_current_span("RedNoteProcessor.convert")
-    async def convert(self, html: str, url: str) -> GeneratedContent:
-        soup = BeautifulSoup(html, "html.parser")
+    @classmethod
+    def extract_note_data(cls, html: str) -> dict | None:
+        """Parse mobile/desktop SSR note payload from __INITIAL_STATE__."""
+        match = _XHS_INITIAL_STATE_RE.search(html or "")
+        if not match:
+            return None
+
+        raw = match.group(1).replace("undefined", "null").replace("void 0", "null")
+        try:
+            state = json.loads(raw)
+            note = state["noteData"]["data"]["noteData"]
+        except (json.JSONDecodeError, KeyError, TypeError, AttributeError):
+            return None
+
+        return note if isinstance(note, dict) else None
+
+    @classmethod
+    def extract_note_data_image_links(cls, note: dict) -> list[str]:
+        image_links = []
+        seen_image_keys = set()
+
+        for item in note.get("imageList") or []:
+            if not isinstance(item, dict):
+                continue
+            src = item.get("url")
+            if not isinstance(src, str):
+                continue
+            if "sns-webpic-qc.xhscdn.com" not in src:
+                continue
+
+            image_key = cls.normalize_image_key(src)
+            if image_key in seen_image_keys:
+                continue
+
+            seen_image_keys.add(image_key)
+            image_links.append(src)
+
+        return image_links
+
+    @classmethod
+    def desktop_extract(
+        cls, soup: BeautifulSoup
+    ) -> tuple[str | None, str, list[str]]:
         title_selection = soup.select("div.note-content div#detail-title")
         content_selection = soup.select(
             "div.note-content div#detail-desc span.note-text"
         )
 
-        image_links = self.extract_structured_image_links(soup)
+        image_links = cls.extract_structured_image_links(soup)
         if not image_links:
-            image_links = self.extract_note_image_links(soup)
+            image_links = cls.extract_note_image_links(soup)
         if not image_links:
-            image_links = self.extract_og_image_links(soup)
+            image_links = cls.extract_og_image_links(soup)
+
+        title = title_selection[0].text.strip() if title_selection else None
+        content_md = (
+            cls.content_to_md(content_selection[0]) if content_selection else ""
+        )
+        return title, content_md, image_links
+
+    @classmethod
+    def note_data_extract(cls, html: str) -> tuple[str | None, str, list[str]] | None:
+        note = cls.extract_note_data(html)
+        if not note:
+            return None
+
+        title = note.get("title")
+        if isinstance(title, str):
+            title = title.strip() or None
+        else:
+            title = None
+
+        desc = note.get("desc")
+        content_md = desc.strip() if isinstance(desc, str) else ""
+        image_links = cls.extract_note_data_image_links(note)
+        return title, content_md, image_links
+
+    @tracer.start_as_current_span("RedNoteProcessor.convert")
+    async def convert(self, html: str, url: str) -> GeneratedContent:
+        soup = BeautifulSoup(html, "html.parser")
+        title, content_md, image_links = self.desktop_extract(soup)
+
+        # Mobile pages usually lack desktop note-content DOM; fall back to noteData.
+        if not title and not content_md and not image_links:
+            note_data_result = self.note_data_extract(html)
+            if note_data_result:
+                title, content_md, image_links = note_data_result
 
         images = await self.get_images(
             [(src, str(i + 1)) for i, src in enumerate(image_links)]
@@ -173,7 +253,6 @@ class RedNoteProcessor(HTMLReaderBaseProcessor):
         markdown: str = "\n\n".join(
             [f"![{image.name}]({image.link})" for image in images]
         )
-        if content_selection:
-            markdown = markdown + "\n\n" + self.content_to_md(content_selection[0])
-        title: str = title_selection[0].text.strip() if title_selection else None
+        if content_md:
+            markdown = markdown + "\n\n" + content_md if markdown else content_md
         return GeneratedContent(title=title, markdown=markdown, images=images or None)

@@ -2,11 +2,10 @@ import asyncio
 import os
 import socket
 import traceback
-from contextlib import asynccontextmanager
 from datetime import datetime
-from typing import AsyncGenerator, Callable
+from typing import Callable
 
-from httpx import AsyncClient, AsyncHTTPTransport
+from httpx import AsyncClient
 from opentelemetry import propagate, trace
 from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 from opentelemetry.trace import Status, StatusCode
@@ -34,6 +33,10 @@ from omnibox_wizard.worker.health_tracker import HealthTracker
 from omnibox_wizard.worker.heartbeat_process import (
     HeartbeatReporter,
     LostOwnershipError,
+)
+from omnibox_wizard.worker.poll_trace import (
+    PollTraceTransport,
+    install_drop_empty_poll_processor,
 )
 from omnibox_wizard.worker.task_manager import TaskManager
 
@@ -131,32 +134,33 @@ class Worker:
         self.supported_functions = set(compute_supported_functions(config.task))
 
         self.logger = get_logger(f"worker_{self.worker_id}")
+        self._backend_http: AsyncClient | None = None
 
         if self.health_tracker:
             self.health_tracker.register_worker(self.worker_id)
 
-    @asynccontextmanager
-    async def _backend_client(self) -> AsyncGenerator[AsyncClient, None]:
-        async with AsyncClient(
-            base_url=self.config.backend.base_url,
-            transport=AsyncHTTPTransport(retries=3),
-            timeout=30,
-        ) as client:
-            HTTPXClientInstrumentor.instrument_client(client)
-            yield client
+    def _backend_client(self) -> AsyncClient:
+        if self._backend_http is None:
+            install_drop_empty_poll_processor()
+            self._backend_http = AsyncClient(
+                base_url=self.config.backend.base_url,
+                transport=PollTraceTransport(retries=3),
+                timeout=30,
+            )
+            HTTPXClientInstrumentor.instrument_client(self._backend_http)
+        return self._backend_http
 
     async def poll_task(self) -> Task | None:
-        async with self._backend_client() as client:
-            response = await client.post(
-                "/internal/api/v1/wizard/tasks/poll",
-                json={
-                    "functions": self.polled_functions,
-                    "worker_id": self.worker_uid,
-                },
-            )
-            response.raise_for_status()
-            data = response.json().get("task")
-            return Task.model_validate(data) if data else None
+        response = await self._backend_client().post(
+            "/internal/api/v1/wizard/tasks/poll",
+            json={
+                "functions": self.polled_functions,
+                "worker_id": self.worker_uid,
+            },
+        )
+        response.raise_for_status()
+        data = response.json().get("task")
+        return Task.model_validate(data) if data else None
 
     def get_trace_info(self, task: Task) -> TraceInfo:
         return TraceInfo(

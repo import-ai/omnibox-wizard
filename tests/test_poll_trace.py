@@ -57,6 +57,14 @@ def test_mark_empty_poll_only_for_null_task():
     mark_empty_poll(empty, httpx.Response(200, json={"task": None}))
     assert empty.attributes[EMPTY_POLL_ATTR] is True
 
+    created = _Span()
+    mark_empty_poll(created, httpx.Response(201, json={"task": None}))
+    assert created.attributes[EMPTY_POLL_ATTR] is True
+
+    claimed_created = _Span()
+    mark_empty_poll(claimed_created, httpx.Response(201, json={"task": {"id": "1"}}))
+    assert claimed_created.attributes == {}
+
     claimed = _Span()
     mark_empty_poll(claimed, httpx.Response(200, json={"task": {"id": "1"}}))
     assert claimed.attributes == {}

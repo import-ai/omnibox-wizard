@@ -5,12 +5,13 @@ from opentelemetry.trace import StatusCode
 
 EMPTY_POLL_ATTR = "omnibox.poll.empty"
 POLL_PATH = "/internal/api/v1/wizard/tasks/poll"
+EMPTY_POLL_STATUS_CODES = {200, 201}
 
 _installed = False
 
 
 class DropEmptyPollSpanProcessor(SpanProcessor):
-    """Drops the httpx span for a 200 poll whose body is `{"task": null}`."""
+    """Drops the httpx span for a 200 or 201 poll whose body is `{"task": null}`."""
 
     def __init__(self, inner: SpanProcessor):
         self._inner = inner
@@ -57,14 +58,17 @@ def install_drop_empty_poll_processor() -> None:
 class PollTraceTransport(httpx.AsyncHTTPTransport):
     async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
         response = await super().handle_async_request(request)
-        if request.url.path == POLL_PATH and response.status_code == 200:
+        if (
+            request.url.path == POLL_PATH
+            and response.status_code in EMPTY_POLL_STATUS_CODES
+        ):
             await response.aread()
             mark_empty_poll(trace.get_current_span(), response)
         return response
 
 
 def mark_empty_poll(span, response) -> None:
-    if response.status_code != 200:
+    if response.status_code not in EMPTY_POLL_STATUS_CODES:
         return
     try:
         payload = response.json()

@@ -44,6 +44,26 @@ def _xhs_note_type_from_html(html: str) -> str | None:
     return note_type if isinstance(note_type, str) and note_type else None
 
 
+def is_bilibili(url: str) -> bool:
+    host = (urlparse(url).hostname or "").lower()
+    return host == "bilibili.com" or host.endswith(".bilibili.com")
+
+
+def is_bilibili_video(url: str) -> bool:
+    """Identify resolved desktop and mobile Bilibili video pages."""
+    parsed = urlparse(url)
+    if not is_bilibili(url):
+        return False
+    return "/video/BV" in parsed.path or "/list/watchlater" in parsed.path
+
+
+def is_unsupported_collect_url(url: str) -> bool:
+    """Return whether a generic collect page is outside the service scope."""
+    if is_bilibili(url) and not is_bilibili_video(url):
+        return True
+    return False
+
+
 def is_douyin(url: str) -> bool:
     domain: str = urlparse(url).netloc
     for pattern in ["douyin.com"]:
@@ -131,6 +151,8 @@ class WebAnalysisFunction(BaseFunction):
 
     def is_video(self, url: str, html: str) -> bool:
         soup = BeautifulSoup(html, "html.parser")
+        if is_bilibili(url):
+            return is_bilibili_video(url)
         if is_xhs(url):
             # Desktop pages expose data-type; mobile pages often omit it and
             # only keep noteData.type inside __INITIAL_STATE__.

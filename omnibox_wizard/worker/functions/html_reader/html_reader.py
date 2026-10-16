@@ -15,6 +15,7 @@ from common.trace_info import TraceInfo
 from omnibox_wizard.worker.agent.html_content_extractor import HTMLContentExtractor
 from omnibox_wizard.worker.config import WorkerConfig
 from omnibox_wizard.worker.functions.base_function import BaseFunction
+from omnibox_wizard.worker.functions.web_analysis import is_unsupported_collect_url
 from omnibox_wizard.worker.functions.html_reader.processors.base import (
     HTMLReaderBaseProcessor,
 )
@@ -283,6 +284,14 @@ class HTMLReaderV2(BaseFunction):
 
     @tracer.start_as_current_span("HTMLReaderV2.run")
     async def run(self, task: Task, trace_info: TraceInfo) -> dict:
+        url = task.input.get("url", "")
+        if is_unsupported_collect_url(url):
+            # Reuse the shared unsupported-content mapping. This is not a VIP check;
+            # pages rejected here are outside the current service scope.
+            raise RuntimeError(
+                "This content requires VIP access and is not currently supported."
+            )
+
         result_dict: dict = await self.main(task, trace_info)
         if result_dict.get("markdown"):
             next_tasks: list[dict] = []

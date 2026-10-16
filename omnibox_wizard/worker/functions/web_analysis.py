@@ -1,4 +1,6 @@
+import json
 import os
+import re
 from urllib.parse import urlparse
 
 from bs4 import BeautifulSoup
@@ -11,12 +13,54 @@ from omnibox_wizard.worker.functions.base_function import BaseFunction
 
 tracer = trace.get_tracer(__name__)
 
+_XHS_INITIAL_STATE_RE = re.compile(
+    r"window\.__INITIAL_STATE__\s*=\s*(\{.*?\});?\s*</script>",
+    re.S,
+)
+
 
 def is_xhs(url: str) -> bool:
     domain: str = urlparse(url).netloc
     for pattern in ["xiaohongshu.com", "xhslink.com"]:
         if pattern in domain:
             return True
+    return False
+
+
+def _xhs_note_type_from_html(html: str) -> str | None:
+    """Read noteData.type from mobile/desktop SSR state when present."""
+    match = _XHS_INITIAL_STATE_RE.search(html or "")
+    if not match:
+        return None
+
+    raw = match.group(1).replace("undefined", "null").replace("void 0", "null")
+    try:
+        state = json.loads(raw)
+        note = state["noteData"]["data"]["noteData"]
+        note_type = note.get("type")
+    except (json.JSONDecodeError, KeyError, TypeError, AttributeError):
+        return None
+
+    return note_type if isinstance(note_type, str) and note_type else None
+
+
+def is_bilibili(url: str) -> bool:
+    host = (urlparse(url).hostname or "").lower()
+    return host == "bilibili.com" or host.endswith(".bilibili.com")
+
+
+def is_bilibili_video(url: str) -> bool:
+    """Identify resolved desktop and mobile Bilibili video pages."""
+    parsed = urlparse(url)
+    if not is_bilibili(url):
+        return False
+    return "/video/BV" in parsed.path or "/list/watchlater" in parsed.path
+
+
+def is_unsupported_collect_url(url: str) -> bool:
+    """Return whether a generic collect page is outside the service scope."""
+    if is_bilibili(url) and not is_bilibili_video(url):
+        return True
     return False
 
 
@@ -107,9 +151,15 @@ class WebAnalysisFunction(BaseFunction):
 
     def is_video(self, url: str, html: str) -> bool:
         soup = BeautifulSoup(html, "html.parser")
+        if is_bilibili(url):
+            return is_bilibili_video(url)
         if is_xhs(url):
+            # Desktop pages expose data-type; mobile pages often omit it and
+            # only keep noteData.type inside __INITIAL_STATE__.
             element = soup.find(attrs={"data-type": True})
-            return element.get("data-type") == "video" if element else False
+            if element is not None:
+                return element.get("data-type") == "video"
+            return _xhs_note_type_from_html(html) == "video"
         if is_douyin(url):
             if feed_active := soup.find(attrs={"data-e2e": "feed-active-video"}):
                 return any(

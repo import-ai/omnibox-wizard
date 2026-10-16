@@ -437,9 +437,16 @@ class XProcessor(HTMLReaderBaseProcessor):
             else None
         )
 
-        card_result = self._convert_restricted_article_card(soup)
-        link_preview_result = self._convert_restricted_link_preview_card(soup)
-        embedded_post_result = self._convert_restricted_embedded_post_card(soup)
+        # When the main post body is known, only merge cards from that post.
+        card_scope: BeautifulSoup | Tag = soup
+        if text_container is not None:
+            main_article = text_container.find_parent("article")
+            if main_article is not None:
+                card_scope = main_article
+
+        card_result = self._convert_restricted_article_card(card_scope)
+        link_preview_result = self._convert_restricted_link_preview_card(card_scope)
+        embedded_post_result = self._convert_restricted_embedded_post_card(card_scope)
         result = text_result or media_result
 
         if card_result:
@@ -695,7 +702,7 @@ class XProcessor(HTMLReaderBaseProcessor):
         return bool(
             tag.name in {"div", "span"}
             and "whitespace-pre-wrap" in classes
-            and "break-words" in classes
+            and "wrap-break-word" in classes
             and "font-normal" in classes
         )
 
@@ -738,6 +745,15 @@ class XProcessor(HTMLReaderBaseProcessor):
                 if "abs.twimg.com/emoji" in (img.get("src", "")):
                     img.replace_with(img.get("alt", ""))
 
+            # Share page wraps links as span > a; keep those hrefs as markdown.
+            for anchor in child.find_all("a"):
+                label = anchor.get_text("", strip=True)
+                href = anchor.get("href") or ""
+                if label and href:
+                    anchor.replace_with(self._format_markdown_link(label, href))
+                else:
+                    anchor.replace_with(label)
+
             parts.append(child.get_text("", strip=False))
 
         markdown = "".join(parts)
@@ -745,6 +761,7 @@ class XProcessor(HTMLReaderBaseProcessor):
         return markdown.strip()
 
     # Extracts content images near the matched restricted body container.
+    # Stops at the nearest ancestor HTML article so reply/timeline media is excluded.
     def _extract_restricted_images_near_container(self, container: Tag) -> list[Image]:
         best_image_urls = []
         current = container
@@ -756,6 +773,9 @@ class XProcessor(HTMLReaderBaseProcessor):
             image_urls = self._extract_restricted_content_image_urls(current)
             if len(image_urls) > len(best_image_urls):
                 best_image_urls = image_urls
+
+            if current.name == "article":
+                break
 
             current = current.parent
 
@@ -822,7 +842,11 @@ class XProcessor(HTMLReaderBaseProcessor):
     # Checks whether an image URL belongs to restricted main tweet video preview media.
     def _is_restricted_video_preview_image(self, src: str) -> bool:
         return bool(
-            self._is_content_image(src) and "pbs.twimg.com/amplify_video_thumb/" in src
+            self._is_content_image(src)
+            and (
+                "pbs.twimg.com/amplify_video_thumb/" in src
+                or "pbs.twimg.com/ext_tw_video_thumb/" in src
+            )
         )
 
     # Checks whether an image URL belongs to restricted tweet body media.
@@ -831,7 +855,7 @@ class XProcessor(HTMLReaderBaseProcessor):
 
     # Parses article preview cards shown on restricted/share pages.
     def _convert_restricted_article_card(
-        self, soup: BeautifulSoup
+        self, soup: BeautifulSoup | Tag
     ) -> GeneratedContent | None:
         article_link = soup.select_one('a[href^="/i/article/"]')
         if not article_link:
@@ -988,7 +1012,7 @@ class XProcessor(HTMLReaderBaseProcessor):
 
     # Parses external link preview cards shown on restricted/share pages.
     def _convert_restricted_link_preview_card(
-        self, soup: BeautifulSoup
+        self, soup: BeautifulSoup | Tag
     ) -> GeneratedContent | None:
         for source_link in soup.find_all("a"):
             if not self._is_restricted_link_preview_source(source_link):
@@ -1030,7 +1054,7 @@ class XProcessor(HTMLReaderBaseProcessor):
 
     # Parses embedded post cards shown on restricted/share pages.
     def _convert_restricted_embedded_post_card(
-        self, soup: BeautifulSoup
+        self, soup: BeautifulSoup | Tag
     ) -> GeneratedContent | None:
         for card in soup.find_all(attrs={"role": "link"}):
             if not self._is_restricted_embedded_post_card(card):

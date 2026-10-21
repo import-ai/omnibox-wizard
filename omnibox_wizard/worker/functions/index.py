@@ -1,3 +1,5 @@
+import httpx
+
 from common.trace_info import TraceInfo
 from omnibox_wizard.indexing import build_resource_chunks
 from omnibox_wizard.worker.config import WorkerConfig
@@ -50,10 +52,29 @@ class UpsertIndex(DeleteIndex):
 class UpsertMessageIndex(BaseFunction):
     def __init__(self, config: WorkerConfig):
         super().__init__()
+        self.base_url = config.backend.base_url
         self.vector_db: WeaviateVectorDB = WeaviateVectorDB(config.vector)
 
     async def run(self, task: Task, trace_info: TraceInfo) -> dict:
-        message = Message(**task.input)
+        async with httpx.AsyncClient(base_url=self.base_url) as client:
+            response = await client.get(
+                f"/internal/api/v1/namespaces/{task.namespace_id}/conversations/{task.input['conversation_id']}/messages/{task.input['message_id']}",
+                params={"for_index": "true"},
+                headers={"x-user-id": task.user_id},
+            )
+        if response.status_code == 404:
+            await self.vector_db.remove_message_vectors(
+                task.namespace_id, task.input["message_id"]
+            )
+            return {"success": True, "skipped": True}
+        response.raise_for_status()
+        current = response.json()
+        if not current["indexable"]:
+            await self.vector_db.remove_message_vectors(
+                task.namespace_id, task.input["message_id"]
+            )
+            return {"success": True, "skipped": True}
+        message = Message(**(task.input | {"message": current["message"]}))
         await self.vector_db.upsert_message(task.namespace_id, task.user_id, message)
         return {"success": True}
 

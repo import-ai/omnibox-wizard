@@ -13,11 +13,8 @@ OmniBox Wizard is a Python FastAPI service that provides AI-powered document pro
 ## Quick Commands
 
 ```bash
-# Initialize shared modules after a fresh clone
-git submodule update --init --recursive
-
-# Install dependencies
-uv sync
+# Install locked dependencies, including shared packages
+uv sync --frozen
 
 # Create local env file
 cp example.env .env
@@ -46,16 +43,16 @@ uv run pre-commit run --all-files               # Run pre-commit hooks
 
 `compose.yaml` defines `wizard`, `wizard-worker`, and `weaviate`. The backend service is expected separately unless `OBW_BACKEND_BASE_URL` is overridden.
 
-## Git Submodules
+## Shared Python Dependencies
 
-- Do not manually edit `.gitmodules`. Use Git submodule commands/config, and revert accidental `.gitmodules` edits before committing.
+`common` and `wizard_common` are installed as `python-common` and `wizard-common` Git dependencies. Pin full commit SHAs in `pyproject.toml`, update `uv.lock`, and keep both Wizard applications on the same shared package commits. Use `uv sync --frozen` after checkout; no submodule initialization is needed.
 
 ## Architecture
 
 ### Agent System
 
 - **API glue** (`omnibox_wizard/wizard/api/`) - FastAPI routers and startup wiring
-- **Agent implementations** (`wizard_common.grimoire.agent`) - Shared Ask/Write agents imported from the `wizard_common` submodule/package
+- **Agent implementations** (`wizard_common.grimoire.agent`) - Shared Ask/Write agents imported from the `wizard_common` package
 - **Agent** - Base class for AI agents using OpenAI API
   - Handles streaming responses, tool calling (custom and standard), thinking mode
   - `UserQueryPreprocessor` transforms user queries with tool/resource context
@@ -94,7 +91,7 @@ The `HTMLReaderV2` uses a modular processor/selector pattern:
 
 ## Configuration
 
-All environment variables use the `OBW_` prefix. The `Loader` class from the `common` submodule/package handles loading configs from environment. Use `example.env` as the local starting point.
+All environment variables use the `OBW_` prefix. The `Loader` class from the `common` package handles loading configs from environment. Use `example.env` as the local starting point.
 
 Worker BaseAgent calls accept thinking parameters in model env values, for example
 `OBW_GRIMOIRE_OPENAI_MINI_MODEL=<model>?enable_thinking=false&reasoning_effort=low`.
@@ -143,7 +140,7 @@ Jinja2 templates in `omnibox_wizard/resources/prompt_templates/`:
 - `html_title_extract.j2` - HTML title extraction
 - `html_content_extract.j2` - HTML content extraction
 
-The `TemplateParser` from the `common` submodule/package handles rendering.
+The `TemplateParser` from the `common` package handles rendering.
 
 ## OpenTelemetry
 

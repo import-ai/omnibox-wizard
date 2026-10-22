@@ -1,7 +1,7 @@
 import json
 import os
 import re
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 from bs4 import BeautifulSoup
 from opentelemetry import trace
@@ -57,9 +57,34 @@ def is_bilibili_video(url: str) -> bool:
     return "/video/BV" in parsed.path or "/list/watchlater" in parsed.path
 
 
+def is_youtube(url: str) -> bool:
+    host = (urlparse(url).hostname or "").lower()
+    return (
+        host == "youtube.com"
+        or host.endswith(".youtube.com")
+        or host == "youtu.be"
+        or host.endswith(".youtu.be")
+    )
+
+
+def is_youtube_video(url: str) -> bool:
+    """Match the YouTube video URLs currently supported by the service."""
+    parsed = urlparse(url)
+    if not is_youtube(url):
+        return False
+    host = (parsed.hostname or "").lower()
+    if host == "youtu.be" or host.endswith(".youtu.be"):
+        return bool(parsed.path.strip("/"))
+    if "/watch" in parsed.path and parse_qs(parsed.query).get("v", [""])[0]:
+        return True
+    return "/shorts/" in parsed.path
+
+
 def is_unsupported_collect_url(url: str) -> bool:
     """Return whether a generic collect page is outside the service scope."""
     if is_bilibili(url) and not is_bilibili_video(url):
+        return True
+    if is_youtube(url) and not is_youtube_video(url):
         return True
     return False
 
@@ -153,6 +178,8 @@ class WebAnalysisFunction(BaseFunction):
         soup = BeautifulSoup(html, "html.parser")
         if is_bilibili(url):
             return is_bilibili_video(url)
+        if is_youtube_video(url):
+            return True
         if is_xhs(url):
             # Desktop pages expose data-type; mobile pages often omit it and
             # only keep noteData.type inside __INITIAL_STATE__.

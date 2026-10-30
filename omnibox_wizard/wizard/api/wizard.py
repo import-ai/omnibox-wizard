@@ -33,6 +33,11 @@ async def init(_: FastAPI):
     write = Write(config)
 
 
+async def shutdown(_: FastAPI):
+    await ask.aclose()
+    await write.aclose()
+
+
 @wizard_router.post("/ask", tags=["LLM"], response_model=ChatResponse)
 async def api_ask(
     request: AgentRequest, trace_info: TraceInfo = Depends(get_trace_info)

@@ -417,51 +417,16 @@ class TestSearchAPI:
         monkeypatch.setattr(internal, "vector_db", vector_db, raising=False)
         return checker
 
-    async def test_without_filter_flag_returns_records_unchanged(
+    async def test_defaults_to_filtering_chunks_and_counts_raw_chunks(
         self, client, monkeypatch
     ):
-        records = [chunk_record("one"), message_record("message")]
-        checker = self.enable_search(monkeypatch, records)
-
-        response = client.post(
-            "/internal/api/v1/wizard/search", json=self.search_payload()
-        )
-
-        assert response.status_code == 200
-        body = response.json()
-        assert [record["type"] for record in body["records"]] == [
-            "chunk",
-            "message",
-        ]
-        assert body["raw_count"] is None
-        checker.filter_search_results.assert_not_awaited()
-
-    async def test_without_wizard_flag_returns_records_unchanged(
-        self, client, monkeypatch
-    ):
-        records = [chunk_record("one")]
-        checker = self.enable_search(monkeypatch, records, enabled=False)
-
-        response = client.post(
-            "/internal/api/v1/wizard/search",
-            json=self.search_payload(filter_relevance=True),
-        )
-
-        assert response.status_code == 200
-        body = response.json()
-        assert [record["type"] for record in body["records"]] == ["chunk"]
-        assert body["raw_count"] is None
-        checker.filter_search_results.assert_not_awaited()
-
-    async def test_filters_chunks_and_counts_raw_chunks(self, client, monkeypatch):
         kept = chunk_record("one")
         records = [kept, chunk_record("two"), message_record("message")]
         checker = self.enable_search(monkeypatch, records)
         checker.filter_search_results.return_value = [kept]
 
         response = client.post(
-            "/internal/api/v1/wizard/search",
-            json=self.search_payload(filter_relevance=True),
+            "/internal/api/v1/wizard/search", json=self.search_payload()
         )
 
         assert response.status_code == 200
@@ -470,6 +435,23 @@ class TestSearchAPI:
         assert body["records"][0]["chunk"]["resource_id"] == "one"
         assert body["raw_count"] == 2
         checker.filter_search_results.assert_awaited_once_with("query", records)
+
+    async def test_with_wizard_flag_disabled_returns_records_unchanged(
+        self, client, monkeypatch
+    ):
+        records = [chunk_record("one")]
+        checker = self.enable_search(monkeypatch, records, enabled=False)
+
+        response = client.post(
+            "/internal/api/v1/wizard/search",
+            json=self.search_payload(),
+        )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert [record["type"] for record in body["records"]] == ["chunk"]
+        assert body["raw_count"] is None
+        checker.filter_search_results.assert_not_awaited()
 
 
 class TestInternalShutdown:

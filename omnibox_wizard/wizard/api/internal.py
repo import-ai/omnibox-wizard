@@ -102,7 +102,7 @@ async def search(request: SearchRequest):
         offset=request.offset,
         limit=request.limit,
     )
-    if not (request.filter_relevance and relevance_config.search_enabled):
+    if not relevance_config.search_enabled:
         return SearchResponse(records=records)
     raw_count = sum(1 for record in records if record.type == IndexRecordType.chunk)
     if relevance_checker is not None:

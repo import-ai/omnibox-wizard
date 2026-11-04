@@ -1,9 +1,14 @@
+from unittest.mock import AsyncMock, patch
+
 import pytest
-from unittest.mock import patch
 from fastapi.testclient import TestClient
 from fastapi import FastAPI
-from wizard_common.grimoire.entity.chunk import Chunk
+from wizard_common.grimoire.config import RelevanceConfig
+from wizard_common.grimoire.entity.chunk import Chunk, ChunkType
+from wizard_common.grimoire.entity.index_record import IndexRecord, IndexRecordType
+from wizard_common.grimoire.entity.message import Message, OpenAIMessage
 
+from omnibox_wizard.wizard.api import internal
 from omnibox_wizard.wizard.api.internal import internal_router
 from omnibox_wizard.wizard.api.entity import (
     CommonAITextRequest,
@@ -360,3 +365,119 @@ class TestWeaviateUpsertAPI:
         assert response.status_code == 200
         assert response.json() == {"success": True}
         mock_weaviate_vector_db.upsert_message.assert_called_once()
+
+
+def chunk_record(resource_id):
+    return IndexRecord(
+        type=IndexRecordType.chunk,
+        namespace_id="ns_1",
+        chunk=Chunk(
+            title=resource_id,
+            resource_id=resource_id,
+            text=f"Content for {resource_id}",
+            chunk_type=ChunkType.doc,
+            parent_id="parent_1",
+        ),
+    )
+
+
+def message_record(message_id):
+    return IndexRecord(
+        type=IndexRecordType.message,
+        namespace_id="ns_1",
+        message=Message(
+            conversation_id="conversation_1",
+            message_id=message_id,
+            message=OpenAIMessage(role="user", content="hello"),
+        ),
+    )
+
+
+class TestSearchAPI:
+    def search_payload(self, **overrides):
+        return {
+            "query": "query",
+            "namespace_id": "ns_1",
+            "user_id": "user_1",
+            **overrides,
+        }
+
+    def enable_search(self, monkeypatch, records, enabled=True):
+        config = RelevanceConfig(
+            base_url="https://judge.invalid/v1",
+            model="decision-test",
+            search_enabled=enabled,
+            search_threshold=0.8,
+        )
+        checker = AsyncMock()
+        vector_db = AsyncMock()
+        vector_db.search.return_value = records
+        monkeypatch.setattr(internal, "relevance_config", config)
+        monkeypatch.setattr(internal, "relevance_checker", checker)
+        monkeypatch.setattr(internal, "vector_db", vector_db, raising=False)
+        return checker
+
+    async def test_without_filter_flag_returns_records_unchanged(
+        self, client, monkeypatch
+    ):
+        records = [chunk_record("one"), message_record("message")]
+        checker = self.enable_search(monkeypatch, records)
+
+        response = client.post(
+            "/internal/api/v1/wizard/search", json=self.search_payload()
+        )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert [record["type"] for record in body["records"]] == [
+            "chunk",
+            "message",
+        ]
+        assert body["raw_count"] is None
+        checker.filter_search_results.assert_not_awaited()
+
+    async def test_without_wizard_flag_returns_records_unchanged(
+        self, client, monkeypatch
+    ):
+        records = [chunk_record("one")]
+        checker = self.enable_search(monkeypatch, records, enabled=False)
+
+        response = client.post(
+            "/internal/api/v1/wizard/search",
+            json=self.search_payload(filter_relevance=True),
+        )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert [record["type"] for record in body["records"]] == ["chunk"]
+        assert body["raw_count"] is None
+        checker.filter_search_results.assert_not_awaited()
+
+    async def test_filters_chunks_and_counts_raw_chunks(self, client, monkeypatch):
+        kept = chunk_record("one")
+        records = [kept, chunk_record("two"), message_record("message")]
+        checker = self.enable_search(monkeypatch, records)
+        checker.filter_search_results.return_value = [kept]
+
+        response = client.post(
+            "/internal/api/v1/wizard/search",
+            json=self.search_payload(filter_relevance=True),
+        )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert len(body["records"]) == 1
+        assert body["records"][0]["chunk"]["resource_id"] == "one"
+        assert body["raw_count"] == 2
+        checker.filter_search_results.assert_awaited_once_with("query", records)
+
+
+class TestInternalShutdown:
+    async def test_shutdown_closes_the_shared_checker(self, monkeypatch):
+        checker = AsyncMock()
+        monkeypatch.setattr(internal, "relevance_checker", checker)
+
+        await internal.internal_shutdown(None)
+
+        checker.aclose.assert_awaited_once()
+        assert internal.relevance_checker is None

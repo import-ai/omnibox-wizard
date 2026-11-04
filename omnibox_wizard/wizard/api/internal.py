@@ -26,8 +26,10 @@ from omnibox_wizard.worker.agent.chat_title_generator import (
 from omnibox_wizard.worker.config import TaskConfig, WorkerConfig
 from omnibox_wizard.worker.functions.rss_item_parser import RssItemParser
 from omnibox_wizard.worker.worker import compute_supported_functions
-from wizard_common.grimoire.config import GrimoireAgentConfig
+from wizard_common.grimoire.config import GrimoireAgentConfig, RelevanceConfig
+from wizard_common.grimoire.entity.index_record import IndexRecordType
 from wizard_common.grimoire.entity.message import Message
+from wizard_common.grimoire.retriever.relevance import RelevanceChecker
 from wizard_common.grimoire.retriever.weaviate_vector_db import WeaviateVectorDB
 
 dumps = partial(lib_dumps, ensure_ascii=False, separators=(",", ":"))
@@ -37,16 +39,21 @@ CHUNK_OVERLAP = 128
 vector_db: WeaviateVectorDB
 title_generator: ChatTitleGenerator
 rss_item_parser: RssItemParser
+relevance_checker: RelevanceChecker | None = None
+relevance_config = RelevanceConfig()
 capabilities: dict = {}
 
 
 async def init(_):
     global title_generator, vector_db, rss_item_parser, capabilities
+    global relevance_checker, relevance_config
     loader = Loader(GrimoireAgentConfig, env_prefix=ENV_PREFIX)
     config: GrimoireAgentConfig = loader.load()
 
     title_generator = ChatTitleGenerator(config.grimoire.openai)
     vector_db = WeaviateVectorDB(config.vector)
+    relevance_config = config.tools.relevance
+    relevance_checker = RelevanceChecker(relevance_config)
 
     worker_config: WorkerConfig = Loader(WorkerConfig, env_prefix=ENV_PREFIX).load()
     rss_item_parser = RssItemParser(worker_config)
@@ -54,6 +61,13 @@ async def init(_):
     task_config = Loader(TaskConfig, env_prefix=f"{ENV_PREFIX}_TASK").load()
     supported = compute_supported_functions(task_config)
     capabilities = {"functions": supported}
+
+
+async def internal_shutdown(_):
+    global relevance_checker
+    if relevance_checker is not None:
+        await relevance_checker.aclose()
+        relevance_checker = None
 
 
 @internal_router.post("/title", tags=["LLM"], response_model=TitleResponse)
@@ -88,7 +102,12 @@ async def search(request: SearchRequest):
         offset=request.offset,
         limit=request.limit,
     )
-    return SearchResponse(records=records)
+    if not (request.filter_relevance and relevance_config.search_enabled):
+        return SearchResponse(records=records)
+    raw_count = sum(1 for record in records if record.type == IndexRecordType.chunk)
+    if relevance_checker is not None:
+        records = await relevance_checker.filter_search_results(request.query, records)
+    return SearchResponse(records=records, raw_count=raw_count)
 
 
 @internal_router.post("/upsert_weaviate/resource", tags=[])

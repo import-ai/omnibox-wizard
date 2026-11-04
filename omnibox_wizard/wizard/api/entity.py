@@ -44,10 +44,16 @@ class SearchRequest(BaseModel):
     type: IndexRecordType | None = Field(default=None, description="type of record")
     offset: int = Field(default=0, description="offset")
     limit: int = Field(default=20, description="maximum number of records")
+    filter_relevance: bool = Field(
+        default=False, description="filter chunk records by relevance to the query"
+    )
 
 
 class SearchResponse(BaseModel):
     records: list[IndexRecord] = Field(description="search results")
+    raw_count: int | None = Field(
+        default=None, description="chunk records before relevance deduplication"
+    )
 
 
 class UpsertWeaviateResourceRequest(BaseModel):

@@ -17,7 +17,7 @@ CACHE_TTL_SECONDS = 30.0
 CACHE_MAX_ENTRIES = 100
 CACHE_MAX_FILTERED_RECORDS = 500
 
-SearchKey = tuple[str, str, str, str, tuple[str, ...], tuple[str, ...]]
+SearchKey = tuple[str, str, str, str, tuple[str, ...], tuple[str, ...], tuple[str, ...]]
 
 
 @dataclass
@@ -67,6 +67,7 @@ class FilteredSearchCache:
         query: str,
         conversation_ids: list[str] | None,
         exclude_conversation_ids: list[str] | None,
+        resource_ids: list[str] | None = None,
     ) -> SearchKey:
         return (
             namespace_id,
@@ -75,6 +76,7 @@ class FilteredSearchCache:
             IndexRecordType.chunk.value,
             tuple(conversation_ids or ()),
             tuple(exclude_conversation_ids or ()),
+            tuple(sorted(resource_ids or ())),
         )
 
     def lock_for(self, key: SearchKey) -> asyncio.Lock:
@@ -141,6 +143,7 @@ class FilteredSearchPaginator:
         limit: int,
         conversation_ids: list[str] | None = None,
         exclude_conversation_ids: list[str] | None = None,
+        resource_ids: list[str] | None = None,
     ) -> SearchPage:
         with tracer.start_as_current_span("FilteredSearchPaginator.paginate") as span:
             span.set_attribute("search.offset", offset)
@@ -155,6 +158,7 @@ class FilteredSearchPaginator:
                     limit=limit,
                     conversation_ids=conversation_ids,
                     exclude_conversation_ids=exclude_conversation_ids,
+                    resource_ids=resource_ids,
                 )
 
             key = self.cache.key(
@@ -163,6 +167,7 @@ class FilteredSearchPaginator:
                 query=query,
                 conversation_ids=conversation_ids,
                 exclude_conversation_ids=exclude_conversation_ids,
+                resource_ids=resource_ids,
             )
             async with self.cache.lock_for(key):
                 cached = self.cache.get(key)
@@ -191,6 +196,7 @@ class FilteredSearchPaginator:
                             record_type=IndexRecordType.chunk,
                             offset=entry.next_raw_offset,
                             limit=RAW_PAGE_SIZE,
+                            resource_ids=resource_ids,
                         )
                         entry.next_raw_offset += RAW_PAGE_SIZE
                         entry.raw_pages_scanned_total += 1
@@ -249,6 +255,7 @@ class FilteredSearchPaginator:
         limit: int,
         conversation_ids: list[str] | None,
         exclude_conversation_ids: list[str] | None,
+        resource_ids: list[str] | None,
     ) -> SearchPage:
         records = await self.vector_db.search(
             conversation_ids=conversation_ids,
@@ -259,6 +266,7 @@ class FilteredSearchPaginator:
             record_type=IndexRecordType.chunk,
             offset=offset,
             limit=limit,
+            resource_ids=resource_ids,
         )
         has_more = len(records) >= limit
         span.set_attribute("search.raw_pages_scanned", 1)

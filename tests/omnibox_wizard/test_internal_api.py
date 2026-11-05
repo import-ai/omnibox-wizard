@@ -412,7 +412,9 @@ class TestSearchAPI:
 
         response = client.post(
             "/internal/api/v1/wizard/search",
-            json=self.search_payload(type="chunk", offset=5, limit=10),
+            json=self.search_payload(
+                type="chunk", offset=5, limit=10, resource_ids=["one"]
+            ),
         )
 
         assert response.status_code == 200
@@ -429,6 +431,7 @@ class TestSearchAPI:
             limit=10,
             conversation_ids=None,
             exclude_conversation_ids=None,
+            resource_ids=["one"],
         )
 
     @pytest.mark.parametrize("record_type", [None, "message"])
@@ -444,7 +447,9 @@ class TestSearchAPI:
 
         response = client.post(
             "/internal/api/v1/wizard/search",
-            json=self.search_payload(type=record_type, offset=0, limit=1),
+            json=self.search_payload(
+                type=record_type, offset=0, limit=1, resource_ids=["message_1"]
+            ),
         )
 
         assert response.status_code == 200
@@ -454,6 +459,7 @@ class TestSearchAPI:
         assert body["has_more"] is True
         paginator.paginate.assert_not_awaited()
         vector_db.search.assert_awaited_once()
+        assert vector_db.search.await_args.kwargs["resource_ids"] == ["message_1"]
 
 
 class TestInternalShutdown:

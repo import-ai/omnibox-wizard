@@ -107,6 +107,7 @@ async def search(request: SearchRequest):
             limit=request.limit,
             conversation_ids=request.conversation_ids,
             exclude_conversation_ids=request.exclude_conversation_ids,
+            resource_ids=request.resource_ids,
         )
         return SearchResponse(
             records=page.records, total=page.total, has_more=page.has_more
@@ -120,6 +121,7 @@ async def search(request: SearchRequest):
         record_type=request.type,
         offset=request.offset,
         limit=request.limit,
+        resource_ids=request.resource_ids,
     )
     return SearchResponse(
         records=records, total=None, has_more=len(records) >= request.limit

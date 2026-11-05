@@ -64,13 +64,14 @@ class FakeChecker:
         return [record for record in records if self.keep(record)]
 
 
-async def paginate(paginator, *, offset=0, limit=20):
+async def paginate(paginator, *, offset=0, limit=20, resource_ids=None):
     return await paginator.paginate(
         query="query",
         namespace_id="ns_1",
         user_id="user_1",
         offset=offset,
         limit=limit,
+        resource_ids=resource_ids,
     )
 
 
@@ -208,6 +209,93 @@ async def test_reuses_the_cached_scan_for_later_offsets():
         f"r{index}" for index in range(10, 20)
     ]
     assert [call["offset"] for call in vector_db.calls] == [0]
+
+
+@pytest.mark.asyncio
+async def test_resource_filters_are_part_of_the_cache_key_and_pass_through():
+    records = [search_record(f"r{index}") for index in range(10)]
+    vector_db = FakeVectorDB({0: records})
+    paginator = FilteredSearchPaginator(vector_db, FakeChecker(), relevance_config())
+
+    await paginate(paginator, offset=0, limit=5, resource_ids=["r2", "r1"])
+    await paginate(paginator, offset=0, limit=5, resource_ids=["r1", "r2"])
+    await paginate(paginator, offset=0, limit=5, resource_ids=["r3"])
+
+    assert [call["resource_ids"] for call in vector_db.calls] == [
+        ["r2", "r1"],
+        ["r3"],
+    ]
+
+
+def test_cache_keys_distinguish_resource_filters_but_ignore_their_order():
+    cache = FilteredSearchCache()
+    common = {
+        "namespace_id": "ns_1",
+        "user_id": "user_1",
+        "query": "query",
+        "conversation_ids": None,
+        "exclude_conversation_ids": None,
+    }
+
+    assert cache.key(**common, resource_ids=["b", "a"]) == cache.key(
+        **common, resource_ids=["a", "b"]
+    )
+    assert cache.key(**common, resource_ids=None) == cache.key(
+        **common, resource_ids=[]
+    )
+    assert cache.key(**common, resource_ids=["a"]) != cache.key(
+        **common, resource_ids=["a", "b"]
+    )
+
+
+@pytest.mark.asyncio
+async def test_filtered_page_only_contains_candidate_resources():
+    records = [search_record(f"r{index}") for index in range(9)]
+
+    class FilteringVectorDB:
+        def __init__(self):
+            self.calls = []
+
+        async def search(self, **kwargs):
+            self.calls.append(kwargs)
+            allowed = set(kwargs.get("resource_ids") or ())
+            matching = [
+                record
+                for record in records
+                if not allowed or record.chunk.resource_id in allowed
+            ]
+            start = kwargs["offset"]
+            return matching[start : start + kwargs["limit"]]
+
+    vector_db = FilteringVectorDB()
+    paginator = FilteredSearchPaginator(vector_db, FakeChecker(), relevance_config())
+
+    page = await paginate(
+        paginator, offset=0, limit=20, resource_ids=["r1", "r4", "r7"]
+    )
+
+    assert [record.chunk.resource_id for record in page.records] == [
+        "r1",
+        "r4",
+        "r7",
+    ]
+    assert page.total == 3
+    assert page.has_more is False
+    assert vector_db.calls[0]["resource_ids"] == ["r1", "r4", "r7"]
+
+
+@pytest.mark.asyncio
+async def test_raw_path_passes_resource_ids_to_the_search():
+    records = [search_record("r1")]
+    vector_db = FakeVectorDB({0: records})
+    paginator = FilteredSearchPaginator(
+        vector_db, FakeChecker(), RelevanceConfig(search_enabled=False)
+    )
+
+    page = await paginate(paginator, offset=0, limit=20, resource_ids=["r1"])
+
+    assert page.records == records
+    assert vector_db.calls[0]["resource_ids"] == ["r1"]
 
 
 @pytest.mark.asyncio

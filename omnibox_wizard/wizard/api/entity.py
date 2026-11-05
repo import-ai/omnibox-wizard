@@ -48,8 +48,12 @@ class SearchRequest(BaseModel):
 
 class SearchResponse(BaseModel):
     records: list[IndexRecord] = Field(description="search results")
-    raw_count: int | None = Field(
-        default=None, description="chunk records before relevance deduplication"
+    total: int | None = Field(
+        default=None,
+        description="filtered total once the raw result set is exhausted",
+    )
+    has_more: bool = Field(
+        default=False, description="whether more filtered results exist"
     )
 
 

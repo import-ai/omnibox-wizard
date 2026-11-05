@@ -3,13 +3,13 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from fastapi.testclient import TestClient
 from fastapi import FastAPI
-from wizard_common.grimoire.config import RelevanceConfig
 from wizard_common.grimoire.entity.chunk import Chunk, ChunkType
 from wizard_common.grimoire.entity.index_record import IndexRecord, IndexRecordType
 from wizard_common.grimoire.entity.message import Message, OpenAIMessage
 
 from omnibox_wizard.wizard.api import internal
 from omnibox_wizard.wizard.api.internal import internal_router
+from omnibox_wizard.wizard.search.paginator import SearchPage
 from omnibox_wizard.wizard.api.entity import (
     CommonAITextRequest,
     TitleResponse,
@@ -402,56 +402,58 @@ class TestSearchAPI:
             **overrides,
         }
 
-    def enable_search(self, monkeypatch, records, enabled=True):
-        config = RelevanceConfig(
-            base_url="https://judge.invalid/v1",
-            model="decision-test",
-            search_enabled=enabled,
-            search_threshold=0.8,
-        )
-        checker = AsyncMock()
-        vector_db = AsyncMock()
-        vector_db.search.return_value = records
-        monkeypatch.setattr(internal, "relevance_config", config)
-        monkeypatch.setattr(internal, "relevance_checker", checker)
-        monkeypatch.setattr(internal, "vector_db", vector_db, raising=False)
-        return checker
-
-    async def test_defaults_to_filtering_chunks_and_counts_raw_chunks(
-        self, client, monkeypatch
-    ):
+    async def test_chunk_search_uses_the_filtered_paginator(self, client, monkeypatch):
         kept = chunk_record("one")
-        records = [kept, chunk_record("two"), message_record("message")]
-        checker = self.enable_search(monkeypatch, records)
-        checker.filter_search_results.return_value = [kept]
+        paginator = AsyncMock()
+        paginator.paginate.return_value = SearchPage(
+            records=[kept], total=1, has_more=False
+        )
+        monkeypatch.setattr(internal, "search_paginator", paginator, raising=False)
 
         response = client.post(
-            "/internal/api/v1/wizard/search", json=self.search_payload()
+            "/internal/api/v1/wizard/search",
+            json=self.search_payload(type="chunk", offset=5, limit=10),
+        )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert [record["chunk"]["resource_id"] for record in body["records"]] == ["one"]
+        assert body["total"] == 1
+        assert body["has_more"] is False
+        assert "raw_count" not in body
+        paginator.paginate.assert_awaited_once_with(
+            query="query",
+            namespace_id="ns_1",
+            user_id="user_1",
+            offset=5,
+            limit=10,
+            conversation_ids=None,
+            exclude_conversation_ids=None,
+        )
+
+    @pytest.mark.parametrize("record_type", [None, "message"])
+    async def test_bypasses_the_paginator_for_messages_and_untyped_searches(
+        self, client, monkeypatch, record_type
+    ):
+        records = [message_record("message_1")]
+        paginator = AsyncMock()
+        vector_db = AsyncMock()
+        vector_db.search.return_value = records
+        monkeypatch.setattr(internal, "search_paginator", paginator, raising=False)
+        monkeypatch.setattr(internal, "vector_db", vector_db, raising=False)
+
+        response = client.post(
+            "/internal/api/v1/wizard/search",
+            json=self.search_payload(type=record_type, offset=0, limit=1),
         )
 
         assert response.status_code == 200
         body = response.json()
         assert len(body["records"]) == 1
-        assert body["records"][0]["chunk"]["resource_id"] == "one"
-        assert body["raw_count"] == 2
-        checker.filter_search_results.assert_awaited_once_with("query", records)
-
-    async def test_with_wizard_flag_disabled_returns_records_unchanged(
-        self, client, monkeypatch
-    ):
-        records = [chunk_record("one")]
-        checker = self.enable_search(monkeypatch, records, enabled=False)
-
-        response = client.post(
-            "/internal/api/v1/wizard/search",
-            json=self.search_payload(),
-        )
-
-        assert response.status_code == 200
-        body = response.json()
-        assert [record["type"] for record in body["records"]] == ["chunk"]
-        assert body["raw_count"] is None
-        checker.filter_search_results.assert_not_awaited()
+        assert body["total"] is None
+        assert body["has_more"] is True
+        paginator.paginate.assert_not_awaited()
+        vector_db.search.assert_awaited_once()
 
 
 class TestInternalShutdown:

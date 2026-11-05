@@ -164,7 +164,17 @@ async def test_keeps_scanning_after_a_page_with_no_kept_records():
     ]
     assert [call["offset"] for call in vector_db.calls] == [0, 20]
     assert page.total == 5
-    assert page.has_more is False
+    assert page.has_more is True
+
+    next_page = await paginate(paginator, offset=3, limit=3)
+
+    assert [record.chunk.resource_id for record in next_page.records] == [
+        "keep3",
+        "keep4",
+    ]
+    assert next_page.total == 5
+    assert next_page.has_more is False
+    assert [call["offset"] for call in vector_db.calls] == [0, 20]
 
 
 @pytest.mark.asyncio
@@ -192,6 +202,32 @@ async def test_returns_partial_results_when_the_request_budget_expires():
     assert vector_db.calls == 1
     assert page.total is None
     assert page.has_more is True
+
+
+@pytest.mark.asyncio
+async def test_reports_more_when_cached_results_exceed_the_returned_page():
+    records = [search_record(f"r{index}") for index in range(25)]
+    checker = FakeChecker()
+    vector_db = FakeVectorDB({0: records[:20], 20: records[20:]})
+    paginator = FilteredSearchPaginator(vector_db, checker, relevance_config())
+
+    warm = await paginate(paginator, offset=0, limit=40)
+    assert len(warm.records) == 25
+
+    first = await paginate(paginator, offset=0, limit=20)
+    second = await paginate(paginator, offset=20, limit=20)
+
+    assert [record.chunk.resource_id for record in first.records] == [
+        f"r{index}" for index in range(20)
+    ]
+    assert first.has_more is True
+    assert first.total == 25
+    assert [record.chunk.resource_id for record in second.records] == [
+        f"r{index}" for index in range(20, 25)
+    ]
+    assert second.has_more is False
+    assert second.total == 25
+    assert [call["offset"] for call in vector_db.calls] == [0, 20]
 
 
 @pytest.mark.asyncio

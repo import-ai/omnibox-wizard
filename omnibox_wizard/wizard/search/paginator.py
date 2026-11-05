@@ -225,12 +225,15 @@ class FilteredSearchPaginator:
                     self.cache.put(key, entry)
 
             records = entry.filtered_records[offset : offset + limit]
+            # The scan may have exhausted the raw result set while the cache
+            # still holds filtered records beyond this page's slice.
+            has_more = entry.has_more_raw or (
+                offset + len(records) < len(entry.filtered_records)
+            )
             if entry.has_more_raw:
                 total = None
-                has_more = True
             else:
                 total = len(entry.filtered_records)
-                has_more = False
 
             span.set_attribute("search.raw_pages_scanned", pages_this_request)
             span.set_attribute(

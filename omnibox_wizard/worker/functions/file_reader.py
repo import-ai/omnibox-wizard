@@ -1,3 +1,4 @@
+from omnibox_wizard.worker.quota import check_task_quota
 import os
 import tempfile
 from pathlib import Path
@@ -115,12 +116,11 @@ class Convertor:
             markdown = read_text_file(filepath)
         else:
             raise CommonException(400, f"Unsupported type: {ext}")
-        if (length := len(markdown)) > self.file_content_length_limit:
+        limit = kwargs.get("file_content_length_limit", self.file_content_length_limit)
+        if (length := len(markdown)) > limit:
             raise CommonException(
                 FILE_CONTENT_TOO_LONG_CODE,
-                format_content_too_long_message(
-                    length, self.file_content_length_limit, kwargs.get("language")
-                ),
+                format_content_too_long_message(length, limit, kwargs.get("language")),
             )
         return markdown, images, metadata
 
@@ -193,9 +193,16 @@ class FileReader(BaseFunction):
             local_path: str = os.path.join(temp_dir, filename)
             await self.download(task.namespace_id, resource_id, local_path)
 
+            limits = await check_task_quota(
+                self.base_url, task, {"file_size": os.path.getsize(local_path)}
+            )
             try:
                 # Pass additional parameters for video processing
                 convert_params = {
+                    "file_content_length_limit": limits.get(
+                        "file_content_length_limit",
+                        self.convertor.file_content_length_limit,
+                    ),
                     "language": language,
                     "style": style,
                     "include_screenshots": include_screenshots,

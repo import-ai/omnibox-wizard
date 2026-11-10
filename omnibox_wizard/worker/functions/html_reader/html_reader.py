@@ -1,3 +1,4 @@
+from omnibox_wizard.worker.quota import check_task_quota
 import json as jsonlib
 import re
 from functools import partial
@@ -232,6 +233,7 @@ class HTMLReaderV2(BaseFunction):
     }
 
     def __init__(self, config: WorkerConfig):
+        self.backend_base_url = config.backend.base_url
         self.html_content_extractor = HTMLContentExtractor(config.grimoire.openai)
         self.processors: list[HTMLReaderBaseProcessor] = [
             GreenNoteProcessor(config=config),
@@ -292,6 +294,7 @@ class HTMLReaderV2(BaseFunction):
                 "This content requires VIP access and is not currently supported."
             )
 
+        await check_task_quota(self.backend_base_url, task, {})
         result_dict: dict = await self.main(task, trace_info)
         if result_dict.get("markdown"):
             next_tasks: list[dict] = []

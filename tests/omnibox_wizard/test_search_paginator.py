@@ -82,6 +82,21 @@ class FakeChecker:
         return SearchFilterResult(kept=kept, pending=pending)
 
 
+@pytest.mark.asyncio
+async def test_vector_diagnostics_share_the_relevance_deadline():
+    vector_db = FakeVectorDB({0: records(0, 2)})
+    checker = FakeChecker()
+    paginator = FilteredSearchPaginator(vector_db, checker, relevance_config())
+    await paginator.paginate(
+        query="query",
+        namespace_id="ns_1",
+        user_id="user",
+        offset=0,
+        limit=20,
+    )
+    assert vector_db.calls[0]["diagnostics_deadline"] == checker.calls[0]["deadline"]
+
+
 class CopyingChecker(FakeChecker):
     async def filter_search_results(
         self, query, records, *, deadline=None, index_offset=0

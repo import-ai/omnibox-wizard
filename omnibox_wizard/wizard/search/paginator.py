@@ -289,6 +289,7 @@ class FilteredSearchPaginator:
                                 offset=window_offset,
                                 limit=RAW_WINDOW_SIZE,
                                 resource_ids=resource_ids,
+                                diagnostics_deadline=deadline,
                             )
                             entry.raw_window_start = window_offset
                             entry.raw_cursor = 0

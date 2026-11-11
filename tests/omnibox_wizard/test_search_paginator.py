@@ -1,4 +1,5 @@
 import asyncio
+import time
 from unittest.mock import MagicMock, Mock
 
 import pytest
@@ -80,6 +81,80 @@ class FakeChecker:
         return SearchFilterResult(kept=kept, pending=pending)
 
 
+class CopyingChecker(FakeChecker):
+    async def filter_search_results(
+        self, query, records, *, deadline=None, index_offset=0
+    ):
+        self.calls.append(
+            {
+                "query": query,
+                "deadline": deadline,
+                "index_offset": index_offset,
+                "records": list(records),
+            }
+        )
+        copies = [search_record(record.chunk.resource_id) for record in records]
+        kept = []
+        pending = []
+        for record in copies:
+            decision = self.judge(record)
+            if decision == "kept":
+                kept.append(record)
+            elif decision == "pending":
+                pending.append(record)
+        return SearchFilterResult(kept=kept, pending=pending)
+
+
+class OneKeptPerBatchChecker:
+    def __init__(self):
+        self.calls = []
+        self.input_count = 0
+
+    async def filter_search_results(
+        self, query, records, *, deadline=None, index_offset=0
+    ):
+        self.calls.append(list(records))
+        self.input_count += len(records)
+        return SearchFilterResult(kept=list(records[:1]), pending=list(records[1:]))
+
+
+class BudgetBurningChecker(FakeChecker):
+    async def filter_search_results(
+        self, query, records, *, deadline=None, index_offset=0
+    ):
+        self.calls.append(
+            {
+                "query": query,
+                "deadline": deadline,
+                "index_offset": index_offset,
+                "records": list(records),
+            }
+        )
+        await asyncio.sleep(max(0.0, deadline - time.monotonic()) + 0.01)
+        return SearchFilterResult(kept=list(records), pending=[])
+
+
+class FailingOnceChecker(FakeChecker):
+    def __init__(self, error):
+        super().__init__()
+        self.error = error
+
+    async def filter_search_results(
+        self, query, records, *, deadline=None, index_offset=0
+    ):
+        self.calls.append(
+            {
+                "query": query,
+                "deadline": deadline,
+                "index_offset": index_offset,
+                "records": list(records),
+            }
+        )
+        if len(self.calls) == 1:
+            raise self.error
+        return SearchFilterResult(kept=list(records), pending=[])
+
+
 def install_span(monkeypatch):
     span = MagicMock()
     span.__enter__.return_value = span
@@ -113,6 +188,28 @@ async def paginate(
         timeout_ms=timeout_ms,
         should_stop=should_stop,
     )
+
+
+def seed_pending(cache, pending_records):
+    key = cache.key(
+        namespace_id="ns_1",
+        user_id="user_1",
+        query="query",
+        conversation_ids=None,
+        exclude_conversation_ids=None,
+        resource_ids=None,
+    )
+    cache.put(
+        key,
+        FilteredSearchCacheEntry(
+            pending_records=list(pending_records),
+            pending_resource_ids={
+                record.chunk.resource_id for record in pending_records
+            },
+            has_more_raw=False,
+        ),
+    )
+    return key
 
 
 @pytest.mark.asyncio
@@ -171,13 +268,14 @@ async def test_reports_unknown_total_while_raw_windows_remain():
 
 
 @pytest.mark.asyncio
-async def test_fixed_windows_and_per_request_scan_cap():
+async def test_fixed_windows_and_per_request_scan_cap(monkeypatch):
     all_records = records(0, 250)
     checker = FakeChecker()
     vector_db = FakeVectorDB(
         {0: all_records[:100], 100: all_records[100:200], 200: all_records[200:]}
     )
     paginator = FilteredSearchPaginator(vector_db, checker, relevance_config())
+    span = install_span(monkeypatch)
 
     first = await paginate(paginator, offset=0, limit=250)
 
@@ -185,6 +283,9 @@ async def test_fixed_windows_and_per_request_scan_cap():
     assert len(first.records) == 200
     assert first.total is None
     assert first.has_more is True
+    attributes = span_attributes(span)
+    assert attributes["search.raw_scan_capped"] is True
+    assert attributes["search.budget_exhausted"] is False
 
     second = await paginate(paginator, offset=200, limit=50)
 
@@ -712,33 +813,24 @@ async def test_pending_no_progress_breaks_without_spinning():
 
 @pytest.mark.asyncio
 async def test_timeout_ms_bounds_the_relevance_budget(monkeypatch):
-    all_records = records(0, 10)
-
-    class SlowVectorDB:
-        def __init__(self):
-            self.calls = 0
-
-        async def search(self, **kwargs):
-            self.calls += 1
-            await asyncio.sleep(0.05)
-            return all_records
-
-    checker = FakeChecker()
-    vector_db = SlowVectorDB()
+    all_records = records(0, 100)
+    checker = BudgetBurningChecker()
+    vector_db = FakeVectorDB({0: all_records})
     paginator = FilteredSearchPaginator(
         vector_db, checker, relevance_config(search_timeout_sec=10)
     )
     span = install_span(monkeypatch)
 
-    page = await paginate(paginator, offset=0, limit=10, timeout_ms=10)
+    page = await paginate(paginator, offset=0, limit=100, timeout_ms=500)
 
-    assert page.records == []
+    assert len(page.records) == 32
     assert page.total is None
     assert page.has_more is True
-    assert checker.calls == []
-    assert vector_db.calls == 1
+    assert len(checker.calls) == 1
+    assert len(vector_db.calls) == 1
     attributes = span_attributes(span)
     assert attributes["search.budget_exhausted"] is True
+    assert attributes["search.raw_scan_capped"] is False
 
 
 @pytest.mark.asyncio
@@ -808,5 +900,211 @@ async def test_span_attributes_report_pending_confirmed_and_raw_counts(monkeypat
     assert attributes["search.pending_dropped"] == 0
     assert attributes["search.cache_hit"] is False
     assert attributes["search.budget_exhausted"] is False
+    assert attributes["search.raw_scan_capped"] is False
     assert attributes["search.stopped_by_client"] is False
     assert attributes["search.has_more"] is True
+
+
+@pytest.mark.asyncio
+async def test_pending_refill_judges_each_record_at_most_once_per_request(monkeypatch):
+    pending = records(0, 193)
+    checker = OneKeptPerBatchChecker()
+    cache = FilteredSearchCache()
+    paginator = FilteredSearchPaginator(
+        FakeVectorDB({}), checker, relevance_config(), cache=cache
+    )
+    seed_pending(cache, pending)
+    span = install_span(monkeypatch)
+
+    first = await paginate(paginator, offset=0, limit=200)
+
+    assert len(checker.calls) == 7
+    assert checker.input_count == 193
+    assert len(first.records) == 7
+    assert first.has_more is True
+    assert span_attributes(span)["search.pending_count"] == 186
+
+    page = first
+    for _ in range(200):
+        page = await paginate(paginator, offset=0, limit=200)
+        if not page.has_more:
+            break
+
+    assert page.has_more is False
+    assert page.total == 193
+    assert len(page.records) == 193
+    assert len({record.chunk.resource_id for record in page.records}) == 193
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "error",
+    [RuntimeError("checker failed"), asyncio.CancelledError()],
+    ids=["error", "cancelled"],
+)
+async def test_retries_the_raw_slice_when_the_checker_fails(error):
+    all_records = records(0, 200)
+    checker = FailingOnceChecker(error)
+    vector_db = FakeVectorDB({0: all_records[:100], 100: all_records[100:]})
+    paginator = FilteredSearchPaginator(vector_db, checker, relevance_config())
+
+    with pytest.raises(type(error)):
+        await paginate(paginator, offset=0, limit=10)
+
+    page = await paginate(paginator, offset=0, limit=10)
+
+    assert [record.chunk.resource_id for record in checker.calls[1]["records"]] == [
+        f"r{index}" for index in range(32)
+    ]
+    assert [record.chunk.resource_id for record in page.records] == [
+        f"r{index}" for index in range(10)
+    ]
+    assert [call["offset"] for call in vector_db.calls] == [0]
+
+
+@pytest.mark.asyncio
+async def test_classifies_checker_copies_by_resource_id():
+    all_records = records(0, 3)
+
+    def judge(record):
+        if record.chunk.resource_id == "r0":
+            return "pending"
+        return "kept"
+
+    checker = CopyingChecker(judge=judge)
+    vector_db = FakeVectorDB({0: all_records})
+    paginator = FilteredSearchPaginator(vector_db, checker, relevance_config())
+
+    first = await paginate(paginator, offset=0, limit=10)
+
+    assert [record.chunk.resource_id for record in first.records] == ["r1", "r2"]
+    assert first.total is None
+    assert first.has_more is True
+
+    checker.judge = lambda record: "kept"
+    second = await paginate(paginator, offset=2, limit=10)
+
+    assert [record.chunk.resource_id for record in second.records] == ["r0"]
+    assert second.total == 3
+    assert second.has_more is False
+
+
+@pytest.mark.asyncio
+async def test_skips_later_window_chunks_of_pending_resources():
+    first_window = records(0, 100)
+    duplicate = search_record("r0")
+    second_window = [duplicate] + records(100, 140)
+    checker = FakeChecker(
+        judge=lambda record: "pending" if record.chunk.resource_id == "r0" else "kept"
+    )
+    vector_db = FakeVectorDB({0: first_window, 100: second_window})
+    paginator = FilteredSearchPaginator(vector_db, checker, relevance_config())
+
+    page = await paginate(paginator, offset=0, limit=120)
+
+    judged_ids = [
+        record.chunk.resource_id for call in checker.calls for record in call["records"]
+    ]
+    assert judged_ids.count("r0") == 1
+    assert all(duplicate not in call["records"] for call in checker.calls)
+    assert len(page.records) == 120
+    assert page.total is None
+
+
+@pytest.mark.asyncio
+async def test_pending_cap_keeps_head_and_reports_dropped(monkeypatch):
+    pending = records(0, 250)
+    checker = FakeChecker(judge=lambda record: "pending")
+    cache = FilteredSearchCache()
+    paginator = FilteredSearchPaginator(
+        FakeVectorDB({}), checker, relevance_config(), cache=cache
+    )
+    key = seed_pending(cache, pending)
+    span = install_span(monkeypatch)
+
+    page = await paginate(paginator, offset=0, limit=10)
+
+    entry = cache.get(key)
+    assert len(entry.pending_records) == 200
+    assert [record.chunk.resource_id for record in entry.pending_records[:5]] == [
+        "r0",
+        "r1",
+        "r2",
+        "r3",
+        "r4",
+    ]
+    assert entry.pending_records[-1].chunk.resource_id == "r199"
+    assert page.records == []
+    assert page.has_more is True
+    assert span_attributes(span)["search.pending_dropped"] > 0
+
+
+@pytest.mark.asyncio
+async def test_judges_a_later_chunk_when_the_first_occurrence_was_off_target():
+    first_occurrence = search_record("r0")
+    later_occurrence = search_record("r0")
+    later_occurrence.chunk.text = "later occurrence"
+    first_window = [first_occurrence] + records(1, 100)
+    second_window = [later_occurrence] + records(100, 102)
+    checker = FakeChecker(
+        judge=lambda record: (
+            "kept"
+            if record.chunk.resource_id != "r0"
+            or record.chunk.text == "later occurrence"
+            else "off_target"
+        )
+    )
+    vector_db = FakeVectorDB({0: first_window, 100: second_window})
+    paginator = FilteredSearchPaginator(vector_db, checker, relevance_config())
+
+    page = await paginate(paginator, offset=0, limit=101)
+
+    assert len(page.records) == 101
+    assert any(record is later_occurrence for record in page.records)
+    assert all(record is not first_occurrence for record in page.records)
+
+
+@pytest.mark.asyncio
+async def test_should_stop_on_the_pending_refill_loop(monkeypatch):
+    pending = records(0, 3)
+    checker = FakeChecker()
+    cache = FilteredSearchCache()
+    paginator = FilteredSearchPaginator(
+        FakeVectorDB({}), checker, relevance_config(), cache=cache
+    )
+    seed_pending(cache, pending)
+    span = install_span(monkeypatch)
+
+    async def should_stop():
+        return True
+
+    page = await paginate(paginator, offset=0, limit=10, should_stop=should_stop)
+
+    assert checker.calls == []
+    assert page.records == []
+    assert page.has_more is True
+    assert span_attributes(span)["search.stopped_by_client"] is True
+
+
+@pytest.mark.asyncio
+async def test_boundary_at_one_hundred_confirmed_and_trailing_empty_window():
+    all_records = records(0, 100)
+    checker = FakeChecker()
+    vector_db = FakeVectorDB({0: all_records, 100: []})
+    paginator = FilteredSearchPaginator(vector_db, checker, relevance_config())
+
+    first = await paginate(paginator, offset=80, limit=20)
+
+    assert [record.chunk.resource_id for record in first.records] == [
+        f"r{index}" for index in range(80, 100)
+    ]
+    assert first.total is None
+    assert first.has_more is True
+    assert [call["offset"] for call in vector_db.calls] == [0]
+
+    second = await paginate(paginator, offset=100, limit=20)
+
+    assert second.records == []
+    assert second.total == 100
+    assert second.has_more is False
+    assert [call["offset"] for call in vector_db.calls] == [0, 100]

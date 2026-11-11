@@ -2,7 +2,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from wizard_common.grimoire.entity.chunk import Chunk, ChunkType
 from wizard_common.grimoire.entity.index_record import IndexRecord, IndexRecordType
 from wizard_common.grimoire.entity.message import Message, OpenAIMessage
@@ -409,6 +409,20 @@ class TestSearchAPI:
             records=[kept], total=1, has_more=False
         )
         monkeypatch.setattr(internal, "search_paginator", paginator, raising=False)
+        disconnected_requests = []
+
+        async def record_is_disconnected(request):
+            disconnected_requests.append(request)
+            return False
+
+        monkeypatch.setattr(Request, "is_disconnected", record_is_disconnected)
+        scopes = []
+
+        async def capture_scope(request, call_next):
+            scopes.append(request.scope)
+            return await call_next(request)
+
+        client.app.middleware("http")(capture_scope)
 
         response = client.post(
             "/internal/api/v1/wizard/search",
@@ -429,7 +443,12 @@ class TestSearchAPI:
         assert "raw_count" not in body
         call = paginator.paginate.await_args
         assert call.kwargs["timeout_ms"] == 1500
-        assert callable(call.kwargs["should_stop"])
+        should_stop = call.kwargs["should_stop"]
+        assert callable(should_stop)
+        assert isinstance(should_stop.__self__, Request)
+        assert should_stop.__self__.scope is scopes[0]
+        assert await should_stop() is False
+        assert disconnected_requests == [should_stop.__self__]
         assert {
             key: value
             for key, value in call.kwargs.items()
@@ -444,6 +463,39 @@ class TestSearchAPI:
             "exclude_conversation_ids": None,
             "resource_ids": ["one"],
         }
+
+    @pytest.mark.parametrize("timeout_ms", [-1, 60001])
+    async def test_rejects_out_of_range_timeout_ms(
+        self, client, monkeypatch, timeout_ms
+    ):
+        paginator = AsyncMock()
+        monkeypatch.setattr(internal, "search_paginator", paginator, raising=False)
+
+        response = client.post(
+            "/internal/api/v1/wizard/search",
+            json=self.search_payload(type="chunk", timeout_ms=timeout_ms),
+        )
+
+        assert response.status_code == 422
+        paginator.paginate.assert_not_awaited()
+
+    @pytest.mark.parametrize("timeout_ms", [0, 60000])
+    async def test_accepts_timeout_ms_at_the_bounds(
+        self, client, monkeypatch, timeout_ms
+    ):
+        paginator = AsyncMock()
+        paginator.paginate.return_value = SearchPage(
+            records=[], total=0, has_more=False
+        )
+        monkeypatch.setattr(internal, "search_paginator", paginator, raising=False)
+
+        response = client.post(
+            "/internal/api/v1/wizard/search",
+            json=self.search_payload(type="chunk", timeout_ms=timeout_ms),
+        )
+
+        assert response.status_code == 200
+        assert paginator.paginate.await_args.kwargs["timeout_ms"] == timeout_ms
 
     @pytest.mark.parametrize("record_type", [None, "message"])
     async def test_bypasses_the_paginator_for_messages_and_untyped_searches(

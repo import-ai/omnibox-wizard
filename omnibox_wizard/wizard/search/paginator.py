@@ -40,7 +40,6 @@ class FilteredSearchCacheEntry:
     raw_records: list[IndexRecord] = field(default_factory=list)
     raw_window_start: int = 0
     raw_cursor: int = 0
-    next_raw_offset: int = 0
     has_more_raw: bool = True
     seen_resource_ids: set[str] = field(default_factory=set)
     pending_resource_ids: set[str] = field(default_factory=set)
@@ -212,7 +211,9 @@ class FilteredSearchPaginator:
                 raw_records_scanned = 0
                 pending_dropped = 0
                 budget_exhausted = False
+                raw_scan_capped = False
                 stopped_by_client = False
+                judged_this_request: set[str] = set()
                 window_resource_ids: set[str] = {
                     resource_id
                     for record in entry.raw_records[: entry.raw_cursor]
@@ -229,7 +230,24 @@ class FilteredSearchPaginator:
                         if await _stop_requested(should_stop):
                             stopped_by_client = True
                             break
-                        slice_records = entry.pending_records[:RELEVANCE_SLICE_SIZE]
+                        slice_records: list[IndexRecord] = []
+                        for record in entry.pending_records:
+                            resource_id = _resource_id(record)
+                            if (
+                                resource_id is None
+                                or resource_id in judged_this_request
+                            ):
+                                continue
+                            slice_records.append(record)
+                            if len(slice_records) >= RELEVANCE_SLICE_SIZE:
+                                break
+                        if not slice_records:
+                            break
+                        judged_this_request.update(
+                            resource_id
+                            for record in slice_records
+                            if (resource_id := _resource_id(record)) is not None
+                        )
                         result = await self.relevance_checker.filter_search_results(
                             query,
                             slice_records,
@@ -240,10 +258,6 @@ class FilteredSearchPaginator:
                         pending_dropped += self._refill_from_pending(
                             entry, slice_records, result
                         )
-                        if not result.kept and len(result.pending) == len(
-                            slice_records
-                        ):
-                            break
 
                     while len(entry.filtered_records) < offset + limit and (
                         entry.raw_cursor < len(entry.raw_records) or entry.has_more_raw
@@ -252,7 +266,7 @@ class FilteredSearchPaginator:
                             budget_exhausted = True
                             break
                         if raw_records_scanned >= MAX_RAW_RECORDS_PER_REQUEST:
-                            budget_exhausted = True
+                            raw_scan_capped = True
                             break
                         if await _stop_requested(should_stop):
                             stopped_by_client = True
@@ -279,7 +293,6 @@ class FilteredSearchPaginator:
                             entry.raw_window_start = window_offset
                             entry.raw_cursor = 0
                             entry.raw_records = raw_records
-                            entry.next_raw_offset = window_offset
                             entry.raw_pages_scanned_total += 1
                             raw_windows_fetched += 1
                             entry.has_more_raw = (
@@ -295,11 +308,6 @@ class FilteredSearchPaginator:
                         slice_records = entry.raw_records[
                             entry.raw_cursor : entry.raw_cursor + slice_size
                         ]
-                        entry.raw_cursor += len(slice_records)
-                        entry.next_raw_offset = (
-                            entry.raw_window_start + entry.raw_cursor
-                        )
-                        raw_records_scanned += len(slice_records)
                         candidates: list[IndexRecord] = []
                         for record in slice_records:
                             resource_id = _resource_id(record)
@@ -313,6 +321,8 @@ class FilteredSearchPaginator:
                             window_resource_ids.add(resource_id)
                             candidates.append(record)
                         if not candidates:
+                            entry.raw_cursor += len(slice_records)
+                            raw_records_scanned += len(slice_records)
                             continue
                         result = await self.relevance_checker.filter_search_results(
                             query,
@@ -324,6 +334,8 @@ class FilteredSearchPaginator:
                         pending_dropped += self._apply_raw_result(
                             entry, candidates, result
                         )
+                        entry.raw_cursor += len(slice_records)
+                        raw_records_scanned += len(slice_records)
                 finally:
                     self.cache.put(key, entry)
 
@@ -350,6 +362,7 @@ class FilteredSearchPaginator:
             span.set_attribute("search.has_more", has_more)
             span.set_attribute("search.cache_hit", cached is not None)
             span.set_attribute("search.budget_exhausted", budget_exhausted)
+            span.set_attribute("search.raw_scan_capped", raw_scan_capped)
             span.set_attribute("search.stopped_by_client", stopped_by_client)
             return SearchPage(records=records, total=total, has_more=has_more)
 
@@ -359,27 +372,47 @@ class FilteredSearchPaginator:
         slice_records: list[IndexRecord],
         result: SearchFilterResult,
     ) -> int:
-        kept_ids = {id(record) for record in result.kept}
-        pending_ids = {id(record) for record in result.pending}
+        input_ids = {
+            resource_id
+            for record in slice_records
+            if (resource_id := _resource_id(record)) is not None
+        }
+        kept_records = {
+            resource_id: record
+            for record in result.kept
+            if (resource_id := _resource_id(record)) is not None
+        }
+        pending_records = {
+            resource_id: record
+            for record in result.pending
+            if (resource_id := _resource_id(record)) is not None
+        }
+        seen_input_ids: set[str] = set()
         remaining_pending: list[IndexRecord] = []
-        for record in slice_records:
+        for record in entry.pending_records:
             resource_id = _resource_id(record)
-            if id(record) in kept_ids:
-                if resource_id is not None:
-                    entry.pending_resource_ids.discard(resource_id)
-                if (
-                    resource_id is not None
-                    and resource_id not in entry.seen_resource_ids
-                ):
-                    entry.seen_resource_ids.add(resource_id)
-                    entry.filtered_records.append(record)
-            elif id(record) in pending_ids:
+            if resource_id is None or resource_id not in input_ids:
                 remaining_pending.append(record)
-            elif resource_id is not None:
+                continue
+            if resource_id in seen_input_ids:
+                continue
+            seen_input_ids.add(resource_id)
+            if resource_id in kept_records:
                 entry.pending_resource_ids.discard(resource_id)
-        entry.pending_records = (
-            remaining_pending + entry.pending_records[len(slice_records) :]
-        )
+                if resource_id not in entry.seen_resource_ids:
+                    entry.seen_resource_ids.add(resource_id)
+                    entry.filtered_records.append(kept_records[resource_id])
+            elif resource_id in pending_records:
+                entry.pending_resource_ids.add(resource_id)
+                remaining_pending.append(pending_records[resource_id])
+            else:
+                entry.pending_resource_ids.discard(resource_id)
+        for resource_id, record in pending_records.items():
+            if resource_id in input_ids:
+                continue
+            entry.pending_resource_ids.add(resource_id)
+            remaining_pending.append(record)
+        entry.pending_records = remaining_pending
         return self._cap_pending(entry)
 
     def _apply_raw_result(
@@ -388,22 +421,37 @@ class FilteredSearchPaginator:
         candidates: list[IndexRecord],
         result: SearchFilterResult,
     ) -> int:
-        kept_ids = {id(record) for record in result.kept}
-        pending_ids = {id(record) for record in result.pending}
+        kept_records = {
+            resource_id: record
+            for record in result.kept
+            if (resource_id := _resource_id(record)) is not None
+        }
+        pending_records = {
+            resource_id: record
+            for record in result.pending
+            if (resource_id := _resource_id(record)) is not None
+        }
+        seen_input_ids: set[str] = set()
         for record in candidates:
             resource_id = _resource_id(record)
-            if resource_id is None:
+            if resource_id is None or resource_id in seen_input_ids:
                 continue
-            if id(record) in kept_ids:
+            seen_input_ids.add(resource_id)
+            if resource_id in kept_records:
                 entry.pending_resource_ids.discard(resource_id)
                 if resource_id not in entry.seen_resource_ids:
                     entry.seen_resource_ids.add(resource_id)
-                    entry.filtered_records.append(record)
-            elif id(record) in pending_ids:
-                entry.pending_records.append(record)
+                    entry.filtered_records.append(kept_records[resource_id])
+            elif resource_id in pending_records:
                 entry.pending_resource_ids.add(resource_id)
+                entry.pending_records.append(pending_records[resource_id])
             else:
                 entry.pending_resource_ids.discard(resource_id)
+        for resource_id, record in pending_records.items():
+            if resource_id in seen_input_ids:
+                continue
+            entry.pending_resource_ids.add(resource_id)
+            entry.pending_records.append(record)
         return self._cap_pending(entry)
 
     def _cap_pending(self, entry: FilteredSearchCacheEntry) -> int:
@@ -449,4 +497,5 @@ class FilteredSearchPaginator:
         span.set_attribute("search.has_more", has_more)
         span.set_attribute("search.cache_hit", False)
         span.set_attribute("search.budget_exhausted", False)
+        span.set_attribute("search.raw_scan_capped", False)
         return SearchPage(records=records, total=None, has_more=has_more)

@@ -15,6 +15,7 @@ from wizard_common.grimoire.config import RelevanceConfig
 from wizard_common.grimoire.entity.chunk import Chunk, ChunkType
 from wizard_common.grimoire.entity.index_record import IndexRecord, IndexRecordType
 from wizard_common.grimoire.retriever.relevance import SearchFilterResult
+from wizard_common.grimoire.retriever.weaviate_vector_db import VectorSearchPage
 
 
 def relevance_config(**overrides):
@@ -45,7 +46,15 @@ def records(start, stop):
     return [search_record(f"r{index}") for index in range(start, stop)]
 
 
-class FakeVectorDB:
+class PageAdapter:
+    async def search_page(self, **kwargs):
+        records = await self.search(**kwargs)
+        return VectorSearchPage(
+            records=records, has_more=len(records) >= kwargs["limit"]
+        )
+
+
+class FakeVectorDB(PageAdapter):
     def __init__(self, pages):
         self.pages = pages
         self.calls = []
@@ -391,7 +400,7 @@ async def test_returns_partial_results_when_the_request_budget_expires():
     first_window = records(0, 100)
     second_window = records(100, 200)
 
-    class SlowSecondWindowVectorDB:
+    class SlowSecondWindowVectorDB(PageAdapter):
         def __init__(self):
             self.calls = []
 
@@ -504,7 +513,7 @@ def test_cache_keys_distinguish_resource_filters_but_ignore_their_order():
 async def test_filtered_page_only_contains_candidate_resources():
     all_records = records(0, 9)
 
-    class FilteringVectorDB:
+    class FilteringVectorDB(PageAdapter):
         def __init__(self):
             self.calls = []
 
@@ -573,7 +582,7 @@ async def test_concurrent_requests_share_one_scan():
     started = asyncio.Event()
     release = asyncio.Event()
 
-    class GatedVectorDB:
+    class GatedVectorDB(PageAdapter):
         def __init__(self):
             self.calls = 0
 
@@ -1126,7 +1135,7 @@ async def test_vector_search_consuming_the_budget_skips_relevance(monkeypatch):
     install_clock(monkeypatch, clock)
     all_records = records(0, 10)
 
-    class ClockAdvancingVectorDB:
+    class ClockAdvancingVectorDB(PageAdapter):
         def __init__(self):
             self.calls = []
 
@@ -1242,3 +1251,40 @@ async def test_boundary_at_one_hundred_confirmed_and_trailing_empty_window():
     assert second.total == 100
     assert second.has_more is False
     assert [call["offset"] for call in vector_db.calls] == [0, 100]
+
+
+@pytest.mark.asyncio
+async def test_sparse_retrieval_page_uses_explicit_has_more_and_actual_offset():
+    class SparsePages:
+        retrieval_signature = "thresholds-1"
+
+        def __init__(self):
+            self.calls = []
+
+        async def search_page(self, **kwargs):
+            self.calls.append(kwargs)
+            offset = kwargs["offset"]
+            return VectorSearchPage(
+                records=[search_record(f"r{offset}")], has_more=offset == 0
+            )
+
+    db = SparsePages()
+    paginator = FilteredSearchPaginator(db, FakeChecker(), relevance_config())
+    page = await paginator.paginate(
+        query="query", namespace_id="ns_1", user_id="user", offset=0, limit=2
+    )
+    assert [c["offset"] for c in db.calls] == [0, 1]
+    assert [r.chunk.resource_id for r in page.records] == ["r0", "r1"]
+    assert page.total == 2 and not page.has_more
+
+
+@pytest.mark.asyncio
+async def test_changed_threshold_signature_cannot_reuse_old_filtered_cache():
+    db = FakeVectorDB({0: records(0, 2)})
+    db.retrieval_signature = "distance-0.5"
+    paginator = FilteredSearchPaginator(db, FakeChecker(), relevance_config())
+    kwargs = dict(query="query", namespace_id="ns_1", user_id="user", offset=0, limit=1)
+    await paginator.paginate(**kwargs)
+    db.retrieval_signature = "distance-0.4"
+    await paginator.paginate(**kwargs)
+    assert [call["offset"] for call in db.calls] == [0, 0]

@@ -23,7 +23,9 @@ CACHE_MAX_ENTRIES = 100
 CACHE_MAX_FILTERED_RECORDS = 500
 CACHE_MAX_PENDING_RECORDS = 200
 
-SearchKey = tuple[str, str, str, str, tuple[str, ...], tuple[str, ...], tuple[str, ...]]
+SearchKey = tuple[
+    str, str, str, str, tuple[str, ...], tuple[str, ...], tuple[str, ...], str
+]
 
 
 @dataclass
@@ -97,6 +99,7 @@ class FilteredSearchCache:
         conversation_ids: list[str] | None,
         exclude_conversation_ids: list[str] | None,
         resource_ids: list[str] | None = None,
+        retrieval_signature: str = "",
     ) -> SearchKey:
         return (
             namespace_id,
@@ -106,6 +109,7 @@ class FilteredSearchCache:
             tuple(conversation_ids or ()),
             tuple(exclude_conversation_ids or ()),
             tuple(sorted(resource_ids or ())),
+            retrieval_signature,
         )
 
     def lock_for(self, key: SearchKey) -> asyncio.Lock:
@@ -199,6 +203,7 @@ class FilteredSearchPaginator:
                 conversation_ids=conversation_ids,
                 exclude_conversation_ids=exclude_conversation_ids,
                 resource_ids=resource_ids,
+                retrieval_signature=getattr(self.vector_db, "retrieval_signature", ""),
             )
             async with self.cache.lock_for(key):
                 cached = self.cache.get(key)
@@ -277,9 +282,9 @@ class FilteredSearchPaginator:
                             window_offset = (
                                 0
                                 if entry.raw_pages_scanned_total == 0
-                                else entry.raw_window_start + RAW_WINDOW_SIZE
+                                else entry.raw_window_start + len(entry.raw_records)
                             )
-                            raw_records = await self.vector_db.search(
+                            page = await self.vector_db.search_page(
                                 conversation_ids=conversation_ids,
                                 exclude_conversation_ids=exclude_conversation_ids,
                                 query=query,
@@ -290,14 +295,13 @@ class FilteredSearchPaginator:
                                 limit=RAW_WINDOW_SIZE,
                                 resource_ids=resource_ids,
                             )
+                            raw_records = page.records
                             entry.raw_window_start = window_offset
                             entry.raw_cursor = 0
                             entry.raw_records = raw_records
                             entry.raw_pages_scanned_total += 1
                             raw_windows_fetched += 1
-                            entry.has_more_raw = (
-                                len(_chunk_records(raw_records)) >= RAW_WINDOW_SIZE
-                            )
+                            entry.has_more_raw = page.has_more
                             window_resource_ids = set()
                             continue
 
@@ -479,7 +483,7 @@ class FilteredSearchPaginator:
         exclude_conversation_ids: list[str] | None,
         resource_ids: list[str] | None,
     ) -> SearchPage:
-        records = await self.vector_db.search(
+        page = await self.vector_db.search_page(
             conversation_ids=conversation_ids,
             exclude_conversation_ids=exclude_conversation_ids,
             query=query,
@@ -490,7 +494,8 @@ class FilteredSearchPaginator:
             limit=limit,
             resource_ids=resource_ids,
         )
-        has_more = len(records) >= limit
+        records = page.records
+        has_more = page.has_more
         span.set_attribute("search.raw_pages_scanned", 1)
         span.set_attribute("search.raw_pages_scanned_total", 0)
         span.set_attribute("search.raw_records_scanned", len(records))

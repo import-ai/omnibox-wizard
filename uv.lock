@@ -723,7 +723,7 @@ requires-dist = [
     { name = "sse-starlette", specifier = ">=3.0.2,<4.0.0" },
     { name = "uvicorn", specifier = ">=0.34.2,<0.35.0" },
     { name = "weaviate-client", specifier = ">=4.20.4,<5.0.0" },
-    { name = "wizard-common", git = "https://github.com/import-ai/wizard-common.git?rev=7cbca1dd2258cd2ecb1de883f30b978ccc79a0ca" },
+    { name = "wizard-common", git = "https://github.com/import-ai/wizard-common.git?rev=ccd6e1b3071ca8041169e9a09f5a4a78da87e1da" },
 ]
 
 [package.metadata.requires-dev]
@@ -1538,7 +1538,7 @@ wheels = [
 [[package]]
 name = "wizard-common"
 version = "0.1.0"
-source = { git = "https://github.com/import-ai/wizard-common.git?rev=7cbca1dd2258cd2ecb1de883f30b978ccc79a0ca#7cbca1dd2258cd2ecb1de883f30b978ccc79a0ca" }
+source = { git = "https://github.com/import-ai/wizard-common.git?rev=ccd6e1b3071ca8041169e9a09f5a4a78da87e1da#ccd6e1b3071ca8041169e9a09f5a4a78da87e1da" }
 dependencies = [
     { name = "anyascii" },
     { name = "httpx" },

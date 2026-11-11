@@ -20,6 +20,14 @@ from omnibox_wizard.wizard.api.entity import (
 )
 from omnibox_wizard.wizard.config import ENV_PREFIX
 from omnibox_wizard.wizard.search.paginator import FilteredSearchPaginator
+from omnibox_wizard.wizard.search.snapshot import (
+    SnapshotRequest,
+    SnapshotResponse,
+    JudgeRequest,
+    JudgeResponse,
+    recall_snapshot,
+    judge_snapshot,
+)
 from omnibox_wizard.worker.agent.chat_title_generator import (
     ChatTitleGenerateOutput,
     ChatTitleGenerator,
@@ -94,6 +102,16 @@ async def parse_rss_item(
 ):
     markdown = await rss_item_parser.parse(request.url, request.content, trace_info)
     return RssItemParseResponse(markdown=markdown)
+
+
+@internal_router.post("/search/snapshot", tags=[], response_model=SnapshotResponse)
+async def search_snapshot(request: SnapshotRequest):
+    return await recall_snapshot(request, vector_db, relevance_config)
+
+
+@internal_router.post("/search/judge", tags=[], response_model=JudgeResponse)
+async def search_judge(request: JudgeRequest):
+    return await judge_snapshot(request, vector_db, relevance_config, relevance_checker)
 
 
 @internal_router.post("/search", tags=[], response_model=SearchResponse)

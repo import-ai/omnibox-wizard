@@ -40,6 +40,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
+      - name: Set up Python and uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          python-version: '3.12'
+
+      - name: Test web body delivery
+        run: uv run --frozen pytest tests/omnibox_wizard/functions/test_web_body.py -q
+
       - name: Docker meta (app)
         id: meta_app
         uses: docker/metadata-action@v5

@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "python-common @ git+https://github.com/import-ai/python-common.git@80c3d0916b8b450d8a7793f21455fcca0deb6d9f",
-    "wizard-common @ git+https://github.com/import-ai/wizard-common.git@39144b56a2bba588b0b8cc4738962274be0bf3ee",
+    "wizard-common @ git+https://github.com/import-ai/wizard-common.git@617b2fc8610c3f0ca03b40e7b4cf8a1046c0a7ed",
     "pydantic (>=2.11.3,<3.0.0)",
     "fastapi (>=0.121.0,<0.129.0)",
     "uvicorn (>=0.34.2,<0.35.0)",

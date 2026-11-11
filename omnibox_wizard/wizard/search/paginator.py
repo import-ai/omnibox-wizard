@@ -1,21 +1,27 @@
 import asyncio
 import time
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 
 from opentelemetry import trace
 
 from wizard_common.grimoire.config import RelevanceConfig
 from wizard_common.grimoire.entity.index_record import IndexRecord, IndexRecordType
-from wizard_common.grimoire.retriever.relevance import RelevanceChecker
+from wizard_common.grimoire.retriever.relevance import (
+    RelevanceChecker,
+    SearchFilterResult,
+)
 from wizard_common.grimoire.retriever.weaviate_vector_db import WeaviateVectorDB
 
 tracer = trace.get_tracer(__name__)
 
-RAW_PAGE_SIZE = 20
-MAX_RAW_PAGES_PER_REQUEST = 10
+RAW_WINDOW_SIZE = 100
+MAX_RAW_RECORDS_PER_REQUEST = 200
+RELEVANCE_SLICE_SIZE = 32
 CACHE_TTL_SECONDS = 30.0
 CACHE_MAX_ENTRIES = 100
 CACHE_MAX_FILTERED_RECORDS = 500
+CACHE_MAX_PENDING_RECORDS = 200
 
 SearchKey = tuple[str, str, str, str, tuple[str, ...], tuple[str, ...], tuple[str, ...]]
 
@@ -30,9 +36,14 @@ class SearchPage:
 @dataclass
 class FilteredSearchCacheEntry:
     filtered_records: list[IndexRecord] = field(default_factory=list)
+    pending_records: list[IndexRecord] = field(default_factory=list)
+    raw_records: list[IndexRecord] = field(default_factory=list)
+    raw_window_start: int = 0
+    raw_cursor: int = 0
     next_raw_offset: int = 0
     has_more_raw: bool = True
     seen_resource_ids: set[str] = field(default_factory=set)
+    pending_resource_ids: set[str] = field(default_factory=set)
     judged_chunk_count: int = 0
     expires_at: float = 0.0
     raw_pages_scanned_total: int = 0
@@ -46,16 +57,35 @@ def _chunk_records(records: list[IndexRecord]) -> list[IndexRecord]:
     ]
 
 
+def _resource_id(record: IndexRecord) -> str | None:
+    if record.type != IndexRecordType.chunk or record.chunk is None:
+        return None
+    return record.chunk.resource_id
+
+
+async def _stop_requested(
+    should_stop: Callable[[], Awaitable[bool]] | None,
+) -> bool:
+    if should_stop is None:
+        return False
+    try:
+        return await should_stop()
+    except Exception:
+        return False
+
+
 class FilteredSearchCache:
     def __init__(
         self,
         ttl_seconds: float = CACHE_TTL_SECONDS,
         max_entries: int = CACHE_MAX_ENTRIES,
         max_filtered_records: int = CACHE_MAX_FILTERED_RECORDS,
+        max_pending_records: int = CACHE_MAX_PENDING_RECORDS,
     ):
         self.ttl_seconds = ttl_seconds
         self.max_entries = max_entries
         self.max_filtered_records = max_filtered_records
+        self.max_pending_records = max_pending_records
         self._entries: dict[SearchKey, FilteredSearchCacheEntry] = {}
         self._locks: dict[SearchKey, asyncio.Lock] = {}
 
@@ -144,6 +174,8 @@ class FilteredSearchPaginator:
         conversation_ids: list[str] | None = None,
         exclude_conversation_ids: list[str] | None = None,
         resource_ids: list[str] | None = None,
+        timeout_ms: int | None = None,
+        should_stop: Callable[[], Awaitable[bool]] | None = None,
     ) -> SearchPage:
         with tracer.start_as_current_span("FilteredSearchPaginator.paginate") as span:
             span.set_attribute("search.offset", offset)
@@ -172,80 +204,219 @@ class FilteredSearchPaginator:
             async with self.cache.lock_for(key):
                 cached = self.cache.get(key)
                 entry = cached or FilteredSearchCacheEntry()
-                deadline = time.monotonic() + self.relevance_config.search_timeout_sec
-                pages_this_request = 0
+                budget = self.relevance_config.search_timeout_sec
+                if timeout_ms is not None:
+                    budget = min(budget, timeout_ms / 1000)
+                deadline = time.monotonic() + budget
+                raw_windows_fetched = 0
                 raw_records_scanned = 0
+                pending_dropped = 0
                 budget_exhausted = False
+                stopped_by_client = False
+                window_resource_ids: set[str] = {
+                    resource_id
+                    for record in entry.raw_records[: entry.raw_cursor]
+                    if (resource_id := _resource_id(record)) is not None
+                }
                 try:
                     while (
-                        len(entry.filtered_records) < offset + limit
-                        and entry.has_more_raw
+                        entry.pending_records
+                        and len(entry.filtered_records) < offset + limit
                     ):
                         if time.monotonic() >= deadline:
                             budget_exhausted = True
                             break
-                        if pages_this_request >= MAX_RAW_PAGES_PER_REQUEST:
-                            budget_exhausted = True
+                        if await _stop_requested(should_stop):
+                            stopped_by_client = True
                             break
-                        raw_records = await self.vector_db.search(
-                            conversation_ids=conversation_ids,
-                            exclude_conversation_ids=exclude_conversation_ids,
-                            query=query,
-                            namespace_id=namespace_id,
-                            user_id=user_id,
-                            record_type=IndexRecordType.chunk,
-                            offset=entry.next_raw_offset,
-                            limit=RAW_PAGE_SIZE,
-                            resource_ids=resource_ids,
-                        )
-                        entry.next_raw_offset += RAW_PAGE_SIZE
-                        entry.raw_pages_scanned_total += 1
-                        pages_this_request += 1
-                        chunk_records = _chunk_records(raw_records)
-                        raw_records_scanned += len(chunk_records)
-                        entry.has_more_raw = len(chunk_records) >= RAW_PAGE_SIZE
-                        kept = await self.relevance_checker.filter_search_results(
+                        slice_records = entry.pending_records[:RELEVANCE_SLICE_SIZE]
+                        result = await self.relevance_checker.filter_search_results(
                             query,
-                            raw_records,
+                            slice_records,
                             deadline=deadline,
                             index_offset=entry.judged_chunk_count,
                         )
-                        entry.judged_chunk_count += len(chunk_records)
-                        for record in kept:
+                        entry.judged_chunk_count += len(slice_records)
+                        pending_dropped += self._refill_from_pending(
+                            entry, slice_records, result
+                        )
+                        if not result.kept and len(result.pending) == len(
+                            slice_records
+                        ):
+                            break
+
+                    while len(entry.filtered_records) < offset + limit and (
+                        entry.raw_cursor < len(entry.raw_records) or entry.has_more_raw
+                    ):
+                        if time.monotonic() >= deadline:
+                            budget_exhausted = True
+                            break
+                        if raw_records_scanned >= MAX_RAW_RECORDS_PER_REQUEST:
+                            budget_exhausted = True
+                            break
+                        if await _stop_requested(should_stop):
+                            stopped_by_client = True
+                            break
+                        if entry.raw_cursor >= len(entry.raw_records):
+                            if not entry.has_more_raw:
+                                break
+                            window_offset = (
+                                0
+                                if entry.raw_pages_scanned_total == 0
+                                else entry.raw_window_start + RAW_WINDOW_SIZE
+                            )
+                            raw_records = await self.vector_db.search(
+                                conversation_ids=conversation_ids,
+                                exclude_conversation_ids=exclude_conversation_ids,
+                                query=query,
+                                namespace_id=namespace_id,
+                                user_id=user_id,
+                                record_type=IndexRecordType.chunk,
+                                offset=window_offset,
+                                limit=RAW_WINDOW_SIZE,
+                                resource_ids=resource_ids,
+                            )
+                            entry.raw_window_start = window_offset
+                            entry.raw_cursor = 0
+                            entry.raw_records = raw_records
+                            entry.next_raw_offset = window_offset
+                            entry.raw_pages_scanned_total += 1
+                            raw_windows_fetched += 1
+                            entry.has_more_raw = (
+                                len(_chunk_records(raw_records)) >= RAW_WINDOW_SIZE
+                            )
+                            window_resource_ids = set()
+                            continue
+
+                        slice_size = min(
+                            RELEVANCE_SLICE_SIZE,
+                            MAX_RAW_RECORDS_PER_REQUEST - raw_records_scanned,
+                        )
+                        slice_records = entry.raw_records[
+                            entry.raw_cursor : entry.raw_cursor + slice_size
+                        ]
+                        entry.raw_cursor += len(slice_records)
+                        entry.next_raw_offset = (
+                            entry.raw_window_start + entry.raw_cursor
+                        )
+                        raw_records_scanned += len(slice_records)
+                        candidates: list[IndexRecord] = []
+                        for record in slice_records:
+                            resource_id = _resource_id(record)
                             if (
-                                record.type != IndexRecordType.chunk
-                                or record.chunk is None
+                                resource_id is None
+                                or resource_id in entry.seen_resource_ids
+                                or resource_id in entry.pending_resource_ids
+                                or resource_id in window_resource_ids
                             ):
                                 continue
-                            if record.chunk.resource_id in entry.seen_resource_ids:
-                                continue
-                            entry.seen_resource_ids.add(record.chunk.resource_id)
-                            entry.filtered_records.append(record)
+                            window_resource_ids.add(resource_id)
+                            candidates.append(record)
+                        if not candidates:
+                            continue
+                        result = await self.relevance_checker.filter_search_results(
+                            query,
+                            candidates,
+                            deadline=deadline,
+                            index_offset=entry.judged_chunk_count,
+                        )
+                        entry.judged_chunk_count += len(candidates)
+                        pending_dropped += self._apply_raw_result(
+                            entry, candidates, result
+                        )
                 finally:
                     self.cache.put(key, entry)
 
             records = entry.filtered_records[offset : offset + limit]
-            # The scan may have exhausted the raw result set while the cache
-            # still holds filtered records beyond this page's slice.
-            has_more = entry.has_more_raw or (
-                offset + len(records) < len(entry.filtered_records)
+            raw_more = entry.raw_cursor < len(entry.raw_records) or entry.has_more_raw
+            has_more = (
+                bool(entry.pending_records)
+                or raw_more
+                or offset + len(records) < len(entry.filtered_records)
             )
-            if entry.has_more_raw:
-                total = None
-            else:
-                total = len(entry.filtered_records)
+            total = None if has_more else len(entry.filtered_records)
 
-            span.set_attribute("search.raw_pages_scanned", pages_this_request)
+            span.set_attribute("search.raw_pages_scanned", raw_windows_fetched)
             span.set_attribute(
                 "search.raw_pages_scanned_total", entry.raw_pages_scanned_total
             )
+            span.set_attribute("search.raw_windows_fetched", raw_windows_fetched)
             span.set_attribute("search.raw_records_scanned", raw_records_scanned)
+            span.set_attribute("search.pending_count", len(entry.pending_records))
+            span.set_attribute("search.pending_dropped", pending_dropped)
+            span.set_attribute("search.confirmed_count", len(entry.filtered_records))
             if total is not None:
                 span.set_attribute("search.filtered_total", total)
             span.set_attribute("search.has_more", has_more)
             span.set_attribute("search.cache_hit", cached is not None)
             span.set_attribute("search.budget_exhausted", budget_exhausted)
+            span.set_attribute("search.stopped_by_client", stopped_by_client)
             return SearchPage(records=records, total=total, has_more=has_more)
+
+    def _refill_from_pending(
+        self,
+        entry: FilteredSearchCacheEntry,
+        slice_records: list[IndexRecord],
+        result: SearchFilterResult,
+    ) -> int:
+        kept_ids = {id(record) for record in result.kept}
+        pending_ids = {id(record) for record in result.pending}
+        remaining_pending: list[IndexRecord] = []
+        for record in slice_records:
+            resource_id = _resource_id(record)
+            if id(record) in kept_ids:
+                if resource_id is not None:
+                    entry.pending_resource_ids.discard(resource_id)
+                if (
+                    resource_id is not None
+                    and resource_id not in entry.seen_resource_ids
+                ):
+                    entry.seen_resource_ids.add(resource_id)
+                    entry.filtered_records.append(record)
+            elif id(record) in pending_ids:
+                remaining_pending.append(record)
+            elif resource_id is not None:
+                entry.pending_resource_ids.discard(resource_id)
+        entry.pending_records = (
+            remaining_pending + entry.pending_records[len(slice_records) :]
+        )
+        return self._cap_pending(entry)
+
+    def _apply_raw_result(
+        self,
+        entry: FilteredSearchCacheEntry,
+        candidates: list[IndexRecord],
+        result: SearchFilterResult,
+    ) -> int:
+        kept_ids = {id(record) for record in result.kept}
+        pending_ids = {id(record) for record in result.pending}
+        for record in candidates:
+            resource_id = _resource_id(record)
+            if resource_id is None:
+                continue
+            if id(record) in kept_ids:
+                entry.pending_resource_ids.discard(resource_id)
+                if resource_id not in entry.seen_resource_ids:
+                    entry.seen_resource_ids.add(resource_id)
+                    entry.filtered_records.append(record)
+            elif id(record) in pending_ids:
+                entry.pending_records.append(record)
+                entry.pending_resource_ids.add(resource_id)
+            else:
+                entry.pending_resource_ids.discard(resource_id)
+        return self._cap_pending(entry)
+
+    def _cap_pending(self, entry: FilteredSearchCacheEntry) -> int:
+        overflow = len(entry.pending_records) - self.cache.max_pending_records
+        if overflow <= 0:
+            return 0
+        dropped = entry.pending_records[self.cache.max_pending_records :]
+        entry.pending_records = entry.pending_records[: self.cache.max_pending_records]
+        for record in dropped:
+            resource_id = _resource_id(record)
+            if resource_id is not None:
+                entry.pending_resource_ids.discard(resource_id)
+        return len(dropped)
 
     async def _paginate_raw(
         self,

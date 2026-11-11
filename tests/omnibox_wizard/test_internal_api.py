@@ -413,7 +413,11 @@ class TestSearchAPI:
         response = client.post(
             "/internal/api/v1/wizard/search",
             json=self.search_payload(
-                type="chunk", offset=5, limit=10, resource_ids=["one"]
+                type="chunk",
+                offset=5,
+                limit=10,
+                resource_ids=["one"],
+                timeout_ms=1500,
             ),
         )
 
@@ -423,16 +427,23 @@ class TestSearchAPI:
         assert body["total"] == 1
         assert body["has_more"] is False
         assert "raw_count" not in body
-        paginator.paginate.assert_awaited_once_with(
-            query="query",
-            namespace_id="ns_1",
-            user_id="user_1",
-            offset=5,
-            limit=10,
-            conversation_ids=None,
-            exclude_conversation_ids=None,
-            resource_ids=["one"],
-        )
+        call = paginator.paginate.await_args
+        assert call.kwargs["timeout_ms"] == 1500
+        assert callable(call.kwargs["should_stop"])
+        assert {
+            key: value
+            for key, value in call.kwargs.items()
+            if key not in ("timeout_ms", "should_stop")
+        } == {
+            "query": "query",
+            "namespace_id": "ns_1",
+            "user_id": "user_1",
+            "offset": 5,
+            "limit": 10,
+            "conversation_ids": None,
+            "exclude_conversation_ids": None,
+            "resource_ids": ["one"],
+        }
 
     @pytest.mark.parametrize("record_type", [None, "message"])
     async def test_bypasses_the_paginator_for_messages_and_untyped_searches(

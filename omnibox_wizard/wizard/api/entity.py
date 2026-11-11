@@ -47,6 +47,9 @@ class SearchRequest(BaseModel):
     )
     offset: int = Field(default=0, description="offset")
     limit: int = Field(default=20, description="maximum number of records")
+    timeout_ms: int | None = Field(
+        default=None, description="remaining search budget in milliseconds"
+    )
 
 
 class SearchResponse(BaseModel):

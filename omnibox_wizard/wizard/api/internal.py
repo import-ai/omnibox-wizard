@@ -1,7 +1,7 @@
 from functools import partial
 from json import dumps as lib_dumps
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
 
 from common.config_loader import Loader
@@ -97,7 +97,7 @@ async def parse_rss_item(
 
 
 @internal_router.post("/search", tags=[], response_model=SearchResponse)
-async def search(request: SearchRequest):
+async def search(request: SearchRequest, http_request: Request):
     if request.type == IndexRecordType.chunk and search_paginator is not None:
         page = await search_paginator.paginate(
             query=request.query,
@@ -108,6 +108,8 @@ async def search(request: SearchRequest):
             conversation_ids=request.conversation_ids,
             exclude_conversation_ids=request.exclude_conversation_ids,
             resource_ids=request.resource_ids,
+            timeout_ms=request.timeout_ms,
+            should_stop=http_request.is_disconnected,
         )
         return SearchResponse(
             records=page.records, total=page.total, has_more=page.has_more

@@ -1,3 +1,4 @@
+from omnibox_wizard.worker.quota import InsufficientQuotaError
 from wizard_common.worker.retry import is_retryable
 import asyncio
 import os
@@ -283,6 +284,17 @@ class Worker:
             span.set_status(Status(StatusCode.ERROR, error_msg))
             span.set_attribute("error.message", error_msg)
             span.set_attribute("error.type", "TimeoutError")
+
+        except InsufficientQuotaError as e:
+            task.exception = {
+                "error": e.message,
+                "type": "InsufficientQuotaError",
+                "details": e.details,
+            }
+            task.status = "insufficient_quota"
+            logging_func = trace_info.bind(error=e.message).warning
+            span.set_status(Status(StatusCode.ERROR, e.message))
+            span.set_attribute("error.type", "InsufficientQuotaError")
 
         except Exception as e:
             # Handle other exceptions

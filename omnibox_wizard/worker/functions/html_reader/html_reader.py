@@ -1,3 +1,4 @@
+from omnibox_wizard.worker.quota import check_task_quota
 import json as jsonlib
 import re
 from functools import partial
@@ -76,6 +77,17 @@ def get_lang_from_user_options(user_options: dict) -> str | None:
     elif language == "en-US":
         return "English"
     return None
+
+
+def has_web_body(markdown: str, title: str = "") -> bool:
+    lines = [line.strip() for line in markdown.strip().splitlines() if line.strip()]
+    if not lines:
+        return False
+    if len(lines) == 1:
+        plain = re.sub(r"^#{1,6}\s+", "", lines[0]).strip()
+        plain = re.sub(r"\s+#+$", "", plain).strip()
+        return not re.match(r"^#{1,6}\s+", lines[0]) and plain != title.strip()
+    return not (len(lines) == 2 and re.fullmatch(r"(?:=+|-+)", lines[1]))
 
 
 class Preprocessor:
@@ -232,6 +244,7 @@ class HTMLReaderV2(BaseFunction):
     }
 
     def __init__(self, config: WorkerConfig):
+        self.backend_base_url = config.backend.base_url
         self.html_content_extractor = HTMLContentExtractor(config.grimoire.openai)
         self.processors: list[HTMLReaderBaseProcessor] = [
             GreenNoteProcessor(config=config),
@@ -292,7 +305,13 @@ class HTMLReaderV2(BaseFunction):
                 "This content requires VIP access and is not currently supported."
             )
 
+        await check_task_quota(self.backend_base_url, task, {})
         result_dict: dict = await self.main(task, trace_info)
+        result_dict["body_delivered"] = has_web_body(
+            result_dict.get("markdown", ""), result_dict.get("title") or ""
+        )
+        if not result_dict["body_delivered"]:
+            raise RuntimeError("NO_DELIVERABLE_CONTENT")
         if result_dict.get("markdown"):
             next_tasks: list[dict] = []
             user = task.payload.get("user", {}) if task.payload else {}

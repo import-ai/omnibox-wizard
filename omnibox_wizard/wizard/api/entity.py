@@ -42,12 +42,28 @@ class SearchRequest(BaseModel):
     namespace_id: str = Field(description="namespace id to search in")
     user_id: str | None = Field(description="user id")
     type: IndexRecordType | None = Field(default=None, description="type of record")
+    resource_ids: list[str] | None = Field(
+        default=None, description="restrict results to these resource ids"
+    )
     offset: int = Field(default=0, description="offset")
     limit: int = Field(default=20, description="maximum number of records")
+    timeout_ms: int | None = Field(
+        default=None,
+        ge=0,
+        le=60000,
+        description="remaining search budget in milliseconds",
+    )
 
 
 class SearchResponse(BaseModel):
     records: list[IndexRecord] = Field(description="search results")
+    total: int | None = Field(
+        default=None,
+        description="filtered total once the raw result set is exhausted",
+    )
+    has_more: bool = Field(
+        default=False, description="whether more filtered results exist"
+    )
 
 
 class UpsertWeaviateResourceRequest(BaseModel):

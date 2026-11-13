@@ -47,23 +47,10 @@ class SearchRequest(BaseModel):
     )
     offset: int = Field(default=0, description="offset")
     limit: int = Field(default=20, description="maximum number of records")
-    timeout_ms: int | None = Field(
-        default=None,
-        ge=0,
-        le=60000,
-        description="remaining search budget in milliseconds",
-    )
 
 
 class SearchResponse(BaseModel):
     records: list[IndexRecord] = Field(description="search results")
-    total: int | None = Field(
-        default=None,
-        description="filtered total once the raw result set is exhausted",
-    )
-    has_more: bool = Field(
-        default=False, description="whether more filtered results exist"
-    )
 
 
 class UpsertWeaviateResourceRequest(BaseModel):

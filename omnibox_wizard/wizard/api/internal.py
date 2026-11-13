@@ -1,7 +1,7 @@
 from functools import partial
 from json import dumps as lib_dumps
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
 from common.config_loader import Loader
@@ -19,14 +19,10 @@ from omnibox_wizard.wizard.api.entity import (
     UpsertWeaviateResourceRequest,
 )
 from omnibox_wizard.wizard.config import ENV_PREFIX
-from omnibox_wizard.wizard.search.paginator import FilteredSearchPaginator
 from omnibox_wizard.wizard.search.snapshot import (
     SnapshotRequest,
     SnapshotResponse,
-    JudgeRequest,
-    JudgeResponse,
     recall_snapshot,
-    judge_snapshot,
 )
 from omnibox_wizard.worker.agent.chat_title_generator import (
     ChatTitleGenerateOutput,
@@ -35,10 +31,8 @@ from omnibox_wizard.worker.agent.chat_title_generator import (
 from omnibox_wizard.worker.config import TaskConfig, WorkerConfig
 from omnibox_wizard.worker.functions.rss_item_parser import RssItemParser
 from omnibox_wizard.worker.worker import compute_supported_functions
-from wizard_common.grimoire.config import GrimoireAgentConfig, RelevanceConfig
-from wizard_common.grimoire.entity.index_record import IndexRecordType
+from wizard_common.grimoire.config import GrimoireAgentConfig
 from wizard_common.grimoire.entity.message import Message
-from wizard_common.grimoire.retriever.relevance import RelevanceChecker
 from wizard_common.grimoire.retriever.weaviate_vector_db import WeaviateVectorDB
 
 dumps = partial(lib_dumps, ensure_ascii=False, separators=(",", ":"))
@@ -48,25 +42,16 @@ CHUNK_OVERLAP = 128
 vector_db: WeaviateVectorDB
 title_generator: ChatTitleGenerator
 rss_item_parser: RssItemParser
-relevance_checker: RelevanceChecker | None = None
-relevance_config = RelevanceConfig()
-search_paginator: FilteredSearchPaginator | None = None
 capabilities: dict = {}
 
 
 async def init(_):
     global title_generator, vector_db, rss_item_parser, capabilities
-    global relevance_checker, relevance_config, search_paginator
     loader = Loader(GrimoireAgentConfig, env_prefix=ENV_PREFIX)
     config: GrimoireAgentConfig = loader.load()
 
     title_generator = ChatTitleGenerator(config.grimoire.openai)
     vector_db = WeaviateVectorDB(config.vector)
-    relevance_config = config.tools.relevance
-    relevance_checker = RelevanceChecker(relevance_config)
-    search_paginator = FilteredSearchPaginator(
-        vector_db, relevance_checker, relevance_config
-    )
 
     worker_config: WorkerConfig = Loader(WorkerConfig, env_prefix=ENV_PREFIX).load()
     rss_item_parser = RssItemParser(worker_config)
@@ -74,14 +59,6 @@ async def init(_):
     task_config = Loader(TaskConfig, env_prefix=f"{ENV_PREFIX}_TASK").load()
     supported = compute_supported_functions(task_config)
     capabilities = {"functions": supported}
-
-
-async def internal_shutdown(_):
-    global relevance_checker, search_paginator
-    if relevance_checker is not None:
-        await relevance_checker.aclose()
-        relevance_checker = None
-    search_paginator = None
 
 
 @internal_router.post("/title", tags=["LLM"], response_model=TitleResponse)
@@ -106,32 +83,11 @@ async def parse_rss_item(
 
 @internal_router.post("/search/snapshot", tags=[], response_model=SnapshotResponse)
 async def search_snapshot(request: SnapshotRequest):
-    return await recall_snapshot(request, vector_db, relevance_config)
-
-
-@internal_router.post("/search/judge", tags=[], response_model=JudgeResponse)
-async def search_judge(request: JudgeRequest):
-    return await judge_snapshot(request, vector_db, relevance_config, relevance_checker)
+    return await recall_snapshot(request, vector_db)
 
 
 @internal_router.post("/search", tags=[], response_model=SearchResponse)
-async def search(request: SearchRequest, http_request: Request):
-    if request.type == IndexRecordType.chunk and search_paginator is not None:
-        page = await search_paginator.paginate(
-            query=request.query,
-            namespace_id=request.namespace_id,
-            user_id=request.user_id,
-            offset=request.offset,
-            limit=request.limit,
-            conversation_ids=request.conversation_ids,
-            exclude_conversation_ids=request.exclude_conversation_ids,
-            resource_ids=request.resource_ids,
-            timeout_ms=request.timeout_ms,
-            should_stop=http_request.is_disconnected,
-        )
-        return SearchResponse(
-            records=page.records, total=page.total, has_more=page.has_more
-        )
+async def search(request: SearchRequest):
     records = await vector_db.search(
         conversation_ids=request.conversation_ids,
         exclude_conversation_ids=request.exclude_conversation_ids,
@@ -143,9 +99,7 @@ async def search(request: SearchRequest, http_request: Request):
         limit=request.limit,
         resource_ids=request.resource_ids,
     )
-    return SearchResponse(
-        records=records, total=None, has_more=len(records) >= request.limit
-    )
+    return SearchResponse(records=records)
 
 
 @internal_router.post("/upsert_weaviate/resource", tags=[])

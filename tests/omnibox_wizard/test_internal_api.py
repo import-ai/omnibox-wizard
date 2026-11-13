@@ -2,14 +2,13 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from wizard_common.grimoire.entity.chunk import Chunk, ChunkType
 from wizard_common.grimoire.entity.index_record import IndexRecord, IndexRecordType
 from wizard_common.grimoire.entity.message import Message, OpenAIMessage
 
 from omnibox_wizard.wizard.api import internal
 from omnibox_wizard.wizard.api.internal import internal_router
-from omnibox_wizard.wizard.search.paginator import SearchPage
 from omnibox_wizard.wizard.api.entity import (
     CommonAITextRequest,
     TitleResponse,
@@ -402,27 +401,10 @@ class TestSearchAPI:
             **overrides,
         }
 
-    async def test_chunk_search_uses_the_filtered_paginator(self, client, monkeypatch):
-        kept = chunk_record("one")
-        paginator = AsyncMock()
-        paginator.paginate.return_value = SearchPage(
-            records=[kept], total=1, has_more=False
-        )
-        monkeypatch.setattr(internal, "search_paginator", paginator, raising=False)
-        disconnected_requests = []
-
-        async def record_is_disconnected(request):
-            disconnected_requests.append(request)
-            return False
-
-        monkeypatch.setattr(Request, "is_disconnected", record_is_disconnected)
-        scopes = []
-
-        async def capture_scope(request, call_next):
-            scopes.append(request.scope)
-            return await call_next(request)
-
-        client.app.middleware("http")(capture_scope)
+    async def test_chunk_search_queries_vector_db_directly(self, client, monkeypatch):
+        vector_db = AsyncMock()
+        vector_db.search.return_value = [chunk_record("one")]
+        monkeypatch.setattr(internal, "vector_db", vector_db, raising=False)
 
         response = client.post(
             "/internal/api/v1/wizard/search",
@@ -431,106 +413,51 @@ class TestSearchAPI:
                 offset=5,
                 limit=10,
                 resource_ids=["one"],
-                timeout_ms=1500,
             ),
         )
 
         assert response.status_code == 200
         body = response.json()
+        assert set(body) == {"records"}
         assert [record["chunk"]["resource_id"] for record in body["records"]] == ["one"]
-        assert body["total"] == 1
-        assert body["has_more"] is False
-        assert "raw_count" not in body
-        call = paginator.paginate.await_args
-        assert call.kwargs["timeout_ms"] == 1500
-        should_stop = call.kwargs["should_stop"]
-        assert callable(should_stop)
-        assert isinstance(should_stop.__self__, Request)
-        assert should_stop.__self__.scope is scopes[0]
-        assert await should_stop() is False
-        assert disconnected_requests == [should_stop.__self__]
-        assert {
-            key: value
-            for key, value in call.kwargs.items()
-            if key not in ("timeout_ms", "should_stop")
-        } == {
+        vector_db.search.assert_awaited_once()
+        assert vector_db.search.await_args.kwargs == {
+            "conversation_ids": None,
+            "exclude_conversation_ids": None,
             "query": "query",
             "namespace_id": "ns_1",
             "user_id": "user_1",
+            "record_type": IndexRecordType.chunk,
             "offset": 5,
             "limit": 10,
-            "conversation_ids": None,
-            "exclude_conversation_ids": None,
             "resource_ids": ["one"],
         }
 
-    @pytest.mark.parametrize("timeout_ms", [-1, 60001])
-    async def test_rejects_out_of_range_timeout_ms(
-        self, client, monkeypatch, timeout_ms
-    ):
-        paginator = AsyncMock()
-        monkeypatch.setattr(internal, "search_paginator", paginator, raising=False)
-
-        response = client.post(
-            "/internal/api/v1/wizard/search",
-            json=self.search_payload(type="chunk", timeout_ms=timeout_ms),
-        )
-
-        assert response.status_code == 422
-        paginator.paginate.assert_not_awaited()
-
-    @pytest.mark.parametrize("timeout_ms", [0, 60000])
-    async def test_accepts_timeout_ms_at_the_bounds(
-        self, client, monkeypatch, timeout_ms
-    ):
-        paginator = AsyncMock()
-        paginator.paginate.return_value = SearchPage(
-            records=[], total=0, has_more=False
-        )
-        monkeypatch.setattr(internal, "search_paginator", paginator, raising=False)
-
-        response = client.post(
-            "/internal/api/v1/wizard/search",
-            json=self.search_payload(type="chunk", timeout_ms=timeout_ms),
-        )
-
-        assert response.status_code == 200
-        assert paginator.paginate.await_args.kwargs["timeout_ms"] == timeout_ms
-
     @pytest.mark.parametrize("record_type", [None, "message"])
-    async def test_bypasses_the_paginator_for_messages_and_untyped_searches(
+    async def test_messages_and_untyped_searches_use_the_direct_query(
         self, client, monkeypatch, record_type
     ):
-        records = [message_record("message_1")]
-        paginator = AsyncMock()
         vector_db = AsyncMock()
-        vector_db.search.return_value = records
-        monkeypatch.setattr(internal, "search_paginator", paginator, raising=False)
+        vector_db.search.return_value = [message_record("message_1")]
         monkeypatch.setattr(internal, "vector_db", vector_db, raising=False)
 
         response = client.post(
             "/internal/api/v1/wizard/search",
-            json=self.search_payload(
-                type=record_type, offset=0, limit=1, resource_ids=["message_1"]
-            ),
+            json=self.search_payload(type=record_type, offset=0, limit=1),
         )
 
         assert response.status_code == 200
         body = response.json()
+        assert set(body) == {"records"}
         assert len(body["records"]) == 1
-        assert body["total"] is None
-        assert body["has_more"] is True
-        paginator.paginate.assert_not_awaited()
         vector_db.search.assert_awaited_once()
-        assert vector_db.search.await_args.kwargs["resource_ids"] == ["message_1"]
+        expected_type = IndexRecordType(record_type) if record_type else None
+        assert vector_db.search.await_args.kwargs["record_type"] == expected_type
 
+    async def test_search_judge_endpoint_is_removed(self, client):
+        response = client.post(
+            "/internal/api/v1/wizard/search/judge",
+            json=self.search_payload(records=[]),
+        )
 
-class TestInternalShutdown:
-    async def test_shutdown_closes_the_shared_checker(self, monkeypatch):
-        checker = AsyncMock()
-        monkeypatch.setattr(internal, "relevance_checker", checker)
-
-        await internal.internal_shutdown(None)
-
-        checker.aclose.assert_awaited_once()
-        assert internal.relevance_checker is None
+        assert response.status_code == 404

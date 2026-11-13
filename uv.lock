@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = "==3.12.*"
 resolution-markers = [
     "sys_platform == 'win32'",
@@ -723,7 +723,7 @@ requires-dist = [
     { name = "sse-starlette", specifier = ">=3.0.2,<4.0.0" },
     { name = "uvicorn", specifier = ">=0.34.2,<0.35.0" },
     { name = "weaviate-client", specifier = ">=4.20.4,<5.0.0" },
-    { name = "wizard-common", git = "https://github.com/import-ai/wizard-common.git?rev=fe002ca8b537c1fa59fa456167784b550242884b" },
+    { name = "wizard-common", git = "https://github.com/import-ai/wizard-common.git?rev=151193c3a777ea0e4f46e87bb8796423974b2930" },
 ]
 
 [package.metadata.requires-dev]
@@ -1538,7 +1538,7 @@ wheels = [
 [[package]]
 name = "wizard-common"
 version = "0.1.0"
-source = { git = "https://github.com/import-ai/wizard-common.git?rev=fe002ca8b537c1fa59fa456167784b550242884b#fe002ca8b537c1fa59fa456167784b550242884b" }
+source = { git = "https://github.com/import-ai/wizard-common.git?rev=151193c3a777ea0e4f46e87bb8796423974b2930#151193c3a777ea0e4f46e87bb8796423974b2930" }
 dependencies = [
     { name = "anyascii" },
     { name = "httpx" },

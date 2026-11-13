@@ -79,6 +79,17 @@ def get_lang_from_user_options(user_options: dict) -> str | None:
     return None
 
 
+def has_web_body(markdown: str, title: str = "") -> bool:
+    lines = [line.strip() for line in markdown.strip().splitlines() if line.strip()]
+    if not lines:
+        return False
+    if len(lines) == 1:
+        plain = re.sub(r"^#{1,6}\s+", "", lines[0]).strip()
+        plain = re.sub(r"\s+#+$", "", plain).strip()
+        return not re.match(r"^#{1,6}\s+", lines[0]) and plain != title.strip()
+    return not (len(lines) == 2 and re.fullmatch(r"(?:=+|-+)", lines[1]))
+
+
 class Preprocessor:
     SPACE_PATTERN: re.Pattern = re.compile(r"\s{2,}")
 
@@ -296,6 +307,11 @@ class HTMLReaderV2(BaseFunction):
 
         await check_task_quota(self.backend_base_url, task, {})
         result_dict: dict = await self.main(task, trace_info)
+        result_dict["body_delivered"] = has_web_body(
+            result_dict.get("markdown", ""), result_dict.get("title") or ""
+        )
+        if not result_dict["body_delivered"]:
+            raise RuntimeError("NO_DELIVERABLE_CONTENT")
         if result_dict.get("markdown"):
             next_tasks: list[dict] = []
             user = task.payload.get("user", {}) if task.payload else {}

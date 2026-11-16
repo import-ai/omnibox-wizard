@@ -19,6 +19,11 @@ from omnibox_wizard.wizard.api.entity import (
     UpsertWeaviateResourceRequest,
 )
 from omnibox_wizard.wizard.config import ENV_PREFIX
+from omnibox_wizard.wizard.search.snapshot import (
+    SnapshotRequest,
+    SnapshotResponse,
+    recall_snapshot,
+)
 from omnibox_wizard.worker.agent.chat_title_generator import (
     ChatTitleGenerateOutput,
     ChatTitleGenerator,
@@ -76,6 +81,11 @@ async def parse_rss_item(
     return RssItemParseResponse(markdown=markdown)
 
 
+@internal_router.post("/search/snapshot", tags=[], response_model=SnapshotResponse)
+async def search_snapshot(request: SnapshotRequest):
+    return await recall_snapshot(request, vector_db)
+
+
 @internal_router.post("/search", tags=[], response_model=SearchResponse)
 async def search(request: SearchRequest):
     records = await vector_db.search(
@@ -87,6 +97,7 @@ async def search(request: SearchRequest):
         record_type=request.type,
         offset=request.offset,
         limit=request.limit,
+        resource_ids=request.resource_ids,
     )
     return SearchResponse(records=records)
 

@@ -8,7 +8,8 @@ from omnibox_wizard.wizard.api.wizard import init as grimoire_init
 from omnibox_wizard.wizard.api.wizard import shutdown as grimoire_shutdown
 
 app: FastAPI = app_factory(
-    startup_funcs=[grimoire_init, internal_init], shutdown_funcs=[grimoire_shutdown]
+    startup_funcs=[grimoire_init, internal_init],
+    shutdown_funcs=[grimoire_shutdown],
 )
 
 app.include_router(v1_router, tags=["Wizard API"])

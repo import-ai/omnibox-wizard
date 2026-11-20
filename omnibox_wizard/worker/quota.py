@@ -1,4 +1,5 @@
 import httpx
+from opentelemetry import propagate
 from wizard_common.worker.entity import Task
 
 
@@ -10,11 +11,14 @@ class InsufficientQuotaError(Exception):
 
 
 async def check_task_quota(base_url: str, task: Task, quota: dict) -> dict:
+    headers: dict[str, str] = {}
+    propagate.inject(headers)
     async with httpx.AsyncClient(
         base_url=base_url, transport=httpx.AsyncHTTPTransport(retries=3)
     ) as client:
         response = await client.post(
             f"/internal/api/v1/wizard/tasks/{task.id}/check",
+            headers=headers,
             json={"task": task.model_dump(mode="json"), "quota": quota},
         )
         response.raise_for_status()

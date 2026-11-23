@@ -113,6 +113,18 @@ def is_instagram(url: str) -> bool:
     return False
 
 
+def is_wechat_channels(url: str) -> bool:
+    """Match WeChat Channels share links and preview pages."""
+    parsed = urlparse(url)
+    host = (parsed.hostname or "").lower()
+
+    if host == "weixin.qq.com":
+        return parsed.path.startswith("/sph/")
+    if host == "channels.weixin.qq.com":
+        return parsed.path.startswith("/finder-preview/pages/sph")
+    return False
+
+
 def _instagram_target_article_has_video(
     soup: BeautifulSoup,
     shortcode: str,
@@ -227,6 +239,8 @@ class WebAnalysisFunction(BaseFunction):
             if target_article_has_video is not None:
                 return target_article_has_video
             return soup.select_one("main video") is not None
+        if is_wechat_channels(url):
+            return True
         for prefix in self.video_prefixes:
             if url.startswith(prefix):
                 return True

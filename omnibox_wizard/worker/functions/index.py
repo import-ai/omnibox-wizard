@@ -1,12 +1,13 @@
 import httpx
-
 from common.trace_info import TraceInfo
-from omnibox_wizard.indexing import build_resource_chunks
-from omnibox_wizard.worker.config import WorkerConfig
-from omnibox_wizard.worker.functions.base_function import BaseFunction
+from opentelemetry import propagate
 from wizard_common.grimoire.entity.message import Message
 from wizard_common.grimoire.retriever.weaviate_vector_db import WeaviateVectorDB
 from wizard_common.worker.entity import Task
+
+from omnibox_wizard.indexing import build_resource_chunks
+from omnibox_wizard.worker.config import WorkerConfig
+from omnibox_wizard.worker.functions.base_function import BaseFunction
 
 
 class DeleteIndex(BaseFunction):
@@ -56,11 +57,13 @@ class UpsertMessageIndex(BaseFunction):
         self.vector_db: WeaviateVectorDB = WeaviateVectorDB(config.vector)
 
     async def run(self, task: Task, trace_info: TraceInfo) -> dict:
+        headers = {"x-user-id": task.user_id}
+        propagate.inject(headers)
         async with httpx.AsyncClient(base_url=self.base_url) as client:
             response = await client.get(
                 f"/internal/api/v1/namespaces/{task.namespace_id}/conversations/{task.input['conversation_id']}/messages/{task.input['message_id']}",
                 params={"for_index": "true"},
-                headers={"x-user-id": task.user_id},
+                headers=headers,
             )
         if response.status_code == 404:
             await self.vector_db.remove_message_vectors(

@@ -81,6 +81,17 @@ def has_image_post_panel(soup: BeautifulSoup) -> bool:
 _ACTIVE_VIDEO_ID_RE = re.compile(r"\bvideo_(\d+)\b")
 
 
+def image_post_text(soup: BeautifulSoup) -> str:
+    """Read the caption of the post currently rendered in the page."""
+    element = soup.select_one('[data-e2e="video-desc"]')
+    if element is None:
+        return ""
+    text = " ".join(element.get_text(" ", strip=True).split())
+    for suffix in ("展开", "收起"):
+        text = text.replace(suffix, "").strip()
+    return text
+
+
 def active_post_id(soup: BeautifulSoup) -> str | None:
     """Read the aweme id of the item currently shown in the feed.
 
@@ -152,10 +163,19 @@ class DouyinProcessor(HTMLReaderBaseProcessor):
             )
         )
         images = [image for image in downloaded if image is not None]
-        parts = [_post_text(detail, "desc")]
+
+        # RENDER_DATA can describe a previously opened post, so trust it only
+        # when it matches the post the page is showing right now.
+        current_id = active_post_id(soup)
+        detail_id = str(detail.get("awemeId") or "")
+        stale = bool(panel_links) and current_id is not None and current_id != detail_id
+        desc = image_post_text(soup) if stale else _post_text(detail, "desc")
+        title = None if stale else (_post_text(detail, "itemTitle") or None)
+
+        parts = [desc]
         parts.extend(f"![{image.name}]({image.link})" for image in images)
         return GeneratedContent(
-            title=_post_text(detail, "itemTitle") or None,
+            title=title,
             markdown="\n\n".join(filter(None, parts)),
             images=images or None,
         )

@@ -1,5 +1,6 @@
 import asyncio
 import json
+import re
 from html import unescape
 from urllib.parse import unquote, urlparse
 
@@ -75,6 +76,23 @@ def image_panel_links(soup: BeautifulSoup) -> list[str]:
 
 def has_image_post_panel(soup: BeautifulSoup) -> bool:
     return bool(image_panel_links(soup))
+
+
+_ACTIVE_VIDEO_ID_RE = re.compile(r"\bvideo_(\d+)\b")
+
+
+def active_post_id(soup: BeautifulSoup) -> str | None:
+    """Read the aweme id of the item currently shown in the feed.
+
+    Douyin marks the active slide with data-e2e="feed-active-video" and keeps
+    its id in the class list, which tells which post the page is showing even
+    when RENDER_DATA still describes a previously opened one.
+    """
+    feed = soup.find(attrs={"data-e2e": "feed-active-video"})
+    if feed is None:
+        return None
+    match = _ACTIVE_VIDEO_ID_RE.search(" ".join(feed.get("class") or []))
+    return match.group(1) if match else None
 
 
 def is_active_video_playing(soup: BeautifulSoup) -> bool:

@@ -11,6 +11,7 @@ from common.trace_info import TraceInfo
 from omnibox_wizard.worker.config import WorkerConfig
 from omnibox_wizard.worker.functions.base_function import BaseFunction
 from omnibox_wizard.worker.functions.html_reader.processors.douyin import (
+    active_post_id,
     has_image_post_panel,
     is_active_video_playing,
     parse_video_detail,
@@ -224,11 +225,12 @@ class WebAnalysisFunction(BaseFunction):
                 return element.get("data-type") == "video"
             return _xhs_note_type_from_html(html) == "video"
         if is_douyin(url):
-            # The panel and the visible video container describe what is on
-            # screen, while RENDER_DATA can still hold a previously opened post.
+            # Resolve which item is on screen first. The image panel and the
+            # active feed slide describe the current post, while RENDER_DATA
+            # can still hold a previously opened one.
             if has_image_post_panel(soup):
                 return False
-            if is_active_video_playing(soup):
+            if active_post_id(soup) is not None or is_active_video_playing(soup):
                 return True
             return _classify_douyin(parse_video_detail(soup)) == "video"
         if is_tiktok(url):

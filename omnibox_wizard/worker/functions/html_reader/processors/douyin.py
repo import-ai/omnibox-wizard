@@ -43,19 +43,63 @@ def _post_text(detail: dict, field: str) -> str:
     return value.strip() if isinstance(value, str) else ""
 
 
+def _image_key(src: str) -> str:
+    """Strip CDN transform params so duplicates of one image collapse."""
+    return urlparse(src).path.split("~")[0]
+
+
+def image_panel_links(soup: BeautifulSoup) -> list[str]:
+    """Return the displayed image post links in original order.
+
+    Douyin renders the active image post inside .focusPanel and keeps video
+    posts out of it, so the panel always describes what is on screen even when
+    RENDER_DATA still carries a previously opened post.
+    """
+    panel = soup.select_one(".focusPanel")
+    if panel is None:
+        return []
+
+    links: list[str] = []
+    seen: set[str] = set()
+    for img in panel.select('img[src*="douyinpic"]'):
+        src = img.get("src")
+        if not isinstance(src, str) or not src.startswith("https://"):
+            continue
+        key = _image_key(src)
+        if key in seen:
+            continue
+        seen.add(key)
+        links.append(src)
+    return links
+
+
+def has_image_post_panel(soup: BeautifulSoup) -> bool:
+    return bool(image_panel_links(soup))
+
+
+def is_active_video_playing(soup: BeautifulSoup) -> bool:
+    """Whether the feed's active video container is currently visible."""
+    feed = soup.find(attrs={"data-e2e": "feed-active-video"})
+    if feed is None:
+        return False
+    return any(
+        "hideXgVideo" not in (c.get("class") or [])
+        for c in feed.find_all("xg-video-container")
+    )
+
+
 class DouyinProcessor(HTMLReaderBaseProcessor):
     def hit(self, html: str, url: str) -> bool:
         host = urlparse(url).hostname or ""
         if host != "douyin.com" and not host.endswith(".douyin.com"):
             return False
-        detail = parse_video_detail(BeautifulSoup(html, "html.parser"))
+        soup = BeautifulSoup(html, "html.parser")
+        if has_image_post_panel(soup):
+            return True
+        detail = parse_video_detail(soup)
         return bool(detail and _image_entries(detail))
 
-    async def _download_image(self, entry: object, name: str) -> Image | None:
-        urls = entry.get("urlList") if isinstance(entry, dict) else None
-        if not isinstance(urls, list):
-            return None
-
+    async def _download_first(self, urls: list, name: str) -> Image | None:
         for src in urls:
             if not isinstance(src, str):
                 continue
@@ -69,11 +113,24 @@ class DouyinProcessor(HTMLReaderBaseProcessor):
         return None
 
     async def convert(self, html: str, url: str) -> GeneratedContent:
-        detail = parse_video_detail(BeautifulSoup(html, "html.parser")) or {}
+        soup = BeautifulSoup(html, "html.parser")
+        detail = parse_video_detail(soup) or {}
+
+        # Prefer the image panel: it always reflects the displayed post, while
+        # RENDER_DATA can still describe a previously opened one.
+        panel_links = image_panel_links(soup)
+        if panel_links:
+            url_groups: list[list] = [[link] for link in panel_links]
+        else:
+            url_groups = [
+                entry.get("urlList") if isinstance(entry, dict) else []
+                for entry in _image_entries(detail)
+            ]
+
         downloaded = await asyncio.gather(
             *(
-                self._download_image(entry, str(index))
-                for index, entry in enumerate(_image_entries(detail), start=1)
+                self._download_first(urls, str(index))
+                for index, urls in enumerate(url_groups, start=1)
             )
         )
         images = [image for image in downloaded if image is not None]

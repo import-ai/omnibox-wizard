@@ -461,3 +461,11 @@ class TestSearchAPI:
         )
 
         assert response.status_code == 404
+
+    async def test_search_snapshot_endpoint_is_removed(self, client):
+        response = client.post(
+            "/internal/api/v1/wizard/search/snapshot",
+            json=self.search_payload(),
+        )
+
+        assert response.status_code == 404

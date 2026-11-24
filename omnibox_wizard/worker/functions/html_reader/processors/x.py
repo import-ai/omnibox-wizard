@@ -43,7 +43,7 @@ class XProcessor(HTMLReaderBaseProcessor):
                     result = self._convert_tweet(soup)
 
         if not self._has_effective_content(result):
-            restricted_result = self._convert_restricted_tweet(soup)
+            restricted_result = self._convert_restricted_tweet(soup, url)
             if restricted_result:
                 result = restricted_result
 
@@ -418,31 +418,53 @@ class XProcessor(HTMLReaderBaseProcessor):
     def _has_effective_content(self, result: GeneratedContent) -> bool:
         return bool((result.markdown or "").strip() or result.images)
 
+    # Finds the article that owns the status id in the request URL.
+    def _find_status_article(self, soup: BeautifulSoup, url: str) -> Tag | None:
+        match = re.search(r"/status/(\d+)", url or "")
+        if not match:
+            return None
+
+        suffix = f"/status/{match.group(1)}"
+        for article in soup.find_all("article"):
+            if article.find_parent("article"):
+                continue
+            for link in article.find_all("a", href=True):
+                href = (link.get("href") or "").split("?")[0].rstrip("/")
+                if href.endswith(suffix):
+                    return article
+        return None
+
     # Entry point for restricted/share pages that do not expose full tweet DOM.
-    def _convert_restricted_tweet(self, soup: BeautifulSoup) -> GeneratedContent | None:
+    def _convert_restricted_tweet(
+        self, soup: BeautifulSoup, url: str = ""
+    ) -> GeneratedContent | None:
+        main_article = self._find_status_article(soup, url)
+        scope: BeautifulSoup | Tag = main_article or soup
+
         locator_text = self._extract_restricted_locator_text(soup)
         text_result = None
 
-        author_handle = self._extract_restricted_author_handle(soup)
-
-        text_container = self._select_restricted_text_container(soup, locator_text)
+        text_container = self._select_restricted_text_container(scope, locator_text)
+        author_handle = self._extract_restricted_author_handle(
+            soup, text_container or main_article
+        )
         if text_container:
             text_result = self._convert_restricted_text_container(
                 text_container, author_handle
             )
 
         media_result = (
-            self._convert_restricted_body_media(soup, author_handle)
+            self._convert_restricted_body_media(scope, author_handle)
             if not text_result
             else None
         )
 
         # When the main post body is known, only merge cards from that post.
-        card_scope: BeautifulSoup | Tag = soup
+        card_scope: BeautifulSoup | Tag = main_article or soup
         if text_container is not None:
-            main_article = text_container.find_parent("article")
-            if main_article is not None:
-                card_scope = main_article
+            container_article = text_container.find_parent("article")
+            if container_article is not None:
+                card_scope = container_article
 
         card_result = self._convert_restricted_article_card(card_scope)
         link_preview_result = self._convert_restricted_link_preview_card(card_scope)
@@ -500,7 +522,7 @@ class XProcessor(HTMLReaderBaseProcessor):
 
     # Converts restricted body media into content when no text body is available.
     def _convert_restricted_body_media(
-        self, soup: BeautifulSoup, author_handle: str
+        self, soup: BeautifulSoup | Tag, author_handle: str
     ) -> GeneratedContent | None:
         image_urls = self._extract_restricted_content_image_urls(soup)
         if not image_urls:
@@ -545,21 +567,49 @@ class XProcessor(HTMLReaderBaseProcessor):
 
         return ""
 
-    # Extracts the author handle from restricted page metadata.
-    def _extract_restricted_author_handle(self, soup: BeautifulSoup) -> str:
+    # Extracts the author handle from restricted page metadata or body DOM.
+    def _extract_restricted_author_handle(
+        self, soup: BeautifulSoup, container: Tag | None = None
+    ) -> str:
         posting = self._find_social_media_posting(soup)
-        if not posting:
+        if posting:
+            author = posting.get("author") or {}
+            if isinstance(author, dict):
+                handle = (author.get("alternateName") or "").strip()
+                if handle:
+                    return handle if handle.startswith("@") else f"@{handle}"
+
+        article = None
+        if isinstance(container, Tag):
+            article = (
+                container
+                if container.name == "article"
+                else container.find_parent("article")
+            )
+        if article is None:
+            article = soup.find("article") if isinstance(soup, Tag) else None
+        if article is None:
             return ""
 
-        author = posting.get("author") or {}
-        if not isinstance(author, dict):
-            return ""
-
-        handle = (author.get("alternateName") or "").strip()
-        if not handle:
-            return ""
-
-        return handle if handle.startswith("@") else f"@{handle}"
+        reserved = {
+            "/home",
+            "/explore",
+            "/i",
+            "/compose",
+            "/settings",
+            "/messages",
+            "/notifications",
+            "/search",
+            "/login",
+            "/signup",
+        }
+        for link in article.find_all("a", href=True):
+            href = (link.get("href") or "").strip()
+            if href in reserved:
+                continue
+            if re.fullmatch(r"/[A-Za-z0-9_]{1,15}", href):
+                return f"@{href.strip('/')}"
+        return ""
 
     # Selects the best restricted main tweet text container from body candidates.
     def _select_restricted_text_container(
@@ -702,7 +752,6 @@ class XProcessor(HTMLReaderBaseProcessor):
         return bool(
             tag.name in {"div", "span"}
             and "whitespace-pre-wrap" in classes
-            and "wrap-break-word" in classes
             and "font-normal" in classes
         )
 

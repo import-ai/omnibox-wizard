@@ -1,23 +1,24 @@
-from omnibox_wizard.worker.quota import check_task_quota
 import os
 import tempfile
 from pathlib import Path
 
 import httpx
-from httpx import AsyncHTTPTransport, Timeout
-
 from common.exception import CommonException
 from common.plain_reader import read_text_file
 from common.trace_info import TraceInfo
+from httpx import AsyncHTTPTransport, Timeout
+from opentelemetry import propagate
+from wizard_common.worker.entity import Image, Task, TaskFunction
+
 from omnibox_wizard.worker.config import WorkerConfig
-from wizard_common.worker.entity import Task, Image, TaskFunction
 from omnibox_wizard.worker.functions.base_function import BaseFunction
 from omnibox_wizard.worker.functions.file_readers.md_reader import MDReader
 from omnibox_wizard.worker.functions.file_readers.office_reader import (
     OFFICE_CONVERSIONS,
-    OfficeReader,
     OfficeOperatorClient,
+    OfficeReader,
 )
+from omnibox_wizard.worker.quota import check_task_quota
 
 FILE_CONTENT_TOO_LONG_CODE = "FILE_CONTENT_TOO_LONG"
 
@@ -138,11 +139,14 @@ class FileReader(BaseFunction):
 
     async def get_file_info(self, namespace_id: str, resource_id: str):
         try:
+            headers: dict[str, str] = {}
+            propagate.inject(headers)
             async with httpx.AsyncClient(
                 base_url=self.base_url, transport=AsyncHTTPTransport(retries=3)
             ) as client:
                 response = await client.get(
-                    f"/internal/api/v1/namespaces/{namespace_id}/resources/{resource_id}/file"
+                    f"/internal/api/v1/namespaces/{namespace_id}/resources/{resource_id}/file",
+                    headers=headers,
                 )
                 response.raise_for_status()
                 file_info = response.json()

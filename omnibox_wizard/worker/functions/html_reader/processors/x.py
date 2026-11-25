@@ -642,7 +642,7 @@ class XProcessor(HTMLReaderBaseProcessor):
     def _restricted_text_container_candidates(self, soup: BeautifulSoup) -> list[Tag]:
         candidates = []
 
-        for tag in soup.find_all("div"):
+        for tag in soup.find_all(["div", "span"]):
             if not isinstance(tag, Tag):
                 continue
 

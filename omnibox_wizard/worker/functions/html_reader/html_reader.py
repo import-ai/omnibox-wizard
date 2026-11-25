@@ -20,6 +20,9 @@ from omnibox_wizard.worker.functions.web_analysis import is_unsupported_collect_
 from omnibox_wizard.worker.functions.html_reader.processors.base import (
     HTMLReaderBaseProcessor,
 )
+from omnibox_wizard.worker.functions.html_reader.processors.douyin import (
+    DouyinProcessor,
+)
 from omnibox_wizard.worker.functions.html_reader.processors.green_note import (
     GreenNoteProcessor,
 )
@@ -250,6 +253,7 @@ class HTMLReaderV2(BaseFunction):
             GreenNoteProcessor(config=config),
             GreenNoticeProcessor(config=config),
             RedNoteProcessor(config=config),
+            DouyinProcessor(config=config),
             InstagramProcessor(config=config),
             OKJikeWebProcessor(config=config),
             OKJikeMProcessor(config=config),

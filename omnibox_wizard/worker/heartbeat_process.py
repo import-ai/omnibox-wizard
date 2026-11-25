@@ -33,14 +33,15 @@ from multiprocessing import Queue
 from typing import Any, TypeVar
 
 import httpx
-
 from common.logger import get_logger
+from opentelemetry import propagate
 
 # Messages carried on each IPC queue. Every message carries the worker_uid so
 # both sides can ignore messages about a previous registrant of the same task
 # id (the backend may re-queue a reclaimed task and another worker in this
 # container may claim it while the old run is still winding down).
-Command = tuple[str, str, str]  # ("register" | "deregister", task_id, worker_uid)
+# (action, task_id, worker_uid, trace headers)
+Command = tuple[str, str, str, dict[str, str]]
 Event = tuple[str, str, str]  # ("lost_ownership", task_id, worker_uid)
 TaskKey = tuple[str, str]  # (task_id, worker_uid)
 
@@ -65,6 +66,7 @@ class _InFlight:
 
     task: asyncio.Task
     worker_uid: str  # so we can re-register with a restarted child
+    trace_headers: dict[str, str]
     lost: bool = False  # cancel was reporter-initiated (vs. task/caller cancel)
 
 
@@ -87,7 +89,7 @@ def heartbeat_worker_main(
     """Entry point for the heartbeat child process (must be importable at module
     level so it is picklable under the ``spawn`` start method)."""
     logger = get_logger("heartbeat_process")
-    active: set[TaskKey] = set()
+    active: dict[TaskKey, dict[str, str]] = {}
 
     with httpx.Client(
         base_url=base_url,
@@ -99,11 +101,12 @@ def heartbeat_worker_main(
             now = time.monotonic()
             if now >= next_beat:
                 next_beat = now + interval
-                for task_id, worker_uid in list(active):
+                for (task_id, worker_uid), trace_headers in list(active.items()):
                     try:
                         response = client.post(
                             f"/internal/api/v1/wizard/tasks/{task_id}/heartbeat",
                             json={"worker_id": worker_uid},
+                            headers=trace_headers,
                         )
                         response.raise_for_status()
                         owned = response.json().get("owned")
@@ -116,7 +119,7 @@ def heartbeat_worker_main(
                         logger.warning(
                             f"Lost ownership of task {task_id}; notifying parent"
                         )
-                        active.discard((task_id, worker_uid))
+                        active.pop((task_id, worker_uid), None)
                         event_q.put(("lost_ownership", task_id, worker_uid))
                 continue
 
@@ -127,11 +130,11 @@ def heartbeat_worker_main(
             if cmd is _STOP:
                 logger.info("Heartbeat process shutting down")
                 return
-            action, task_id, worker_uid = cmd
+            action, task_id, worker_uid, trace_headers = cmd
             if action == "register":
-                active.add((task_id, worker_uid))
+                active[task_id, worker_uid] = trace_headers
             elif action == "deregister":
-                active.discard((task_id, worker_uid))
+                active.pop((task_id, worker_uid), None)
 
 
 class HeartbeatReporter:
@@ -185,12 +188,14 @@ class HeartbeatReporter:
         the work and this raises :class:`LostOwnershipError`; a cancellation of
         the caller (e.g. shutdown) cancels the work and propagates unchanged.
         """
+        trace_headers: dict[str, str] = {}
+        propagate.inject(trace_headers)
         work_task = asyncio.ensure_future(coro)
         key = (task_id, worker_uid)
         with self._lock:
             assert key not in self._tasks
-            self._tasks[key] = _InFlight(work_task, worker_uid)
-            self._command_q.put(("register", task_id, worker_uid))
+            self._tasks[key] = _InFlight(work_task, worker_uid, trace_headers)
+            self._command_q.put(("register", task_id, worker_uid, trace_headers))
         try:
             return await work_task
         except asyncio.CancelledError:
@@ -204,7 +209,7 @@ class HeartbeatReporter:
         finally:
             with self._lock:
                 del self._tasks[key]
-                self._command_q.put(("deregister", task_id, worker_uid))
+                self._command_q.put(("deregister", task_id, worker_uid, {}))
 
     def _drain_events(self) -> None:
         """Blocking loop (own thread): apply lost-ownership events by cancelling
@@ -247,10 +252,14 @@ class HeartbeatReporter:
         self._logger.error(
             f"Heartbeat process died (exitcode={self._process.exitcode}); restarting"
         )
-        self._start_child()
         with self._lock:
-            for task_id, worker_uid in self._tasks:
-                self._command_q.put(("register", task_id, worker_uid))
+            # A terminated child may have held the old queue's reader lock.
+            self._command_q = self._ctx.Queue()
+            self._start_child()
+            for (task_id, worker_uid), entry in self._tasks.items():
+                self._command_q.put(
+                    ("register", task_id, worker_uid, entry.trace_headers)
+                )
 
     def stop(self) -> None:
         """Best-effort teardown. The child is a daemon, so it also dies with the

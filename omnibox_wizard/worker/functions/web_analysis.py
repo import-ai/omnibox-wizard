@@ -10,6 +10,12 @@ from wizard_common.worker.entity import Task, TaskFunction
 from common.trace_info import TraceInfo
 from omnibox_wizard.worker.config import WorkerConfig
 from omnibox_wizard.worker.functions.base_function import BaseFunction
+from omnibox_wizard.worker.functions.html_reader.processors.douyin import (
+    active_post_id,
+    has_image_post_panel,
+    is_active_video_playing,
+    parse_video_detail,
+)
 
 tracer = trace.get_tracer(__name__)
 
@@ -95,6 +101,25 @@ def is_douyin(url: str) -> bool:
         if pattern in domain:
             return True
     return False
+
+
+def _classify_douyin(video_detail: dict | None) -> str:
+    if not video_detail:
+        return "generic"
+
+    video = video_detail.get("video")
+    sources = (video_detail, video) if isinstance(video, dict) else (video_detail,)
+    if any(isinstance(item.get("images"), list) and item["images"] for item in sources):
+        return "image"
+
+    for item in sources:
+        bit_rates = item.get("bitRateList")
+        duration = item.get("duration")
+        if isinstance(bit_rates, list) and bit_rates:
+            return "video"
+        if type(duration) in (int, float) and duration > 0:
+            return "video"
+    return "generic"
 
 
 def is_tiktok(url: str) -> bool:
@@ -200,12 +225,14 @@ class WebAnalysisFunction(BaseFunction):
                 return element.get("data-type") == "video"
             return _xhs_note_type_from_html(html) == "video"
         if is_douyin(url):
-            if feed_active := soup.find(attrs={"data-e2e": "feed-active-video"}):
-                return any(
-                    "hideXgVideo" not in c.get("class", "")
-                    for c in feed_active.find_all("xg-video-container")
-                )
-            return True
+            # Resolve which item is on screen first. The image panel and the
+            # active feed slide describe the current post, while RENDER_DATA
+            # can still hold a previously opened one.
+            if has_image_post_panel(soup):
+                return False
+            if active_post_id(soup) is not None or is_active_video_playing(soup):
+                return True
+            return _classify_douyin(parse_video_detail(soup)) == "video"
         if is_tiktok(url):
             parsed = urlparse(url)
             if "/photo/" in parsed.path:

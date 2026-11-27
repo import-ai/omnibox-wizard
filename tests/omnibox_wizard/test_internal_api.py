@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from wizard_common.grimoire.entity.chunk import Chunk, ChunkType
 from wizard_common.grimoire.entity.index_record import IndexRecord, IndexRecordType
 from wizard_common.grimoire.entity.message import Message, OpenAIMessage
+from wizard_common.grimoire.retriever.weaviate_vector_db import VectorSearchPage
 
 from omnibox_wizard.wizard.api import internal
 from omnibox_wizard.wizard.api.internal import internal_router
@@ -403,7 +404,11 @@ class TestSearchAPI:
 
     async def test_chunk_search_queries_vector_db_directly(self, client, monkeypatch):
         vector_db = AsyncMock()
-        vector_db.search.return_value = [chunk_record("one")]
+        vector_db.search_page.return_value = VectorSearchPage(
+            records=[chunk_record("one")],
+            has_more=True,
+            partial=True,
+        )
         monkeypatch.setattr(internal, "vector_db", vector_db, raising=False)
 
         response = client.post(
@@ -418,10 +423,12 @@ class TestSearchAPI:
 
         assert response.status_code == 200
         body = response.json()
-        assert set(body) == {"records"}
+        assert set(body) == {"records", "has_more", "partial"}
+        assert body["has_more"] is True
+        assert body["partial"] is True
         assert [record["chunk"]["resource_id"] for record in body["records"]] == ["one"]
-        vector_db.search.assert_awaited_once()
-        assert vector_db.search.await_args.kwargs == {
+        vector_db.search_page.assert_awaited_once()
+        assert vector_db.search_page.await_args.kwargs == {
             "conversation_ids": None,
             "exclude_conversation_ids": None,
             "query": "query",
@@ -438,7 +445,9 @@ class TestSearchAPI:
         self, client, monkeypatch, record_type
     ):
         vector_db = AsyncMock()
-        vector_db.search.return_value = [message_record("message_1")]
+        vector_db.search_page.return_value = VectorSearchPage(
+            records=[message_record("message_1")], has_more=False
+        )
         monkeypatch.setattr(internal, "vector_db", vector_db, raising=False)
 
         response = client.post(
@@ -448,11 +457,13 @@ class TestSearchAPI:
 
         assert response.status_code == 200
         body = response.json()
-        assert set(body) == {"records"}
+        assert set(body) == {"records", "has_more", "partial"}
+        assert body["has_more"] is False
+        assert body["partial"] is False
         assert len(body["records"]) == 1
-        vector_db.search.assert_awaited_once()
+        vector_db.search_page.assert_awaited_once()
         expected_type = IndexRecordType(record_type) if record_type else None
-        assert vector_db.search.await_args.kwargs["record_type"] == expected_type
+        assert vector_db.search_page.await_args.kwargs["record_type"] == expected_type
 
     async def test_search_judge_endpoint_is_removed(self, client):
         response = client.post(

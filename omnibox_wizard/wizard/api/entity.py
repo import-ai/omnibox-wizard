@@ -51,6 +51,12 @@ class SearchRequest(BaseModel):
 
 class SearchResponse(BaseModel):
     records: list[IndexRecord] = Field(description="search results")
+    has_more: bool = Field(
+        default=False, description="whether deeper ranked records exist"
+    )
+    partial: bool = Field(
+        default=False, description="whether a retrieval branch failed"
+    )
 
 
 class UpsertWeaviateResourceRequest(BaseModel):

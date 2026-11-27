@@ -78,18 +78,22 @@ async def parse_rss_item(
 
 @internal_router.post("/search", tags=[], response_model=SearchResponse)
 async def search(request: SearchRequest):
-    records = await vector_db.search(
-        conversation_ids=request.conversation_ids,
-        exclude_conversation_ids=request.exclude_conversation_ids,
+    page = await vector_db.search_page(
         query=request.query,
         namespace_id=request.namespace_id,
         user_id=request.user_id,
         record_type=request.type,
         offset=request.offset,
         limit=request.limit,
+        conversation_ids=request.conversation_ids,
+        exclude_conversation_ids=request.exclude_conversation_ids,
         resource_ids=request.resource_ids,
     )
-    return SearchResponse(records=records)
+    return SearchResponse(
+        records=page.records,
+        has_more=page.has_more,
+        partial=page.partial,
+    )
 
 
 @internal_router.post("/upsert_weaviate/resource", tags=[])

@@ -1,9 +1,14 @@
+from unittest.mock import AsyncMock, patch
+
 import pytest
-from unittest.mock import patch
 from fastapi.testclient import TestClient
 from fastapi import FastAPI
-from wizard_common.grimoire.entity.chunk import Chunk
+from wizard_common.grimoire.entity.chunk import Chunk, ChunkType
+from wizard_common.grimoire.entity.index_record import IndexRecord, IndexRecordType
+from wizard_common.grimoire.entity.message import Message, OpenAIMessage
+from wizard_common.grimoire.retriever.weaviate_vector_db import VectorSearchPage
 
+from omnibox_wizard.wizard.api import internal
 from omnibox_wizard.wizard.api.internal import internal_router
 from omnibox_wizard.wizard.api.entity import (
     CommonAITextRequest,
@@ -360,3 +365,118 @@ class TestWeaviateUpsertAPI:
         assert response.status_code == 200
         assert response.json() == {"success": True}
         mock_weaviate_vector_db.upsert_message.assert_called_once()
+
+
+def chunk_record(resource_id):
+    return IndexRecord(
+        type=IndexRecordType.chunk,
+        namespace_id="ns_1",
+        chunk=Chunk(
+            title=resource_id,
+            resource_id=resource_id,
+            text=f"Content for {resource_id}",
+            chunk_type=ChunkType.doc,
+            parent_id="parent_1",
+        ),
+    )
+
+
+def message_record(message_id):
+    return IndexRecord(
+        type=IndexRecordType.message,
+        namespace_id="ns_1",
+        message=Message(
+            conversation_id="conversation_1",
+            message_id=message_id,
+            message=OpenAIMessage(role="user", content="hello"),
+        ),
+    )
+
+
+class TestSearchAPI:
+    def search_payload(self, **overrides):
+        return {
+            "query": "query",
+            "namespace_id": "ns_1",
+            "user_id": "user_1",
+            **overrides,
+        }
+
+    async def test_chunk_search_queries_vector_db_directly(self, client, monkeypatch):
+        vector_db = AsyncMock()
+        vector_db.search_page.return_value = VectorSearchPage(
+            records=[chunk_record("one")],
+            has_more=True,
+            partial=True,
+        )
+        monkeypatch.setattr(internal, "vector_db", vector_db, raising=False)
+
+        response = client.post(
+            "/internal/api/v1/wizard/search",
+            json=self.search_payload(
+                type="chunk",
+                offset=5,
+                limit=10,
+                resource_ids=["one"],
+            ),
+        )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert set(body) == {"records", "has_more", "partial"}
+        assert body["has_more"] is True
+        assert body["partial"] is True
+        assert [record["chunk"]["resource_id"] for record in body["records"]] == ["one"]
+        vector_db.search_page.assert_awaited_once()
+        assert vector_db.search_page.await_args.kwargs == {
+            "conversation_ids": None,
+            "exclude_conversation_ids": None,
+            "query": "query",
+            "namespace_id": "ns_1",
+            "user_id": "user_1",
+            "record_type": IndexRecordType.chunk,
+            "offset": 5,
+            "limit": 10,
+            "resource_ids": ["one"],
+        }
+
+    @pytest.mark.parametrize("record_type", [None, "message"])
+    async def test_messages_and_untyped_searches_use_the_direct_query(
+        self, client, monkeypatch, record_type
+    ):
+        vector_db = AsyncMock()
+        vector_db.search_page.return_value = VectorSearchPage(
+            records=[message_record("message_1")], has_more=False
+        )
+        monkeypatch.setattr(internal, "vector_db", vector_db, raising=False)
+
+        response = client.post(
+            "/internal/api/v1/wizard/search",
+            json=self.search_payload(type=record_type, offset=0, limit=1),
+        )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert set(body) == {"records", "has_more", "partial"}
+        assert body["has_more"] is False
+        assert body["partial"] is False
+        assert len(body["records"]) == 1
+        vector_db.search_page.assert_awaited_once()
+        expected_type = IndexRecordType(record_type) if record_type else None
+        assert vector_db.search_page.await_args.kwargs["record_type"] == expected_type
+
+    async def test_search_judge_endpoint_is_removed(self, client):
+        response = client.post(
+            "/internal/api/v1/wizard/search/judge",
+            json=self.search_payload(records=[]),
+        )
+
+        assert response.status_code == 404
+
+    async def test_search_snapshot_endpoint_is_removed(self, client):
+        response = client.post(
+            "/internal/api/v1/wizard/search/snapshot",
+            json=self.search_payload(),
+        )
+
+        assert response.status_code == 404

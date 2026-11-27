@@ -42,12 +42,21 @@ class SearchRequest(BaseModel):
     namespace_id: str = Field(description="namespace id to search in")
     user_id: str | None = Field(description="user id")
     type: IndexRecordType | None = Field(default=None, description="type of record")
+    resource_ids: list[str] | None = Field(
+        default=None, description="restrict results to these resource ids"
+    )
     offset: int = Field(default=0, description="offset")
     limit: int = Field(default=20, description="maximum number of records")
 
 
 class SearchResponse(BaseModel):
     records: list[IndexRecord] = Field(description="search results")
+    has_more: bool = Field(
+        default=False, description="whether deeper ranked records exist"
+    )
+    partial: bool = Field(
+        default=False, description="whether a retrieval branch failed"
+    )
 
 
 class UpsertWeaviateResourceRequest(BaseModel):

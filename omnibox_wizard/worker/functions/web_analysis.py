@@ -12,9 +12,8 @@ from omnibox_wizard.worker.config import WorkerConfig
 from omnibox_wizard.worker.functions.base_function import BaseFunction
 from omnibox_wizard.worker.functions.html_reader.processors.douyin import (
     active_post_id,
-    has_image_post_panel,
-    is_active_video_playing,
     parse_video_detail,
+    visible_post_kind,
 )
 
 tracer = trace.get_tracer(__name__)
@@ -225,14 +224,25 @@ class WebAnalysisFunction(BaseFunction):
                 return element.get("data-type") == "video"
             return _xhs_note_type_from_html(html) == "video"
         if is_douyin(url):
-            # Resolve which item is on screen first. The image panel and the
-            # active feed slide describe the current post, while RENDER_DATA
-            # can still hold a previously opened one.
-            if has_image_post_panel(soup):
-                return False
-            if active_post_id(soup) is not None or is_active_video_playing(soup):
+            # Identity first: RENDER_DATA is trustworthy only when its id
+            # matches the post the page is showing.
+            detail = parse_video_detail(soup)
+            current = active_post_id(soup)
+            aligned = current is not None and current == str(
+                (detail or {}).get("awemeId") or ""
+            )
+            if aligned:
+                kind = _classify_douyin(detail)
+                if kind != "generic":
+                    return kind == "video"
+
+            visible_kind = visible_post_kind(soup)
+            if visible_kind is not None:
+                return visible_kind == "video"
+
+            if current is not None:
                 return True
-            return _classify_douyin(parse_video_detail(soup)) == "video"
+            return _classify_douyin(detail) == "video"
         if is_tiktok(url):
             parsed = urlparse(url)
             if "/photo/" in parsed.path:

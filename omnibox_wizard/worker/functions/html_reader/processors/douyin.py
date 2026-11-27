@@ -117,6 +117,34 @@ def is_active_video_playing(soup: BeautifulSoup) -> bool:
     )
 
 
+def has_image_label(soup: BeautifulSoup) -> bool:
+    """Whether Douyin labels the item on screen as an image post."""
+    info = soup.find(attrs={"data-e2e": "video-info"})
+    if info is None:
+        return False
+    return any(
+        element.get_text(strip=True) == "图文"
+        for element in info.find_all(["div", "span"])
+    )
+
+
+def visible_post_kind(soup: BeautifulSoup) -> str | None:
+    """Describe the post currently rendered on the page.
+
+    Strong evidence comes first: the platform's own image label or already
+    rendered panel images. A bare panel container is weaker than either but
+    still beats a visible player, because an image modal can cover a feed
+    video that keeps playing behind it.
+    """
+    if has_image_label(soup) or image_panel_links(soup):
+        return "image"
+    if soup.select_one(".focusPanel") is not None:
+        return "image"
+    if is_active_video_playing(soup):
+        return "video"
+    return None
+
+
 class DouyinProcessor(HTMLReaderBaseProcessor):
     def hit(self, html: str, url: str) -> bool:
         host = urlparse(url).hostname or ""

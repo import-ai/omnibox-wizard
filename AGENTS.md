@@ -2,6 +2,10 @@
 
 This file provides guidance to coding agents when working with code in this repository.
 
+## Model prompt caching
+
+Model prompt cache hit rate is important. Keep shared system instructions and tool definitions stable across requests. Place turn-specific information, including Steer notices, near the new user input so prior conversation prefixes remain reusable.
+
 ## Project Overview
 
 OmniBox Wizard is a Python FastAPI service that provides AI-powered document processing and question-answering capabilities. It's part of the larger OmniBox knowledge hub system.
